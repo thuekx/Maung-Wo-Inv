@@ -1,4 +1,4 @@
-import { Prisma, Role, WoType, CustomerStatus } from '@prisma/client';
+import { Prisma, Role, WoType, CustomerStatus } from './orm';
 import { Tx } from './db';
 import { Effects } from './effects';
 

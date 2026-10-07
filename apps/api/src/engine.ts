@@ -1,4 +1,4 @@
-import { Prisma, WoType } from '@prisma/client';
+import { Prisma, WoType } from './orm';
 import { AppError, Tx } from './db';
 import { Effects } from './effects';
 import { config } from './config';

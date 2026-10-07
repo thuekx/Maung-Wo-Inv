@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { AssetStatus } from '@prisma/client';
+import { AssetStatus } from '../orm';
 import { AppError, prisma, Tx } from '../db';
 import { authenticate, requireRole } from '../auth';
 import { transact } from '../effects';

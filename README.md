@@ -6,9 +6,9 @@ Aplikasi Work Order + Inventori multi-gudang untuk ISP (MKT · NOC · FOC · PRO
 
 | Lapisan | Pilihan | Alasan singkat |
 |---|---|---|
-| Frontend | **Next.js 15 (React 19) + Tailwind** | Responsif; teknisi memakai HP di lapangan (kamera untuk scan SN & foto). Form dirender dinamis dari metadata workflow. |
-| Backend | **Node.js 22 + Express 5 + TypeScript** | Satu bahasa dengan frontend. Alur WO ditulis sebagai *state machine* berbasis data (`workflows.ts`). |
-| ORM | **Prisma 6** | Skema bertipe, migrasi, transaksi interaktif (stok & status WO harus atomik). |
+| Frontend | **Next.js 16 (React 19.2) + Tailwind 3** | Responsif; teknisi memakai HP di lapangan (kamera untuk scan SN & foto). Form dirender dinamis dari metadata workflow. |
+| Backend | **Node.js 24 LTS + Express 5 + TypeScript 5.9** | Satu bahasa dengan frontend. Alur WO ditulis sebagai *state machine* berbasis data (`workflows.ts`). |
+| ORM | **Prisma 7** (driver adapter `pg`) | Skema bertipe, migrasi, transaksi interaktif (stok & status WO harus atomik). Klien di-generate ke `apps/api/src/generated` (tidak di-commit). |
 | Database | **PostgreSQL 16** | Transaksi ACID untuk stok, JSONB untuk laporan lapangan. |
 | Redis | **Redis 7 + BullMQ** | Antrian notifikasi & event billing (retry/backoff), job terjadwal, kode tautan Telegram. |
 | Alternatif backend | Laravel / NestJS | Bisa; yang dipindahkan hanya lapisan API. Aturan bisnis ada di `workflows.ts` + `inventory.ts`. |
@@ -39,7 +39,7 @@ Rekomendasi minimum produksi (≈ 200–500 pelanggan aktif/bulan baru, puluhan 
 
 ## 3. Library dan fungsinya
 
-**API** — `express` (HTTP) · `zod` (validasi input) · `@prisma/client`/`prisma` (ORM & migrasi) · `bullmq` + `ioredis` (antrian & cron) · `nodemailer` (email SMTP) · `jsonwebtoken` + `bcryptjs` (login & hash password) · `helmet` + `cors` + `express-rate-limit` (hardening) · `multer` (upload foto) · `dotenv` (env) · `tsx`/`typescript` (dev/build). Telegram memakai `fetch` bawaan Node ke Bot API.
+**API** — `express` (HTTP) · `zod` (validasi input) · `prisma` + `@prisma/client` + `@prisma/adapter-pg` (ORM, migrasi, driver PostgreSQL) · `bullmq` + `ioredis` (antrian & cron) · `nodemailer` (email SMTP) · `jsonwebtoken` + `bcryptjs` (login & hash password) · `helmet` + `cors` + `express-rate-limit` (hardening) · `multer` (upload foto) · `dotenv` (env) · `tsx`/`typescript` (dev/build). Telegram memakai `fetch` bawaan Node ke Bot API.
 
 **Web** — `next`/`react` (UI) · `tailwindcss` (styling) · `html5-qrcode` (scan QR/barcode lewat kamera) · `qrcode.react` (membuat label QR aset).
 

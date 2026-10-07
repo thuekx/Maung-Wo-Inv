@@ -1,4 +1,4 @@
-import { Role, Prisma } from '@prisma/client';
+import { Role, Prisma } from './orm';
 import { prisma, Tx } from './db';
 import { config } from './config';
 import { enqueue, QueuedJob } from './queue';

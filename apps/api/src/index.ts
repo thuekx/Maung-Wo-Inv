@@ -2,7 +2,7 @@ import express, { ErrorRequestHandler } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { ZodError } from 'zod';
-import { Prisma } from '@prisma/client';
+import { Prisma } from './orm';
 import { config } from './config';
 import { AppError } from './db';
 import { core } from './routes/core';

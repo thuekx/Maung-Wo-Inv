@@ -1,4 +1,4 @@
-import { Asset, AssetStatus } from '@prisma/client';
+import { Asset, AssetStatus } from './orm';
 import { AppError, Tx } from './db';
 
 export const AVAILABLE: AssetStatus[] = ['IN_STOCK', 'REFURBISHED'];

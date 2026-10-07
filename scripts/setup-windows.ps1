@@ -21,7 +21,8 @@ function Install($id, $name) {
 if (-not (Has winget)) { throw "winget tidak ditemukan. Perbarui 'App Installer' dari Microsoft Store." }
 
 if (-not (Has git))    { Install 'Git.Git' 'Git' }
-if (-not (Has node))   { Install 'OpenJS.NodeJS.LTS' 'Node.js LTS' }
+function NodeMajor { if (Has node) { [int]((node -v).TrimStart('v').Split('.')[0]) } else { 0 } }
+if ((NodeMajor) -lt 24) { Install 'OpenJS.NodeJS.LTS' 'Node.js 24 LTS' }
 if (-not (Has docker)) {
   Install 'Docker.DockerDesktop' 'Docker Desktop (butuh WSL2; mungkin perlu restart)'
   Write-Host "Docker Desktop terpasang. Restart PC bila diminta, jalankan Docker Desktop, lalu ulangi skrip ini." -ForegroundColor Yellow
@@ -30,7 +31,7 @@ if (-not (Has docker)) {
 # PATH belum ter-refresh di sesi ini setelah winget
 $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
 
-if (-not (Has node)) { Write-Host "Buka PowerShell baru lalu jalankan ulang skrip ini (Node baru terpasang)." -ForegroundColor Yellow; exit 0 }
+if ((NodeMajor) -lt 24) { Write-Host "Buka PowerShell baru lalu jalankan ulang skrip ini (Node baru terpasang)." -ForegroundColor Yellow; exit 0 }
 
 Write-Host "==> npm install (api)" -ForegroundColor Cyan
 npm --prefix apps/api install

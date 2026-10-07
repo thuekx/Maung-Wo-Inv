@@ -1,7 +1,7 @@
-import { PrismaClient, Role, ItemCategory } from '@prisma/client';
+import type { Role, ItemCategory } from '../src/orm';
+import { prisma } from '../src/db';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
 const PASSWORD = process.env.SEED_PASSWORD ?? 'Passw0rd!';
 
 async function main() {

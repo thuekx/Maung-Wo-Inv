@@ -8,14 +8,15 @@ Kode lengkap tahap awal sudah ditulis, **belum pernah dijalankan, di-typecheck, 
 ## Langkah pertama di komputer Anda
 ```bash
 git clone https://github.com/thuekx/Maung-Wo-Inv.git && cd Maung-Wo-Inv
-cd apps/api && npm install && npx prisma generate && npm run typecheck   # perbaiki error tipe bila ada
+cd apps/api && npm install && npm run typecheck   # perbaiki error tipe bila ada
 cd ../web && npm install && npm run typecheck
 ```
 Lalu jalankan penuh: `bash scripts/deploy.sh` (Linux) atau `.\scripts\setup-windows.ps1 -Up` (Windows) — lihat README bagian 4. Skrip instalasi ini juga belum pernah dijalankan; uji di VM bersih dulu.
 Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC) jadwal/ambil material/lapor → noc aktivasi → mkt kirim BA) dengan login `*@l1v.local` / `Passw0rd!`. Perhatikan: SN demo ada di Gudang Pusat (`ONT-DEMO-0001…`); pelanggan di Cabang A sengaja kekurangan stok sehingga memicu WO Permintaan Barang otomatis.
 
 ## Keputusan desain (jangan diubah tanpa alasan)
-- Stack: Next.js 15 + Express 5/TypeScript + Prisma/PostgreSQL + Redis/BullMQ.
+- Stack: Next.js 16 + React 19.2, Node 24 LTS, Express 5 + TypeScript 5.9, Prisma 7 (adapter-pg, klien di `src/generated/prisma` format CJS), PostgreSQL 16, Redis 7 + BullMQ 5, Tailwind 3.
+- Upgrade Prisma 6→7 & Next 15→16 ditulis tanpa dijalankan: periksa `apps/api/src/orm.ts`, `db.ts`, `prisma.config.ts`, `schema.prisma` (generator `prisma-client`) bila build gagal. TypeScript sengaja ditahan di 5.9 (TS 7 = compiler native, belum diuji); Tailwind tetap v3 (v4 butuh migrasi config).
 - Semua alur = **satu mesin workflow data-driven** (`apps/api/src/workflows.ts` + `engine.ts`). Menambah/ubah tahap = edit definisi status/aksi; frontend merender form otomatis dari metadata (`GET /api/work-orders/meta`).
 - Efek samping (notifikasi email/Telegram, event ke billing) ditulis ke DB dalam transaksi yang sama (outbox), dikirim worker BullMQ setelah commit.
 - Stok kuantitas lewat `moveStock` (atomik, tidak boleh negatif); aset ber-SN lewat `moveAsset`. Setiap teknisi punya gudang `MOBILE`.

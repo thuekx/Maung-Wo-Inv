@@ -1,6 +1,6 @@
 import { RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
-import { Role, User } from '@prisma/client';
+import { Role, User } from './orm';
 import { AppError, prisma } from './db';
 import { config } from './config';
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WoType } from '@prisma/client';
+import { WoType } from './orm';
 import { AppError } from './db';
 import { config } from './config';
 import { AVAILABLE, installAvailability, mobileWarehouse, moveAsset, moveStock, mustAsset, nextNumber, normSn, qcAssets } from './inventory';
