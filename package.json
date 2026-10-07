@@ -1,0 +1,13 @@
+{
+  "name": "maung-wo-inv",
+  "private": true,
+  "description": "Work Order & Inventory ISP (L1V)",
+  "scripts": {
+    "install:all": "npm --prefix apps/api install && npm --prefix apps/web install && npm --prefix apps/api exec prisma generate",
+    "typecheck": "npm --prefix apps/api run typecheck && npm --prefix apps/web run typecheck",
+    "up": "docker compose up -d --build",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f --tail=100 api worker web",
+    "seed": "docker compose exec api node dist/prisma/seed.js"
+  }
+}

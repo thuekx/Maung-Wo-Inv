@@ -21,7 +21,7 @@ export const config = {
     token: env.TELEGRAM_BOT_TOKEN,
     webhookSecret: env.TELEGRAM_WEBHOOK_SECRET ?? 'change-me',
     // chat/grup per divisi, contoh: {"NOC":"-1001234","FOC":"-1005678"}
-    roleChats: JSON.parse(env.TELEGRAM_ROLE_CHATS ?? '{}') as Record<string, string>,
+    roleChats: JSON.parse(env.TELEGRAM_ROLE_CHATS || '{}') as Record<string, string>,
   },
   billing: {
     apiKey: env.BILLING_API_KEY ?? 'dev-billing-key', // dipakai billing saat memanggil WO App

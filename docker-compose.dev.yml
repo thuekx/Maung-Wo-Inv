@@ -1,0 +1,6 @@
+# Override dev: membuka port DB & Redis ke host (jangan dipakai di server publik)
+services:
+  postgres:
+    ports: ["5432:5432"]
+  redis:
+    ports: ["6379:6379"]

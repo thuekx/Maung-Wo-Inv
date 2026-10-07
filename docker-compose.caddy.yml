@@ -1,0 +1,23 @@
+# Overlay HTTPS otomatis (Let's Encrypt) — dipakai: docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
+# Syarat: DNS WEB_DOMAIN & API_DOMAIN mengarah ke server, port 80/443 terbuka.
+services:
+  api:
+    ports: !override []
+  web:
+    ports: !override []
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?isi WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?isi API_DOMAIN}
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports: ["80:80", "443:443"]
+    depends_on: [web, api]
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -43,19 +43,77 @@ Rekomendasi minimum produksi (≈ 200–500 pelanggan aktif/bulan baru, puluhan 
 
 **Web** — `next`/`react` (UI) · `tailwindcss` (styling) · `html5-qrcode` (scan QR/barcode lewat kamera) · `qrcode.react` (membuat label QR aset).
 
-## 4. Cara menjalankan
+## 4. Instalasi & menjalankan
+
+Repo ini **private**. Untuk clone di server/komputer lain gunakan salah satu: GitHub Desktop / Git Credential Manager (login akun), **Personal Access Token** (`https://<TOKEN>@github.com/thuekx/Maung-Wo-Inv.git`, scope `repo` read-only), atau **Deploy Key** SSH (Settings → Deploy keys, read-only).
+
+### A. Server produksi / staging (Ubuntu 22.04+ atau Debian 12+) — direkomendasikan
 
 ```bash
-cp .env.example .env            # isi secret; SMTP/Telegram boleh kosong (mode dry-run, hanya log)
-docker compose up -d --build
-docker compose exec api node dist/prisma/seed.js   # user & data demo
-# Web: http://localhost:3000   API: http://localhost:4000
+git clone https://github.com/thuekx/Maung-Wo-Inv.git && cd Maung-Wo-Inv
+
+# 1) Pasang Docker Engine + Compose plugin + Portainer (butuh sudo)
+sudo bash scripts/install-server.sh
+#   opsi: SETUP_FIREWALL=1 (aktifkan UFW)  |  SKIP_PORTAINER=1
+#   logout/login ulang agar user masuk grup docker
+
+# 2) Buat .env (secret acak otomatis), build, jalankan, seed data awal
+bash scripts/deploy.sh                        # akses http://IP-SERVER:3000
+bash scripts/deploy.sh --host wo.contoh.co.id # pakai nama domain (tetap HTTP)
+bash scripts/deploy.sh --caddy wo.contoh.co.id api-wo.contoh.co.id   # HTTPS otomatis (Let's Encrypt)
 ```
-Login demo (password `Passw0rd!`): `admin@`, `mkt@`, `noc@`, `budi@` (FOC), `andi@` (FOC), `proc@`, `ga@`, `fin@` + `l1v.local`.
+Skrip mencetak URL, URL Portainer, dan password akun demo di akhir. Untuk `--caddy`, arahkan DNS kedua domain ke server dan buka port 80/443 lebih dulu. Ganti password semua akun demo setelah login pertama.
 
-Dev lokal: `cd apps/api && npm i && npx prisma migrate dev && npm run db:seed && npm run dev` (+ `npm run dev:worker` di terminal lain), lalu `cd apps/web && npm i && npm run dev`.
+Pembaruan berikutnya: `git pull && bash scripts/deploy.sh` (data Postgres/Redis/foto ada di volume Docker dan tidak hilang).
 
-> Container `api` memakai `prisma db push` agar langsung jalan. Sebelum produksi, buat migrasi (`npm run db:migrate`), commit folder `prisma/migrations`, dan ganti perintah start ke `prisma migrate deploy`.
+### B. Windows 10/11 (uji lokal / pengembangan)
+PowerShell **Administrator** di folder repo:
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\setup-windows.ps1 -Portainer -Up
+```
+Memasang Git, Node.js LTS, Docker Desktop (via winget; mungkin perlu restart lalu jalankan ulang), menjalankan `npm install` di `apps/api` & `apps/web`, membuat `.env`, memasang Portainer, dan menyalakan seluruh stack. Web: http://localhost:3000 · API: http://localhost:4000 · Portainer: https://localhost:9443.
+
+### C. Deploy lewat Portainer (GUI)
+1. Buka `https://IP-SERVER:9443`, buat akun admin (dalam 5 menit pertama setelah container start, atau Portainer terkunci — restart container `portainer` bila terlewat).
+2. **Stacks → Add stack → Repository**: URL `https://github.com/thuekx/Maung-Wo-Inv`, branch `main`, Compose path `docker-compose.yml`. Karena repo private, aktifkan **Authentication** dan isi username GitHub + Personal Access Token.
+3. Isi **Environment variables** (minimal): `POSTGRES_PASSWORD`, `JWT_SECRET`, `WEB_URL`, `CORS_ORIGIN`, `NEXT_PUBLIC_API_URL`, `BILLING_API_KEY`, `BILLING_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`; opsional `SMTP_*`, `TELEGRAM_BOT_TOKEN`, `BILLING_WEBHOOK_URL`. Daftar lengkap ada di `.env.example`. Buat secret dengan `openssl rand -hex 32`.
+4. **Deploy the stack**. Lalu seed sekali: Containers → `maung-wo-inv-api-1` → Console → `node dist/prisma/seed.js`.
+5. Pembaruan: Stack → *Pull and redeploy*. (Opsional: GitOps updates / webhook agar otomatis saat `git push`.)
+
+> `NEXT_PUBLIC_API_URL` ikut dibake saat build web — ubah nilainya berarti harus rebuild (*Pull and redeploy* dengan *Re-pull image*/rebuild).
+
+### D. Pengembangan lokal tanpa Docker untuk app (hanya DB & Redis di Docker)
+```bash
+npm run install:all                                   # npm install api+web, prisma generate
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis   # butuh POSTGRES_PASSWORD di .env (default dev: l1v_dev_pw)
+cp .env.example .env && cp .env.example apps/api/.env   # ubah POSTGRES_PASSWORD=l1v_dev_pw di keduanya agar cocok dengan DATABASE_URL
+cd apps/api && npx prisma migrate dev && npm run db:seed
+npm run dev            # terminal 1 (API :4000)
+npm run dev:worker     # terminal 2 (worker notifikasi)
+cd ../web && npm run dev   # terminal 3 (web :3000)
+```
+Cek mutu: `npm run typecheck` (di root).
+
+### Ringkasan skrip
+
+| Skrip | Fungsi |
+|---|---|
+| `scripts/install-server.sh` | Docker Engine, Compose plugin, Portainer CE, (opsional) UFW — Ubuntu/Debian |
+| `scripts/deploy.sh` | `.env` + secret acak, build, up, seed; mode `--host` / `--caddy` |
+| `scripts/setup-windows.ps1` | Git, Node LTS, Docker Desktop, npm install, `.env`, (opsi) Portainer & up |
+| `docker-compose.yml` | postgres, redis, api, worker, web (semua config via variabel) |
+| `docker-compose.caddy.yml` + `proxy/Caddyfile` | HTTPS otomatis (overlay) |
+| `docker-compose.dev.yml` | membuka port Postgres/Redis untuk dev lokal |
+| `package.json` (root) | `install:all`, `typecheck`, `up`, `down`, `logs`, `seed` |
+
+### Keamanan operasional
+- Jangan commit `.env` (sudah di `.gitignore`). Simpan salinannya di password manager.
+- Portainer memegang akses penuh ke Docker host: aktifkan 2FA/SSO bila ada, batasi port 9443 (firewall VPS / VPN), jangan diekspos publik tanpa pembatasan IP.
+- Docker mem-bypass UFW untuk port yang dipublikasikan; gunakan `--caddy` (hanya 80/443 terbuka) atau firewall dari penyedia VPS.
+- Backup: `docker compose exec -T postgres pg_dump -U l1v l1v_wo | gzip > backup_$(date +%F).sql.gz` (jadwalkan via cron) + simpan volume `uploads`.
+
+> Container `api` memakai `prisma db push` agar langsung jalan. Sebelum produksi sungguhan, buat migrasi (`npm run db:migrate`), commit `prisma/migrations`, dan ganti perintah start ke `prisma migrate deploy`.
 
 ## 5. Pemetaan alur ke aplikasi
 

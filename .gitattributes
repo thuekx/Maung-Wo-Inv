@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# skrip shell harus selalu LF (dijalankan di Linux)
+*.sh text eol=lf
+Caddyfile text eol=lf
