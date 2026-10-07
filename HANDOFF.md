@@ -11,7 +11,7 @@ git clone https://github.com/thuekx/Maung-Wo-Inv.git && cd Maung-Wo-Inv
 cd apps/api && npm install && npm run typecheck   # perbaiki error tipe bila ada
 cd ../web && npm install && npm run typecheck
 ```
-Lalu jalankan penuh: `bash scripts/deploy.sh` (Linux) atau `.\scripts\setup-windows.ps1 -Up` (Windows) — lihat README bagian 4. Skrip instalasi ini juga belum pernah dijalankan; uji di VM bersih dulu.
+Lalu jalankan penuh: `sudo bash scripts/install-server.sh` lalu `bash scripts/deploy.sh` — lihat README bagian 4. **Platform target: Ubuntu 24.04 LTS saja** (skrip Windows sudah dihapus). Skrip instalasi belum pernah dijalankan; uji di VM Ubuntu 24.04 bersih dulu (Node 24 untuk typecheck: `sudo INSTALL_NODE=1 bash scripts/install-server.sh` atau nvm, ada `.nvmrc`).
 Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC) jadwal/ambil material/lapor → noc aktivasi → mkt kirim BA) dengan login `*@l1v.local` / `Passw0rd!`. Perhatikan: SN demo ada di Gudang Pusat (`ONT-DEMO-0001…`); pelanggan di Cabang A sengaja kekurangan stok sehingga memicu WO Permintaan Barang otomatis.
 
 ## Keputusan desain (jangan diubah tanpa alasan)

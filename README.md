@@ -43,75 +43,114 @@ Rekomendasi minimum produksi (≈ 200–500 pelanggan aktif/bulan baru, puluhan 
 
 **Web** — `next`/`react` (UI) · `tailwindcss` (styling) · `html5-qrcode` (scan QR/barcode lewat kamera) · `qrcode.react` (membuat label QR aset).
 
-## 4. Instalasi & menjalankan
+## 4. Instalasi & menjalankan (Ubuntu 24.04 LTS)
 
-Repo ini **private**. Untuk clone di server/komputer lain gunakan salah satu: GitHub Desktop / Git Credential Manager (login akun), **Personal Access Token** (`https://<TOKEN>@github.com/thuekx/Maung-Wo-Inv.git`, scope `repo` read-only), atau **Deploy Key** SSH (Settings → Deploy keys, read-only).
+Target tunggal: **Ubuntu Server 24.04 LTS (noble), x86_64/arm64**. Spesifikasi minimum 2 vCPU / **4 GB RAM** (build Next.js butuh memori; di 2 GB tambahkan swap) / 20 GB disk. Seluruh aplikasi berjalan di container Docker, jadi **Node.js tidak perlu dipasang di server** (Node 24 hanya untuk pengembangan, lihat bagian D).
 
-### A. Server produksi / staging (Ubuntu 22.04+ atau Debian 12+) — direkomendasikan
+Repo ini **private**. Cara clone di server: **Personal Access Token** (GitHub → Settings → Developer settings → fine-grained token, akses *Contents: read-only* ke repo ini) atau **Deploy Key** SSH (repo → Settings → Deploy keys, read-only).
 
 ```bash
-git clone https://github.com/thuekx/Maung-Wo-Inv.git && cd Maung-Wo-Inv
+# opsi token
+git clone https://<USERNAME>:<TOKEN>@github.com/thuekx/Maung-Wo-Inv.git
+# opsi deploy key:
+#   ssh-keygen -t ed25519 -f ~/.ssh/maung_deploy -N ""   (tambahkan file .pub ke Deploy keys)
+#   GIT_SSH_COMMAND="ssh -i ~/.ssh/maung_deploy" git clone git@github.com:thuekx/Maung-Wo-Inv.git
+```
 
-# 1) Pasang Docker Engine + Compose plugin + Portainer (butuh sudo)
+### A. Instalasi cepat (skrip)
+
+```bash
+cd Maung-Wo-Inv
+sudo timedatectl set-timezone Asia/Jakarta          # waktu jadwal & cron
+
+# 1) Docker Engine + Compose plugin + Portainer
 sudo bash scripts/install-server.sh
-#   opsi: SETUP_FIREWALL=1 (aktifkan UFW)  |  SKIP_PORTAINER=1
-#   logout/login ulang agar user masuk grup docker
+#    opsi: SETUP_FIREWALL=1 (aktifkan UFW) | SKIP_PORTAINER=1 | INSTALL_NODE=1 (Node 24 untuk dev)
+newgrp docker                                        # atau logout/login agar grup docker aktif
 
-# 2) Buat .env (secret acak otomatis), build, jalankan, seed data awal
-bash scripts/deploy.sh                        # akses http://IP-SERVER:3000
-bash scripts/deploy.sh --host wo.contoh.co.id # pakai nama domain (tetap HTTP)
+# 2) Buat .env (secret acak), build, jalankan, seed data awal
+bash scripts/deploy.sh                               # tanpa domain  -> http://IP-SERVER:3000
+bash scripts/deploy.sh --host wo.contoh.co.id        # dengan domain -> tetap HTTP
 bash scripts/deploy.sh --caddy wo.contoh.co.id api-wo.contoh.co.id   # HTTPS otomatis (Let's Encrypt)
 ```
-Skrip mencetak URL, URL Portainer, dan password akun demo di akhir. Untuk `--caddy`, arahkan DNS kedua domain ke server dan buka port 80/443 lebih dulu. Ganti password semua akun demo setelah login pertama.
+Di akhir, skrip mencetak URL web, URL Portainer, dan password akun demo. Untuk `--caddy`: arahkan DNS **kedua** domain (A record) ke IP server dan pastikan port 80/443 terbuka sebelum menjalankan. **Ganti password semua akun demo** setelah login pertama (menu Profil / Admin).
 
-Pembaruan berikutnya: `git pull && bash scripts/deploy.sh` (data Postgres/Redis/foto ada di volume Docker dan tidak hilang).
-
-### B. Windows 10/11 (uji lokal / pengembangan)
-PowerShell **Administrator** di folder repo:
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\setup-windows.ps1 -Portainer -Up
-```
-Memasang Git, Node.js LTS, Docker Desktop (via winget; mungkin perlu restart lalu jalankan ulang), menjalankan `npm install` di `apps/api` & `apps/web`, membuat `.env`, memasang Portainer, dan menyalakan seluruh stack. Web: http://localhost:3000 · API: http://localhost:4000 · Portainer: https://localhost:9443.
-
-### C. Deploy lewat Portainer (GUI)
-1. Buka `https://IP-SERVER:9443`, buat akun admin (dalam 5 menit pertama setelah container start, atau Portainer terkunci — restart container `portainer` bila terlewat).
-2. **Stacks → Add stack → Repository**: URL `https://github.com/thuekx/Maung-Wo-Inv`, branch `main`, Compose path `docker-compose.yml`. Karena repo private, aktifkan **Authentication** dan isi username GitHub + Personal Access Token.
-3. Isi **Environment variables** (minimal): `POSTGRES_PASSWORD`, `JWT_SECRET`, `WEB_URL`, `CORS_ORIGIN`, `NEXT_PUBLIC_API_URL`, `BILLING_API_KEY`, `BILLING_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`; opsional `SMTP_*`, `TELEGRAM_BOT_TOKEN`, `BILLING_WEBHOOK_URL`. Daftar lengkap ada di `.env.example`. Buat secret dengan `openssl rand -hex 32`.
-4. **Deploy the stack**. Lalu seed sekali: Containers → `maung-wo-inv-api-1` → Console → `node dist/prisma/seed.js`.
-5. Pembaruan: Stack → *Pull and redeploy*. (Opsional: GitOps updates / webhook agar otomatis saat `git push`.)
-
-> `NEXT_PUBLIC_API_URL` ikut dibake saat build web — ubah nilainya berarti harus rebuild (*Pull and redeploy* dengan *Re-pull image*/rebuild).
-
-### D. Pengembangan lokal tanpa Docker untuk app (hanya DB & Redis di Docker)
+Verifikasi:
 ```bash
-npm run install:all                                   # npm install api+web, prisma generate
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis   # butuh POSTGRES_PASSWORD di .env (default dev: l1v_dev_pw)
-cp .env.example .env && cp .env.example apps/api/.env   # ubah POSTGRES_PASSWORD=l1v_dev_pw di keduanya agar cocok dengan DATABASE_URL
-cd apps/api && npx prisma migrate dev && npm run db:seed
-npm run dev            # terminal 1 (API :4000)
-npm run dev:worker     # terminal 2 (worker notifikasi)
-cd ../web && npm run dev   # terminal 3 (web :3000)
+docker compose ps                                    # semua "running/healthy"
+curl -s http://localhost:4000/health                 # {"ok":true}
+docker compose logs -f --tail=100 api worker         # log
 ```
-Cek mutu: `npm run typecheck` (di root).
+Build pertama memakan beberapa menit (unduh image + `npm install` + `next build`).
 
-### Ringkasan skrip
+**Pembaruan:** `git pull && bash scripts/deploy.sh` — data Postgres, Redis, dan foto ada di volume Docker dan tidak hilang. `.env` tidak ditimpa.
 
-| Skrip | Fungsi |
+### B. Deploy lewat Portainer (GUI)
+1. Buka `https://IP-SERVER:9443`, buat akun admin **segera** (Portainer terkunci jika dibiarkan >5 menit; bila terlewat: `docker restart portainer`). Sertifikat awal self-signed, abaikan peringatan browser.
+2. **Stacks → Add stack → Repository**: URL `https://github.com/thuekx/Maung-Wo-Inv`, branch `main`, Compose path `docker-compose.yml`. Repo private → aktifkan **Authentication**, isi username GitHub + token.
+3. Isi **Environment variables** (minimal): `POSTGRES_PASSWORD`, `JWT_SECRET`, `WEB_URL`, `CORS_ORIGIN`, `NEXT_PUBLIC_API_URL`, `BILLING_API_KEY`, `BILLING_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`; opsional `SMTP_*`, `TELEGRAM_BOT_TOKEN`, `BILLING_WEBHOOK_URL`. Daftar lengkap di `.env.example`; buat secret dengan `openssl rand -hex 32`.
+4. **Deploy the stack**, lalu seed sekali: Containers → `maung-wo-inv-api-1` → Console → `node dist/prisma/seed.js`.
+5. Pembaruan: Stack → *Pull and redeploy*.
+
+> `NEXT_PUBLIC_API_URL` ikut dibake saat build web — jika diubah, web harus di-build ulang (*Pull and redeploy* dengan opsi rebuild).
+
+### C. Mode HTTPS (Caddy) — direkomendasikan untuk produksi
+`bash scripts/deploy.sh --caddy <domain-web> <domain-api>` memakai `docker-compose.caddy.yml`: hanya port 80/443 yang terbuka ke luar, port 3000/4000 tidak dipublikasikan, sertifikat diurus otomatis. Perintah manual setara:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
+```
+(butuh Docker Compose ≥ 2.24 — sudah terpenuhi oleh `install-server.sh`).
+
+### D. Pengembangan di Ubuntu (opsional; Node 24 + DB/Redis di Docker)
+```bash
+sudo INSTALL_NODE=1 bash scripts/install-server.sh   # atau pasang Node 24 via nvm: nvm install 24 (ada .nvmrc)
+npm run install:all                                  # npm install api+web + prisma generate
+cp .env.example .env && cp .env.example apps/api/.env
+sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=l1v_dev_pw/' .env apps/api/.env   # cocokkan dgn DATABASE_URL contoh
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis
+cd apps/api && npx prisma migrate dev && npm run db:seed
+npm run dev            # terminal 1: API :4000
+npm run dev:worker     # terminal 2: worker notifikasi
+cd ../web && npm run dev   # terminal 3: web :3000
+```
+Cek mutu dari root repo: `npm run typecheck`.
+
+### Ringkasan berkas
+
+| Berkas | Fungsi |
 |---|---|
-| `scripts/install-server.sh` | Docker Engine, Compose plugin, Portainer CE, (opsional) UFW — Ubuntu/Debian |
+| `scripts/install-server.sh` | Docker Engine, Compose plugin, Portainer CE, opsional UFW & Node 24 (Ubuntu 24.04) |
 | `scripts/deploy.sh` | `.env` + secret acak, build, up, seed; mode `--host` / `--caddy` |
-| `scripts/setup-windows.ps1` | Git, Node LTS, Docker Desktop, npm install, `.env`, (opsi) Portainer & up |
 | `docker-compose.yml` | postgres, redis, api, worker, web (semua config via variabel) |
 | `docker-compose.caddy.yml` + `proxy/Caddyfile` | HTTPS otomatis (overlay) |
 | `docker-compose.dev.yml` | membuka port Postgres/Redis untuk dev lokal |
 | `package.json` (root) | `install:all`, `typecheck`, `up`, `down`, `logs`, `seed` |
 
-### Keamanan operasional
-- Jangan commit `.env` (sudah di `.gitignore`). Simpan salinannya di password manager.
-- Portainer memegang akses penuh ke Docker host: aktifkan 2FA/SSO bila ada, batasi port 9443 (firewall VPS / VPN), jangan diekspos publik tanpa pembatasan IP.
-- Docker mem-bypass UFW untuk port yang dipublikasikan; gunakan `--caddy` (hanya 80/443 terbuka) atau firewall dari penyedia VPS.
-- Backup: `docker compose exec -T postgres pg_dump -U l1v l1v_wo | gzip > backup_$(date +%F).sql.gz` (jadwalkan via cron) + simpan volume `uploads`.
+### Catatan operasional (Ubuntu 24.04)
+- **Jangan commit `.env`** (sudah di `.gitignore`); simpan salinannya di password manager. Hak akses: `chmod 600 .env`.
+- **Portainer = akses penuh ke Docker host.** Batasi port 9443 (firewall penyedia VPS / VPN / `ufw allow from <IP-kantor> to any port 9443`), aktifkan 2FA bila tersedia.
+- **Docker mem-bypass UFW** untuk port yang dipublikasikan (`3000`, `4000`, `9443`). Gunakan mode `--caddy` + firewall penyedia VPS sebagai lapisan utama; `SETUP_FIREWALL=1` saja tidak cukup menutup port container.
+- **Backup harian** (cron user yang masuk grup docker):
+  ```bash
+  mkdir -p ~/backups
+  crontab -e   # tambahkan baris berikut (tanda % wajib di-escape di crontab):
+  15 2 * * * cd ~/Maung-Wo-Inv && docker compose exec -T postgres pg_dump -U l1v l1v_wo | gzip > ~/backups/wo_$(date +\%F).sql.gz && find ~/backups -mtime +14 -delete
+  ```
+  Backup volume foto: `docker run --rm -v maung-wo-inv_uploads:/d -v ~/backups:/b alpine tar czf /b/uploads_$(date +%F).tgz -C /d .`
+  Pulihkan DB: `gunzip -c backup.sql.gz | docker compose exec -T postgres psql -U l1v l1v_wo`.
+- **Restart otomatis:** semua container `restart: unless-stopped`, dan service `docker` aktif saat boot, sehingga stack hidup kembali setelah reboot.
+- **Pembaruan keamanan OS:** `sudo apt install unattended-upgrades` lalu `sudo dpkg-reconfigure -plow unattended-upgrades`.
+
+### Troubleshooting
+| Gejala | Penyebab / solusi |
+|---|---|
+| `permission denied ... docker.sock` | User belum di grup docker → `newgrp docker` atau login ulang. |
+| `docker compose` tidak dikenal | Compose plugin belum terpasang → jalankan ulang `install-server.sh`. |
+| Build web berhenti "Killed" | RAM kurang → tambah swap: `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`. |
+| Web tidak bisa login / CORS error | `NEXT_PUBLIC_API_URL`, `WEB_URL`, `CORS_ORIGIN` di `.env` tidak sama dengan URL yang dibuka di browser → perbaiki lalu `bash scripts/deploy.sh` (web di-build ulang). |
+| Caddy gagal mendapat sertifikat | DNS belum mengarah ke server / port 80 tertutup → cek `docker compose logs caddy`. |
+| `api` restart terus | `docker compose logs api` — biasanya `JWT_SECRET`/`POSTGRES_PASSWORD` kosong atau Postgres belum sehat. |
+| Notifikasi tidak terkirim | Lihat Admin → Log notifikasi; tanpa `SMTP_HOST`/`TELEGRAM_BOT_TOKEN` sistem hanya mencatat (dry-run). |
 
 > Container `api` memakai `prisma db push` agar langsung jalan. Sebelum produksi sungguhan, buat migrasi (`npm run db:migrate`), commit `prisma/migrations`, dan ganti perintah start ke `prisma migrate deploy`.
 

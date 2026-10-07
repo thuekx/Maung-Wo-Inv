@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Maung-Wo-Inv — persiapan server Ubuntu/Debian: Docker Engine + Compose + Portainer (+ firewall opsional)
+# Maung-Wo-Inv — persiapan server Ubuntu 24.04 LTS (noble): Docker Engine + Compose + Portainer (+ Node 24 & firewall opsional)
 # Pakai:  sudo bash scripts/install-server.sh            # Docker + Portainer
 #         sudo SETUP_FIREWALL=1 bash scripts/install-server.sh   # + UFW (SSH, 80, 443, 3000, 4000, 9443)
 #         sudo SKIP_PORTAINER=1 bash scripts/install-server.sh   # tanpa Portainer
+#         sudo INSTALL_NODE=1 bash scripts/install-server.sh     # + Node.js 24 (hanya untuk dev/typecheck di server)
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "Jalankan dengan sudo."; exit 1; }
 . /etc/os-release
-case "$ID" in ubuntu|debian) ;; *) echo "OS $ID belum didukung (hanya Ubuntu/Debian)."; exit 1;; esac
+case "$ID" in ubuntu|debian) ;; *) echo "OS $ID belum didukung (target: Ubuntu 24.04)."; exit 1;; esac
+[ "${VERSION_ID:-}" = "24.04" ] || echo "PERINGATAN: skrip ditargetkan untuk Ubuntu 24.04 (terdeteksi $PRETTY_NAME)."
 
 echo "==> Paket dasar"
 apt-get update -y
@@ -30,6 +32,12 @@ systemctl enable --now docker
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
   usermod -aG docker "$SUDO_USER"
   echo "==> User '$SUDO_USER' ditambahkan ke grup docker (logout/login ulang agar berlaku)."
+fi
+
+if [ "${INSTALL_NODE:-0}" = 1 ] && ! node -v 2>/dev/null | grep -q "^v24"; then
+  echo "==> Node.js 24 (NodeSource)"
+  curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  apt-get install -y nodejs
 fi
 
 if [ "${SKIP_PORTAINER:-0}" != 1 ]; then
