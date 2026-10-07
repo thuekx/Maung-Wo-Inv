@@ -1,0 +1,211 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { AssetStatus } from '@prisma/client';
+import { AppError, prisma, Tx } from '../db';
+import { authenticate, requireRole } from '../auth';
+import { transact } from '../effects';
+import { applyAction, systemActor } from '../engine';
+import { moveStock, normSn, nextNumber, qcAssets } from '../inventory';
+
+export const inventoryRoutes = Router();
+inventoryRoutes.use(authenticate);
+
+const stockRoles = requireRole('PROC', 'GA');
+
+/* ── gudang ── */
+inventoryRoutes.get('/warehouses', async (req, res) => {
+  const all = req.query.all === '1';
+  res.json(await prisma.warehouse.findMany({ where: all ? {} : { active: true, kind: { not: 'MOBILE' } }, include: { owner: { select: { name: true } } }, orderBy: [{ kind: 'asc' }, { name: 'asc' }] }));
+});
+inventoryRoutes.post('/warehouses', stockRoles, async (req, res) => {
+  const b = z.object({ code: z.string().min(2).toUpperCase(), name: z.string().min(2), kind: z.enum(['MAIN', 'BRANCH', 'TRANSIT', 'MOBILE']), address: z.string().optional() }).parse(req.body);
+  res.status(201).json(await prisma.warehouse.create({ data: b }));
+});
+inventoryRoutes.patch('/warehouses/:id', stockRoles, async (req, res) => {
+  const b = z.object({ name: z.string().min(2), address: z.string(), active: z.boolean() }).partial().parse(req.body);
+  res.json(await prisma.warehouse.update({ where: { id: String(req.params.id) }, data: b }));
+});
+
+/* ── master item ── */
+inventoryRoutes.get('/items', async (_req, res) => {
+  res.json(await prisma.item.findMany({ orderBy: [{ category: 'asc' }, { name: 'asc' }] }));
+});
+const itemBody = z.object({
+  sku: z.string().min(2).toUpperCase(),
+  name: z.string().min(2),
+  category: z.enum(['CONSUMABLE', 'NETWORK', 'GA']),
+  unit: z.string().default('pcs'),
+  installDefaultQty: z.coerce.number().int().min(0).nullable().optional(),
+  minStock: z.coerce.number().int().min(0).default(0),
+});
+inventoryRoutes.post('/items', stockRoles, async (req, res) => {
+  const b = itemBody.parse(req.body);
+  res.status(201).json(await prisma.item.create({ data: { ...b, tracked: b.category !== 'CONSUMABLE' } }));
+});
+inventoryRoutes.patch('/items/:id', stockRoles, async (req, res) => {
+  const b = itemBody.partial().omit({ sku: true, category: true }).parse(req.body);
+  res.json(await prisma.item.update({ where: { id: String(req.params.id) }, data: b }));
+});
+
+/* ── stok ── */
+inventoryRoutes.get('/stock', async (req, res) => {
+  const warehouseId = req.query.warehouseId ? String(req.query.warehouseId) : undefined;
+  const [levels, assetGroups] = await Promise.all([
+    prisma.stockLevel.findMany({ where: { ...(warehouseId ? { warehouseId } : {}), qty: { not: 0 } }, include: { item: true, warehouse: true } }),
+    prisma.asset.groupBy({ by: ['warehouseId', 'itemId', 'status'], where: { warehouseId: warehouseId ?? { not: null }, status: { in: ['IN_STOCK', 'REFURBISHED', 'IN_USE', 'DAMAGED', 'RETURNED_PENDING_QC'] } }, _count: true }),
+  ]);
+  const [items, whs] = await Promise.all([prisma.item.findMany(), prisma.warehouse.findMany()]);
+  const rows = [
+    ...levels.map((l) => ({ warehouse: l.warehouse, item: l.item, status: 'QTY', qty: l.qty })),
+    ...assetGroups.map((g) => ({ warehouse: whs.find((w) => w.id === g.warehouseId)!, item: items.find((i) => i.id === g.itemId)!, status: g.status, qty: g._count })),
+  ];
+  res.json(rows.sort((a, b) => a.warehouse.name.localeCompare(b.warehouse.name) || a.item.name.localeCompare(b.item.name)));
+});
+
+inventoryRoutes.get('/stock/movements', async (req, res) => {
+  res.json(await prisma.stockMovement.findMany({ where: req.query.itemId ? { itemId: String(req.query.itemId) } : {}, orderBy: { createdAt: 'desc' }, take: 100 }));
+});
+
+// Stock opname: sesuaikan jumlah fisik item kuantitas (consumable) di sebuah gudang
+inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
+  const b = z.object({ warehouseId: z.string(), counts: z.array(z.object({ itemId: z.string(), counted: z.coerce.number().int().min(0) })).min(1) }).parse(req.body);
+  const u = req.user!;
+  const diffs = await transact(async (fx) => {
+    const out = [];
+    for (const c of b.counts) {
+      const cur = (await fx.tx.stockLevel.findUnique({ where: { warehouseId_itemId: { warehouseId: b.warehouseId, itemId: c.itemId } } }))?.qty ?? 0;
+      const d = c.counted - cur;
+      if (d === 0) continue;
+      await moveStock(fx.tx, d > 0 ? { itemId: c.itemId, qty: d, to: b.warehouseId, reason: 'Stock opname (+)', actorId: u.id } : { itemId: c.itemId, qty: -d, from: b.warehouseId, reason: 'Stock opname (−)', actorId: u.id });
+      out.push({ itemId: c.itemId, before: cur, after: c.counted, diff: d });
+    }
+    if (out.length) await fx.notify({ roles: ['PROC', 'GA'], subject: 'Stock opname dengan selisih', body: `${u.name} melakukan opname, ${out.length} item berselisih.` });
+    return out;
+  });
+  res.json({ diffs });
+});
+
+/* ── aset (ber-SN & GA) ── */
+inventoryRoutes.get('/assets', async (req, res) => {
+  const q = z.object({ q: z.string().optional(), status: z.string().optional(), warehouseId: z.string().optional(), category: z.string().optional(), customerId: z.string().optional() }).parse(req.query);
+  res.json(
+    await prisma.asset.findMany({
+      where: {
+        ...(q.status ? { status: q.status as AssetStatus } : {}),
+        ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}),
+        ...(q.customerId ? { customerId: q.customerId } : {}),
+        ...(q.category ? { item: { category: q.category as any } } : {}),
+        ...(q.q ? { OR: [{ serialNumber: { contains: q.q, mode: 'insensitive' } }, { assetCode: { contains: q.q, mode: 'insensitive' } }, { item: { name: { contains: q.q, mode: 'insensitive' } } }] } : {}),
+      },
+      include: { item: true, warehouse: true, customer: { select: { id: true, name: true, code: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    }),
+  );
+});
+
+inventoryRoutes.get('/assets/pending-qc', async (_req, res) => {
+  res.json(await prisma.asset.findMany({ where: { status: 'RETURNED_PENDING_QC' }, include: { item: true, warehouse: true }, orderBy: { createdAt: 'asc' } }));
+});
+
+inventoryRoutes.get('/assets/by-serial/:sn', async (req, res) => {
+  const a = await prisma.asset.findUnique({ where: { serialNumber: normSn(String(req.params.sn)) }, include: { item: true, warehouse: true, customer: { select: { id: true, name: true, code: true } } } });
+  if (!a) throw new AppError(404, 'SN tidak terdaftar');
+  res.json(a);
+});
+
+export async function createAsset(tx: Tx, p: { itemId: string; serial?: string; warehouseId: string; status?: AssetStatus; actorId: string; reason: string; woId?: string; nextMaintenanceAt?: Date; notes?: string }) {
+  const item = await tx.item.findUnique({ where: { id: p.itemId } });
+  if (!item || !item.tracked) throw new AppError(400, 'Item harus bertipe ber-SN (Perangkat Jaringan / Aset GA)');
+  const assetCode = item.category === 'GA' ? await nextNumber(tx, 'GA', false) : null;
+  const serialNumber = p.serial ? normSn(p.serial) : assetCode;
+  if (!serialNumber) throw new AppError(400, 'Serial number wajib diisi');
+  if (await tx.asset.findUnique({ where: { serialNumber } })) throw new AppError(409, `SN ${serialNumber} sudah terdaftar`);
+  const asset = await tx.asset.create({
+    data: { itemId: item.id, serialNumber, assetCode, warehouseId: p.warehouseId, status: p.status ?? 'IN_STOCK', nextMaintenanceAt: p.nextMaintenanceAt, notes: p.notes },
+  });
+  await tx.stockMovement.create({ data: { itemId: item.id, assetId: asset.id, qty: 1, toWarehouseId: p.warehouseId, reason: p.reason, woId: p.woId, actorId: p.actorId } });
+  return asset;
+}
+
+// Registrasi aset: Network Asset (bulk SN) atau GA (kode aset otomatis)
+inventoryRoutes.post('/assets/register', stockRoles, async (req, res) => {
+  const b = z
+    .object({
+      itemId: z.string(),
+      warehouseId: z.string(),
+      serials: z.array(z.string().min(1)).default([]),
+      count: z.coerce.number().int().min(1).max(50).default(1), // GA tanpa SN: jumlah unit
+      status: z.enum(['IN_STOCK', 'IN_USE']).optional(),
+      nextMaintenanceAt: z.coerce.date().optional(),
+      notes: z.string().optional(),
+    })
+    .parse(req.body);
+  const u = req.user!;
+  const created = await transact(async (fx) => {
+    const item = await fx.tx.item.findUnique({ where: { id: b.itemId } });
+    if (!item) throw new AppError(404, 'Item tidak ditemukan');
+    const serials: (string | undefined)[] = b.serials.length ? b.serials : item.category === 'GA' ? Array.from({ length: b.count }, () => undefined) : [];
+    if (!serials.length) throw new AppError(400, 'Isi minimal 1 serial number');
+    const out = [];
+    for (const s of serials) out.push(await createAsset(fx.tx, { itemId: b.itemId, serial: s, warehouseId: b.warehouseId, status: b.status, actorId: u.id, reason: 'Registrasi aset', nextMaintenanceAt: b.nextMaintenanceAt, notes: b.notes }));
+    return out;
+  });
+  res.status(201).json(created);
+});
+
+inventoryRoutes.patch('/assets/:id', stockRoles, async (req, res) => {
+  const b = z.object({ nextMaintenanceAt: z.coerce.date().nullable(), lastMaintenanceAt: z.coerce.date().nullable(), notes: z.string(), status: z.enum(['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP']), warehouseId: z.string() }).partial().parse(req.body);
+  res.json(await prisma.asset.update({ where: { id: String(req.params.id) }, data: b }));
+});
+
+inventoryRoutes.post('/assets/qc', stockRoles, async (req, res) => {
+  const b = z.object({ results: z.array(z.object({ serial: z.string(), result: z.enum(['GOOD', 'DAMAGED', 'SCRAP']), warehouseId: z.string().optional(), note: z.string().optional() })).min(1) }).parse(req.body);
+  const u = req.user!;
+  await transact((fx) => qcAssets(fx.tx, b.results, u.id));
+  res.json({ ok: true });
+});
+
+/* ── purchase order & penerimaan ── */
+inventoryRoutes.get('/purchase-orders', async (_req, res) => {
+  res.json(await prisma.purchaseOrder.findMany({ include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } }, orderBy: { createdAt: 'desc' }, take: 100 }));
+});
+inventoryRoutes.get('/purchase-orders/:id', async (req, res) => {
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } } });
+  if (!po) throw new AppError(404, 'PO tidak ditemukan');
+  const wh = await prisma.warehouse.findUnique({ where: { id: po.toWarehouseId } });
+  res.json({ ...po, warehouse: wh });
+});
+
+// Penerimaan barang: QC lolos saja yang dimasukkan; item ber-SN wajib input SN → label QR
+inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res) => {
+  const b = z.object({ lines: z.array(z.object({ lineId: z.string(), qty: z.coerce.number().int().min(0), serials: z.array(z.string()).default([]) })) }).parse(req.body);
+  const u = req.user!;
+  const result = await transact(async (fx) => {
+    const po = await fx.tx.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } } } });
+    if (!po) throw new AppError(404, 'PO tidak ditemukan');
+    if (po.status === 'RECEIVED') throw new AppError(409, 'PO sudah diterima penuh');
+    const assets = [];
+    for (const r of b.lines) {
+      if (r.qty === 0) continue;
+      const line = po.lines.find((l) => l.id === r.lineId);
+      if (!line) throw new AppError(400, 'Baris PO tidak valid');
+      if (r.qty > line.qty - line.receivedQty) throw new AppError(400, `${line.item.name}: melebihi sisa (${line.qty - line.receivedQty})`);
+      if (line.item.tracked) {
+        const needSerial = line.item.category !== 'GA';
+        if (needSerial && r.serials.length !== r.qty) throw new AppError(400, `${line.item.name}: isi ${r.qty} serial number`);
+        for (let k = 0; k < r.qty; k++)
+          assets.push(await createAsset(fx.tx, { itemId: line.itemId, serial: r.serials[k], warehouseId: po.toWarehouseId, actorId: u.id, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, status: line.item.category === 'GA' ? 'IN_USE' : 'IN_STOCK' }));
+      } else {
+        await moveStock(fx.tx, { itemId: line.itemId, qty: r.qty, to: po.toWarehouseId, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, actorId: u.id });
+      }
+      await fx.tx.poLine.update({ where: { id: line.id }, data: { receivedQty: { increment: r.qty } } });
+    }
+    const lines = await fx.tx.poLine.findMany({ where: { poId: po.id } });
+    const complete = lines.every((l) => l.receivedQty >= l.qty);
+    await fx.tx.purchaseOrder.update({ where: { id: po.id }, data: { status: complete ? 'RECEIVED' : 'PARTIAL' } });
+    if (complete && po.woId) await applyAction(fx, po.woId, 'po_received', await systemActor(fx.tx), { note: `PO ${po.number} diterima lengkap` }, true);
+    return { complete, assets };
+  });
+  res.json(result);
+});

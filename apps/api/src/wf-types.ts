@@ -1,0 +1,70 @@
+import { Prisma, Role, WoType, CustomerStatus } from '@prisma/client';
+import { Tx } from './db';
+import { Effects } from './effects';
+
+export type FieldType =
+  | 'text' | 'number' | 'textarea' | 'datetime' | 'select' | 'bool'
+  | 'technician' | 'warehouse' | 'customer' | 'serials' | 'materials' | 'photos' | 'qc';
+
+/** Metadata form — dikirim ke frontend agar form dirender dinamis. Validasi sebenarnya ada di handler (zod). */
+export interface Field {
+  name: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  options?: string[];
+  help?: string;
+  itemCategory?: 'CONSUMABLE' | 'NETWORK' | 'GA';
+  customerStatus?: CustomerStatus[];
+}
+
+export type WoFull = Prisma.WorkOrderGetPayload<{ include: { customer: true } }>;
+export interface Actor { id: string; name: string; role: Role }
+
+export interface Ctx {
+  tx: Tx;
+  fx: Effects;
+  wo: WoFull;
+  actor: Actor;
+  /** digabung ke wo.data saat transisi */
+  data: Record<string, any>;
+  /** kolom WO yang ikut diupdate saat transisi */
+  patch: { assigneeId?: string | null; scheduledAt?: Date | null };
+  createChild(type: WoType, input: Record<string, any>): Promise<{ id: string; number: string }>;
+}
+
+export interface ActionDef {
+  key: string;
+  label: string;
+  roles: Role[];
+  to: string;
+  fields: Field[];
+  assigneeOnly?: boolean; // hanya teknisi yang ditugaskan (atau ADMIN)
+  system?: boolean; // hanya dipicu sistem, tidak tampil di UI
+  danger?: boolean;
+  /** boleh mengembalikan status tujuan lain untuk menimpa `to` */
+  run?: (ctx: Ctx, input: any) => Promise<string | void>;
+}
+
+export interface StatusDef {
+  label: string;
+  owner: Role; // divisi yang harus bertindak
+  final?: boolean;
+  noCancel?: boolean;
+  actions: ActionDef[];
+  onEnter?: (ctx: Ctx) => Promise<{ to: string; note?: string } | void>;
+}
+
+export interface Workflow {
+  type: WoType;
+  prefix: string;
+  label: string;
+  description: string;
+  createRoles: Role[];
+  createFields: Field[];
+  initial: string;
+  uniqueOpenPerCustomer?: boolean;
+  create(tx: Tx, input: any, actor: Actor): Promise<{ title: string; customerId?: string; data?: Record<string, any>; note?: string }>;
+  onCancel?(ctx: Ctx): Promise<void>;
+  statuses: Record<string, StatusDef>;
+}

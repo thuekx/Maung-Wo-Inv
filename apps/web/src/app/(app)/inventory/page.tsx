@@ -1,0 +1,257 @@
+'use client';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
+import { api, fmtDate, useFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { DynamicForm, Field } from '@/components/DynamicForm';
+import { Badge, ErrorMsg, PageHeader, Table, Tabs } from '@/components/ui';
+
+const CAT: Record<string, string> = { CONSUMABLE: 'Material Konsumsi ISP', NETWORK: 'Perangkat Jaringan', GA: 'Aset General (GA)' };
+const ST_TONE: Record<string, any> = { IN_STOCK: 'green', REFURBISHED: 'green', INSTALLED: 'blue', IN_USE: 'blue', RETURNED_PENDING_QC: 'amber', DAMAGED: 'red', SCRAP: 'red', QTY: 'slate' };
+
+/* ───── Stok ───── */
+function StockTab() {
+  const [wh, setWh] = useState('');
+  const { data: whs } = useFetch<any[]>('/warehouses?all=1');
+  const { data, error } = useFetch<any[]>(`/stock${wh ? `?warehouseId=${wh}` : ''}`);
+  return (
+    <>
+      <select className="input mb-3 max-w-xs" value={wh} onChange={(e) => setWh(e.target.value)}>
+        <option value="">Semua gudang (termasuk mobile stock)</option>
+        {whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+      </select>
+      <ErrorMsg>{error}</ErrorMsg>
+      <Table head={['Gudang', 'Item', 'Kategori', 'Status', 'Qty']}>
+        {data?.map((r, i) => (
+          <tr key={i}>
+            <td className="td">{r.warehouse.name} <span className="text-xs text-slate-400">{r.warehouse.kind}</span></td>
+            <td className="td">{r.item.name}</td>
+            <td className="td text-xs text-slate-500">{CAT[r.item.category]}</td>
+            <td className="td"><Badge tone={ST_TONE[r.status]}>{r.status === 'QTY' ? 'Stok' : r.status}</Badge></td>
+            <td className="td font-semibold">{r.qty} {r.item.tracked ? 'unit' : r.item.unit}</td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
+/* ───── Aset & SN ───── */
+function QrModal({ asset, onClose }: { asset: any; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="card w-72 text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="print-area mx-auto w-fit p-2">
+          <QRCodeSVG value={asset.serialNumber} size={180} />
+          <div className="mt-2 font-mono text-sm font-bold">{asset.serialNumber}</div>
+          <div className="text-xs">{asset.item.name}{asset.assetCode ? ` · ${asset.assetCode}` : ''}</div>
+        </div>
+        <div className="mt-3 flex justify-center gap-2">
+          <button className="btn" onClick={() => window.print()}>Cetak label</button>
+          <button className="btn-ghost" onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssetsTab({ canManage }: { canManage: boolean }) {
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('');
+  const [category, setCategory] = useState('');
+  const [qr, setQr] = useState<any>(null);
+  const [showReg, setShowReg] = useState(false);
+  const p = new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(category ? { category } : {}) });
+  const { data, error, reload } = useFetch<any[]>(`/assets?${p}`);
+  const { data: items } = useFetch<any[]>(canManage ? '/items' : null);
+  const [regItem, setRegItem] = useState('');
+  const sel = items?.find((i) => i.id === regItem);
+
+  const regFields: Field[] = [
+    { name: 'warehouseId', label: 'Gudang', type: 'warehouse', required: true },
+    ...(sel?.category === 'GA'
+      ? [{ name: 'count', label: 'Jumlah unit (kode aset dibuat otomatis)', type: 'number' }, { name: 'nextMaintenanceAt', label: 'Jadwal maintenance berikutnya', type: 'datetime' }, { name: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'IN_USE'] }]
+      : [{ name: 'serials', label: 'Serial number (scan / ketik, bisa banyak)', type: 'serials', required: true }]),
+    { name: 'notes', label: 'Catatan', type: 'textarea' },
+  ];
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap gap-2">
+        <input className="input w-64" placeholder="Cari SN / kode aset / item…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option>
+        </select>
+        <select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">Semua status</option>
+          {['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}
+        </select>
+        {canManage && <button className="btn" onClick={() => setShowReg(!showReg)}>+ Registrasi aset</button>}
+      </div>
+
+      {showReg && (
+        <div className="card mb-4 max-w-2xl space-y-3">
+          <select className="input" value={regItem} onChange={(e) => setRegItem(e.target.value)}>
+            <option value="">— pilih item (ber-SN / aset GA) —</option>
+            {items?.filter((i) => i.tracked).map((i) => <option key={i.id} value={i.id}>{i.name} · {CAT[i.category]}</option>)}
+          </select>
+          {regItem && (
+            <DynamicForm key={regItem} fields={regFields} submitLabel="Simpan & buat QR"
+              onSubmit={async (v) => { await api('/assets/register', { body: { itemId: regItem, ...v } }); setShowReg(false); await reload(); }} />
+          )}
+        </div>
+      )}
+
+      <ErrorMsg>{error}</ErrorMsg>
+      <Table head={['Serial / Kode', 'Item', 'Status', 'Lokasi', 'Maintenance', '']}>
+        {data?.map((a) => (
+          <tr key={a.id}>
+            <td className="td font-mono">{a.serialNumber}{a.assetCode && a.assetCode !== a.serialNumber && <div className="text-xs text-slate-500">{a.assetCode}</div>}</td>
+            <td className="td">{a.item.name}</td>
+            <td className="td"><Badge tone={ST_TONE[a.status]}>{a.status}</Badge></td>
+            <td className="td">{a.customer ? `Pelanggan: ${a.customer.name}` : a.warehouse?.name ?? '-'}</td>
+            <td className="td">{a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : '-'}</td>
+            <td className="td"><button className="text-brand-700 hover:underline" onClick={() => setQr(a)}>QR</button></td>
+          </tr>
+        ))}
+      </Table>
+      {qr && <QrModal asset={qr} onClose={() => setQr(null)} />}
+    </>
+  );
+}
+
+/* ───── QC ───── */
+function QcTab({ canManage }: { canManage: boolean }) {
+  const [n, setN] = useState(0);
+  const { data } = useFetch<any[]>(`/assets/pending-qc?${n}`);
+  if (!data) return <p className="text-slate-500">Memuat…</p>;
+  if (!data.length) return <p className="text-slate-500">Tidak ada aset yang menunggu QC.</p>;
+  return (
+    <div className="card max-w-3xl">
+      <p className="mb-3 text-sm text-slate-500">Aset hasil penarikan / penggantian. Baik → Refurbished (siap pakai). Rusak → Damaged/Scrap untuk klaim garansi atau pemutihan.</p>
+      {canManage ? (
+        <DynamicForm key={n} fields={[{ name: 'results', label: 'Hasil QC', type: 'qc', required: true }]} submitLabel="Simpan hasil QC"
+          onSubmit={async (v) => { await api('/assets/qc', { body: v }); setN(n + 1); }} />
+      ) : <p className="text-sm">Hanya GA/Procurement yang dapat melakukan QC.</p>}
+    </div>
+  );
+}
+
+/* ───── Gudang ───── */
+function WarehousesTab({ canManage }: { canManage: boolean }) {
+  const { data, reload } = useFetch<any[]>('/warehouses?all=1');
+  const [show, setShow] = useState(false);
+  const fields: Field[] = [
+    { name: 'code', label: 'Kode', type: 'text', required: true },
+    { name: 'name', label: 'Nama gudang', type: 'text', required: true },
+    { name: 'kind', label: 'Jenis', type: 'select', options: ['MAIN', 'BRANCH', 'TRANSIT', 'MOBILE'], required: true },
+    { name: 'address', label: 'Alamat', type: 'textarea' },
+  ];
+  return (
+    <>
+      {canManage && <button className="btn mb-3" onClick={() => setShow(!show)}>+ Tambah gudang</button>}
+      {show && <div className="card mb-4 max-w-lg"><DynamicForm fields={fields} onSubmit={async (v) => { await api('/warehouses', { body: v }); setShow(false); await reload(); }} /></div>}
+      <Table head={['Kode', 'Nama', 'Jenis', 'Pemilik', 'Aktif']}>
+        {data?.map((w) => (
+          <tr key={w.id}><td className="td font-mono">{w.code}</td><td className="td">{w.name}</td><td className="td"><Badge>{w.kind}</Badge></td><td className="td">{w.owner?.name ?? '-'}</td>
+            <td className="td">{canManage ? <button className="text-brand-700 hover:underline" onClick={async () => { await api(`/warehouses/${w.id}`, { method: 'PATCH', body: { active: !w.active } }); reload(); }}>{w.active ? 'Aktif' : 'Nonaktif'}</button> : w.active ? 'Ya' : 'Tidak'}</td></tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
+/* ───── Item ───── */
+function ItemsTab({ canManage }: { canManage: boolean }) {
+  const { data, reload } = useFetch<any[]>('/items');
+  const [show, setShow] = useState(false);
+  const fields: Field[] = [
+    { name: 'sku', label: 'SKU', type: 'text', required: true },
+    { name: 'name', label: 'Nama item', type: 'text', required: true },
+    { name: 'category', label: 'Kategori', type: 'select', options: ['CONSUMABLE', 'NETWORK', 'GA'], required: true, help: 'CONSUMABLE = qty/meter · NETWORK = wajib serial number · GA = kode aset + maintenance' },
+    { name: 'unit', label: 'Satuan', type: 'text', help: 'pcs / meter / unit' },
+    { name: 'installDefaultQty', label: 'Kebutuhan standar per pasang baru (untuk cek stok otomatis)', type: 'number' },
+    { name: 'minStock', label: 'Stok minimum (alert dashboard)', type: 'number' },
+  ];
+  return (
+    <>
+      {canManage && <button className="btn mb-3" onClick={() => setShow(!show)}>+ Tambah item</button>}
+      {show && <div className="card mb-4 max-w-lg"><DynamicForm fields={fields} onSubmit={async (v) => { await api('/items', { body: v }); setShow(false); await reload(); }} /></div>}
+      <Table head={['SKU', 'Nama', 'Kategori', 'Satuan', 'Std. pasang baru', 'Min. stok']}>
+        {data?.map((i) => (
+          <tr key={i.id}><td className="td font-mono">{i.sku}</td><td className="td">{i.name}</td><td className="td text-xs">{CAT[i.category]}</td><td className="td">{i.unit}</td><td className="td">{i.installDefaultQty ?? '-'}</td><td className="td">{i.minStock || '-'}</td></tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
+/* ───── Opname ───── */
+function OpnameTab() {
+  const [wh, setWh] = useState('');
+  const [counts, setCounts] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const { data: whs } = useFetch<any[]>('/warehouses');
+  const { data: items } = useFetch<any[]>('/items');
+  const { data: stock, reload } = useFetch<any[]>(wh ? `/stock?warehouseId=${wh}` : null);
+  const cons = items?.filter((i) => i.category === 'CONSUMABLE') ?? [];
+  const cur = (id: string) => stock?.find((s) => s.status === 'QTY' && s.item.id === id)?.qty ?? 0;
+
+  async function save() {
+    setErr(''); setMsg('');
+    try {
+      const body = { warehouseId: wh, counts: Object.entries(counts).filter(([, v]) => v !== '').map(([itemId, v]) => ({ itemId, counted: Number(v) })) };
+      const r = await api<{ diffs: any[] }>('/stock/opname', { body });
+      setMsg(`${r.diffs.length} item disesuaikan.`); setCounts({}); reload();
+    } catch (e) { setErr((e as Error).message); }
+  }
+
+  return (
+    <div className="max-w-2xl space-y-3">
+      <p className="text-sm text-slate-500">Stock opname untuk material konsumsi. Isi jumlah fisik; selisih dicatat sebagai mutasi stok. Aset ber-SN dicek lewat tab Aset & SN.</p>
+      <select className="input" value={wh} onChange={(e) => setWh(e.target.value)}>
+        <option value="">— pilih gudang —</option>
+        {whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+      </select>
+      {wh && (
+        <Table head={['Item', 'Tercatat', 'Fisik']}>
+          {cons.map((i) => (
+            <tr key={i.id}><td className="td">{i.name}</td><td className="td">{cur(i.id)} {i.unit}</td>
+              <td className="td"><input className="input w-28" type="number" min={0} value={counts[i.id] ?? ''} onChange={(e) => setCounts({ ...counts, [i.id]: e.target.value })} /></td></tr>
+          ))}
+        </Table>
+      )}
+      <ErrorMsg>{err}</ErrorMsg>{msg && <p className="text-sm text-green-700">{msg}</p>}
+      {wh && <button className="btn" onClick={save}>Simpan opname</button>}
+    </div>
+  );
+}
+
+function Inventory() {
+  const { user } = useAuth();
+  const sp = useSearchParams();
+  const [tab, setTab] = useState(sp.get('tab') ?? 'stock');
+  const canManage = ['ADMIN', 'PROC', 'GA'].includes(user?.role ?? '');
+  void fmtDate;
+  return (
+    <>
+      <PageHeader title="Inventori & Aset" sub="Multi-gudang · material · perangkat ber-SN · aset GA" />
+      <Tabs value={tab} onChange={setTab} tabs={[
+        { key: 'stock', label: 'Stok per gudang' }, { key: 'assets', label: 'Aset & SN' }, { key: 'qc', label: 'Menunggu QC' },
+        { key: 'warehouses', label: 'Gudang' }, { key: 'items', label: 'Master item' }, ...(canManage ? [{ key: 'opname', label: 'Stock opname' }] : []),
+      ]} />
+      {tab === 'stock' && <StockTab />}
+      {tab === 'assets' && <AssetsTab canManage={canManage} />}
+      {tab === 'qc' && <QcTab canManage={canManage} />}
+      {tab === 'warehouses' && <WarehousesTab canManage={canManage} />}
+      {tab === 'items' && <ItemsTab canManage={canManage} />}
+      {tab === 'opname' && canManage && <OpnameTab />}
+    </>
+  );
+}
+
+export default function InventoryPage() {
+  return <Suspense fallback={<p>Memuat…</p>}><Inventory /></Suspense>;
+}

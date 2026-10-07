@@ -1,0 +1,101 @@
+import crypto from 'crypto';
+import { Worker, Job } from 'bullmq';
+import { config } from './config';
+import { prisma } from './db';
+import { connection, cronQueue, enqueue, QueuedJob } from './queue';
+import { sendEmail, sendTelegram } from './senders';
+import { Effects } from './effects';
+
+/** Kirim email / Telegram dari tabel Notification (outbox). */
+new Worker(
+  'notifications',
+  async (job: Job<{ id: string }>) => {
+    const n = await prisma.notification.findUnique({ where: { id: job.data.id } });
+    if (!n || n.status === 'SENT') return;
+    try {
+      const text = `${n.subject}\n\n${n.body}`;
+      if (n.channel === 'EMAIL') await sendEmail(n.target, n.subject, n.body);
+      else await sendTelegram(n.target, text);
+      await prisma.notification.update({ where: { id: n.id }, data: { status: 'SENT', sentAt: new Date(), error: null } });
+    } catch (e) {
+      await prisma.notification.update({ where: { id: n.id }, data: { status: 'FAILED', error: String(e).slice(0, 500) } });
+      throw e; // BullMQ akan retry dengan exponential backoff
+    }
+  },
+  { connection, concurrency: 5 },
+);
+
+/** Kirim event ke aplikasi billing eksisting (HMAC-SHA256 di header x-signature). */
+new Worker(
+  'billing-out',
+  async (job: Job<{ id: string }>) => {
+    const ev = await prisma.outboundEvent.findUnique({ where: { id: job.data.id } });
+    if (!ev || ev.status === 'SENT') return;
+    await prisma.outboundEvent.update({ where: { id: ev.id }, data: { attempts: { increment: 1 } } });
+    try {
+      if (!config.billing.webhookUrl) {
+        console.log(`[billing dry-run] ${ev.event}`, JSON.stringify(ev.payload));
+      } else {
+        const body = JSON.stringify({ id: ev.id, event: ev.event, occurredAt: ev.createdAt, data: ev.payload });
+        const sig = crypto.createHmac('sha256', config.billing.webhookSecret).update(body).digest('hex');
+        const res = await fetch(config.billing.webhookUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-signature': sig, 'x-event': ev.event, 'idempotency-key': ev.id },
+          body,
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) throw new Error(`Billing ${res.status}`);
+      }
+      await prisma.outboundEvent.update({ where: { id: ev.id }, data: { status: 'SENT', sentAt: new Date(), lastError: null } });
+    } catch (e) {
+      await prisma.outboundEvent.update({ where: { id: ev.id }, data: { status: 'FAILED', lastError: String(e).slice(0, 500) } });
+      throw e;
+    }
+  },
+  { connection, concurrency: 3 },
+);
+
+/** Job terjadwal: pengingat maintenance aset GA + sweeper outbox. */
+new Worker(
+  'cron',
+  async (job: Job) => {
+    if (job.name === 'maintenance-reminder') {
+      const due = await prisma.asset.findMany({
+        where: { nextMaintenanceAt: { lte: new Date(Date.now() + 7 * 86400_000) }, item: { category: 'GA' }, status: { in: ['IN_USE', 'IN_STOCK'] } },
+        include: { item: true },
+        orderBy: { nextMaintenanceAt: 'asc' },
+      });
+      if (!due.length) return;
+      const jobs: QueuedJob[] = [];
+      await prisma.$transaction(async (tx) => {
+        const fx = new Effects(tx);
+        await fx.notify({
+          roles: ['GA'],
+          subject: `Jadwal maintenance aset (${due.length} aset ≤ 7 hari)`,
+          body: due.map((a) => `• ${a.assetCode ?? a.serialNumber} ${a.item.name} — ${a.nextMaintenanceAt?.toLocaleDateString('id-ID')}`).join('\n'),
+        });
+        jobs.push(...fx.jobs);
+      });
+      await enqueue(jobs);
+    }
+    if (job.name === 'sweep') {
+      // re-enqueue outbox yang gagal ter-enqueue setelah commit (jobId mencegah duplikat)
+      const cutoff = new Date(Date.now() - 2 * 60_000);
+      const [n, o] = await Promise.all([
+        prisma.notification.findMany({ where: { status: 'PENDING', createdAt: { lt: cutoff } }, take: 200 }),
+        prisma.outboundEvent.findMany({ where: { status: 'PENDING', createdAt: { lt: cutoff } }, take: 200 }),
+      ]);
+      await enqueue([
+        ...n.map((x) => ({ queue: 'notifications' as const, id: x.id })),
+        ...o.map((x) => ({ queue: 'billing' as const, id: x.id })),
+      ]);
+    }
+  },
+  { connection },
+);
+
+(async () => {
+  await cronQueue.add('maintenance-reminder', {}, { repeat: { pattern: '0 8 * * *', tz: 'Asia/Jakarta' }, jobId: 'maintenance-reminder' });
+  await cronQueue.add('sweep', {}, { repeat: { every: 120_000 }, jobId: 'sweep' });
+  console.log('Worker berjalan: notifications, billing-out, cron');
+})();

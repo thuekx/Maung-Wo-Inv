@@ -1,0 +1,59 @@
+name: l1v-wo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: l1v
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-l1v_dev_pw}
+      POSTGRES_DB: l1v_wo
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U l1v -d l1v_wo"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # appendonly: antrian notifikasi/billing tidak hilang saat restart
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes: [redisdata:/data]
+    ports: ["6379:6379"]
+
+  api: &api
+    build: ./apps/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://l1v:${POSTGRES_PASSWORD:-l1v_dev_pw}@postgres:5432/l1v_wo
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /app/uploads
+      TZ: Asia/Jakarta
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    volumes: [uploads:/app/uploads]
+    ports: ["4000:4000"]
+
+  worker:
+    <<: *api
+    ports: []
+    command: ["node", "dist/src/worker.js"]
+    depends_on: [api]
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ["3000:3000"]
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

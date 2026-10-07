@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MKT
+  NOC
+  FOC
+  PROC
+  GA
+  FIN
+}
+
+enum WoType {
+  NEW_INSTALL
+  TROUBLE
+  SUSPEND
+  UNSUSPEND
+  TERMINATE
+  STOCK_REQUEST
+}
+
+enum CustomerStatus {
+  PROSPECT
+  INSTALLING
+  ACTIVE
+  SUSPENDED
+  TERMINATING
+  TERMINATED
+}
+
+enum ItemCategory {
+  CONSUMABLE // kuantitas / meter
+  NETWORK // wajib serial number
+  GA // aset general, kode aset + jadwal maintenance
+}
+
+enum WarehouseKind {
+  MAIN
+  BRANCH
+  TRANSIT
+  MOBILE // mobile stock teknisi / mobil
+}
+
+enum AssetStatus {
+  IN_STOCK
+  INSTALLED
+  IN_USE // aset GA yang sedang dipakai
+  RETURNED_PENDING_QC
+  REFURBISHED // siap pakai kembali
+  DAMAGED
+  SCRAP
+}
+
+enum NotifChannel {
+  EMAIL
+  TELEGRAM
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role
+  telegramChatId String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  created   WorkOrder[] @relation("creator")
+  assigned  WorkOrder[] @relation("assignee")
+  warehouse Warehouse[]
+}
+
+model Customer {
+  id          String         @id @default(cuid())
+  code        String         @unique
+  name        String
+  phone       String
+  email       String?
+  address     String
+  lat         Float?
+  lng         Float?
+  packageName String
+  status      CustomerStatus @default(PROSPECT)
+  warehouseId String?
+  odp         String?
+  port        String?
+  vlan        String?
+  ip          String?
+  activatedAt DateTime?
+  createdAt   DateTime       @default(now())
+
+  warehouse  Warehouse?  @relation(fields: [warehouseId], references: [id])
+  workOrders WorkOrder[]
+  assets     Asset[]
+
+  @@index([status])
+}
+
+model WorkOrder {
+  id          String    @id @default(cuid())
+  number      String    @unique
+  type        WoType
+  status      String
+  title       String
+  customerId  String?
+  createdById String
+  assigneeId  String?
+  parentId    String?
+  data        Json      @default("{}")
+  scheduledAt DateTime?
+  source      String    @default("APP") // APP | BILLING
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  closedAt    DateTime?
+
+  customer    Customer?       @relation(fields: [customerId], references: [id])
+  createdBy   User            @relation("creator", fields: [createdById], references: [id])
+  assignee    User?           @relation("assignee", fields: [assigneeId], references: [id])
+  parent      WorkOrder?      @relation("child", fields: [parentId], references: [id])
+  children    WorkOrder[]     @relation("child")
+  events      WoEvent[]
+  attachments Attachment[]
+  purchase    PurchaseOrder[]
+
+  @@index([type, status])
+  @@index([customerId])
+  @@index([assigneeId])
+}
+
+model WoEvent {
+  id         String   @id @default(cuid())
+  woId       String
+  action     String
+  fromStatus String?
+  toStatus   String
+  actorId    String?
+  actorName  String?
+  note       String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  wo WorkOrder @relation(fields: [woId], references: [id], onDelete: Cascade)
+
+  @@index([woId, createdAt])
+}
+
+model Attachment {
+  id         String   @id @default(cuid())
+  woId       String?
+  url        String
+  mime       String
+  uploadedBy String
+  createdAt  DateTime @default(now())
+
+  wo WorkOrder? @relation(fields: [woId], references: [id])
+}
+
+model Warehouse {
+  id      String        @id @default(cuid())
+  code    String        @unique
+  name    String
+  kind    WarehouseKind
+  ownerId String? // pemilik mobile stock (teknisi)
+  address String?
+  active  Boolean       @default(true)
+
+  owner     User?           @relation(fields: [ownerId], references: [id])
+  stock     StockLevel[]
+  assets    Asset[]
+  customers Customer[]
+}
+
+model Item {
+  id                String       @id @default(cuid())
+  sku               String       @unique
+  name              String
+  category          ItemCategory
+  unit              String       @default("pcs")
+  tracked           Boolean      @default(false) // true = per serial number
+  installDefaultQty Int? // kebutuhan standar 1x pasang baru (untuk cek stok otomatis)
+  minStock          Int          @default(0)
+
+  stock  StockLevel[]
+  assets Asset[]
+  poLines PoLine[]
+}
+
+model StockLevel {
+  id          String @id @default(cuid())
+  warehouseId String
+  itemId      String
+  qty         Int    @default(0)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  item      Item      @relation(fields: [itemId], references: [id])
+
+  @@unique([warehouseId, itemId])
+}
+
+model Asset {
+  id                 String      @id @default(cuid())
+  itemId             String
+  serialNumber       String      @unique
+  assetCode          String?     @unique
+  status             AssetStatus @default(IN_STOCK)
+  warehouseId        String?
+  customerId         String?
+  woId               String?
+  condition          String?
+  notes              String?
+  nextMaintenanceAt  DateTime?
+  lastMaintenanceAt  DateTime?
+  createdAt          DateTime    @default(now())
+
+  item      Item       @relation(fields: [itemId], references: [id])
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
+  customer  Customer?  @relation(fields: [customerId], references: [id])
+
+  @@index([status])
+  @@index([warehouseId])
+  @@index([customerId])
+}
+
+model StockMovement {
+  id              String   @id @default(cuid())
+  itemId          String
+  assetId         String?
+  qty             Int
+  fromWarehouseId String?
+  toWarehouseId   String?
+  reason          String
+  woId            String?
+  actorId         String?
+  createdAt       DateTime @default(now())
+
+  @@index([itemId, createdAt])
+  @@index([woId])
+}
+
+model PurchaseOrder {
+  id        String   @id @default(cuid())
+  number    String   @unique
+  vendor    String
+  status    String   @default("ISSUED") // ISSUED | PARTIAL | RECEIVED
+  woId      String?
+  toWarehouseId String
+  note      String?
+  createdById String
+  createdAt DateTime @default(now())
+
+  wo    WorkOrder? @relation(fields: [woId], references: [id])
+  lines PoLine[]
+}
+
+model PoLine {
+  id          String @id @default(cuid())
+  poId        String
+  itemId      String
+  qty         Int
+  receivedQty Int    @default(0)
+
+  po   PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  item Item          @relation(fields: [itemId], references: [id])
+}
+
+model Notification {
+  id        String       @id @default(cuid())
+  woId      String?
+  userId    String?
+  channel   NotifChannel
+  target    String
+  subject   String
+  body      String
+  status    String       @default("PENDING") // PENDING | SENT | FAILED
+  error     String?
+  createdAt DateTime     @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+}
+
+// Event keluar ke aplikasi billing/finance eksisting (webhook bertanda tangan HMAC)
+model OutboundEvent {
+  id        String   @id @default(cuid())
+  event     String
+  payload   Json
+  status    String   @default("PENDING")
+  attempts  Int      @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+}
+
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}
