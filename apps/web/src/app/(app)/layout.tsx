@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { fileUrl, ROLE_LABEL, useFetch } from '@/lib/api';
+import { fileUrl, ROLE_LABEL } from '@/lib/api';
 import { ThemeToggle } from '@/lib/theme';
 import { useBranding } from '@/lib/brand';
 import { Icon, IconName, MarkM } from '@/components/icons';
 import { Avatar } from '@/components/ui';
 import { SearchBox } from '@/components/SearchBox';
+import { NotificationBell } from '@/components/NotificationBell';
+import { Tip } from '@/components/Tip';
 
 interface Item { href: string; label: string; icon: IconName; roles?: string[] }
 const GROUPS: { title: string; items: Item[] }[] = [
@@ -32,7 +34,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobile, setMobile] = useState(false);
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { data: dash } = useFetch<{ mineTotal: number }>(user ? '/dashboard' : null);
 
   useEffect(() => { try { setCollapsed(localStorage.getItem('maung_sidebar') === '1'); } catch { /* ignore */ } }, []);
   useEffect(() => { if (ready && !user) router.replace('/login'); }, [ready, user, router]);
@@ -48,14 +49,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const toggleCollapse = () => setCollapsed((c) => { try { localStorage.setItem('maung_sidebar', c ? '0' : '1'); } catch { /* ignore */ } return !c; });
   const active = (h: string) => (h === '/' ? path === '/' : path.startsWith(h));
-  const tasks = dash?.mineTotal ?? 0;
 
   return (
     <div className="min-h-screen">
       {/* Top bar navy (panduan brand): logo · pencarian · tema · notifikasi · akun */}
       <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center gap-3 border-b-2 border-accent-500 bg-brand-900 px-3 text-white sm:px-4">
         <button className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10 lg:hidden" onClick={() => setMobile(true)} aria-label="Buka menu"><Icon name="menu" /></button>
-        <button className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10 lg:flex" onClick={toggleCollapse} aria-label={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}><Icon name="panel" /></button>
+        <span className="hidden lg:flex"><Tip label={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'} align="left"><button className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10" onClick={toggleCollapse} aria-label={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}><Icon name="panel" /></button></Tip></span>
         <Link href="/" className="flex shrink-0 items-center gap-2" aria-label={brand.companyName}>
           {brand.logoMarkUrl
             ? <><img src={fileUrl(brand.logoMarkUrl)} alt="" className="h-10 w-10 object-contain" /><span className="hidden font-display text-xl font-bold tracking-wide sm:inline">{brand.companyName}</span></>
@@ -66,10 +66,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="mx-auto hidden min-w-0 flex-1 justify-center px-4 md:flex"><SearchBox /></div>
         <div className="ml-auto flex items-center gap-1 md:ml-0">
           <ThemeToggle />
-          <Link href="/work-orders" className="relative flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10" aria-label={`${tasks} tugas menunggu`} title={`${tasks} tugas menunggu Anda`}>
-            <Icon name="bell" />
-            {tasks > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-bold text-brand-900">{tasks > 99 ? '99+' : tasks}</span>}
-          </Link>
+          <NotificationBell />
           <div ref={menuRef} className="relative">
             <button className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-white/10" onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu}>
               <Avatar name={user.name} size={32} />

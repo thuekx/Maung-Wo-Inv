@@ -382,6 +382,20 @@ model AuditLog {
   @@index([entity, entityId])
 }
 
+// Kotak masuk notifikasi dalam aplikasi (lonceng): satu baris per pengguna per kejadian, terpisah dari pengiriman email/Telegram.
+model Inbox {
+  id        String    @id @default(cuid())
+  userId    String
+  subject   String
+  body      String
+  woId      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
 model Counter {
   key   String @id
   value Int    @default(0)

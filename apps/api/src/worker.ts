@@ -60,6 +60,8 @@ new Worker(
   'cron',
   async (job: Job) => {
     if (job.name === 'maintenance-reminder') {
+      // pembersihan rutin harian: notifikasi dalam aplikasi lebih dari 90 hari
+      await prisma.inbox.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86400_000) } } }).catch((e) => console.error('bersihkan inbox gagal', e));
       const due = await prisma.asset.findMany({
         where: { nextMaintenanceAt: { lte: new Date(Date.now() + 7 * 86400_000) }, item: { category: 'GA' }, status: { in: ['IN_USE', 'IN_STOCK'] } },
         include: { item: true },

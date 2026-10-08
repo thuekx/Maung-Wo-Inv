@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Icon } from '@/components/icons';
+import { Tip } from '@/components/Tip';
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
 const KEY = 'maung_theme';
@@ -69,15 +70,33 @@ export function ThemeSwitch({ className = '' }: { className?: string }) {
   );
 }
 
-/** Tombol ikon untuk top bar: terang → gelap → ikuti sistem. */
+/** Pilihan tema di top bar: tiga ikon langsung terlihat (terang / ikuti sistem / gelap), aktif disorot, tooltip saat hover. Di layar kecil menjadi satu tombol siklus. */
 export function ThemeToggle() {
   const { choice, setChoice } = useTheme();
-  const next = choice === 'light' ? 'dark' : choice === 'dark' ? 'system' : 'light';
-  const label = { light: 'Tema terang', dark: 'Tema gelap', system: 'Ikuti sistem' }[choice];
+  const opts: { v: ThemeChoice; icon: 'sun' | 'monitor' | 'moon'; label: string }[] = [
+    { v: 'light', icon: 'sun', label: 'Tema terang' },
+    { v: 'system', icon: 'monitor', label: 'Ikuti sistem — otomatis mengikuti tema perangkat' },
+    { v: 'dark', icon: 'moon', label: 'Tema gelap' },
+  ];
+  const cur = opts.find((o) => o.v === choice)!;
+  const next = opts[(opts.findIndex((o) => o.v === choice) + 1) % 3];
   return (
-    <button type="button" onClick={() => setChoice(next)} title={`${label} — klik untuk ganti`} aria-label={`${label}, klik untuk ganti`}
-      className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10">
-      <Icon name={choice === 'light' ? 'sun' : choice === 'dark' ? 'moon' : 'monitor'} />
-    </button>
+    <>
+      <div role="radiogroup" aria-label="Tema tampilan" className="hidden items-center gap-0.5 rounded-lg bg-white/10 p-0.5 sm:flex">
+        {opts.map((o) => (
+          <Tip key={o.v} label={o.label}>
+            <button type="button" role="radio" aria-checked={choice === o.v} aria-label={o.label} onClick={() => setChoice(o.v)}
+              className={`flex h-8 w-8 items-center justify-center rounded-md transition ${choice === o.v ? 'bg-accent-500 text-brand-900 shadow-sm' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}>
+              <Icon name={o.icon} size={18} />
+            </button>
+          </Tip>
+        ))}
+      </div>
+      <div className="sm:hidden">
+        <Tip label={`${cur.label.split(' — ')[0]} · ketuk untuk ganti ke ${next.label.split(' — ')[0].replace('Tema ', '').toLowerCase()}`} align="right">
+          <button type="button" onClick={() => setChoice(next.v)} aria-label={cur.label} className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10"><Icon name={cur.icon} /></button>
+        </Tip>
+      </div>
+    </>
   );
 }

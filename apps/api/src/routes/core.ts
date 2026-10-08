@@ -178,6 +178,31 @@ core.post('/uploads', upload.single('file'), async (req, res) => {
   res.status(201).json({ url, lat: m.lat ?? null, lng: m.lng ?? null });
 });
 
+/* ── kotak masuk notifikasi (lonceng) ── */
+core.get('/inbox/summary', async (req, res) => {
+  const userId = req.user!.id;
+  const [items, unread] = await Promise.all([
+    prisma.inbox.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 8 }),
+    prisma.inbox.count({ where: { userId, readAt: null } }),
+  ]);
+  res.json({ items, unread });
+});
+core.get('/inbox', async (req, res) => {
+  const userId = req.user!.id;
+  const unreadOnly = req.query.unread === '1';
+  const q = req.query.q ? String(req.query.q).trim() : '';
+  const pp = pageParams(req, { sorts: { createdAt: (d) => ({ createdAt: d }) }, defaultSort: { key: 'createdAt', dir: 'desc' }, legacyLimit: 50 });
+  const where = { userId, ...(unreadOnly ? { readAt: null } : {}), ...(q ? { OR: [{ subject: { contains: q, mode: 'insensitive' as const } }, { body: { contains: q, mode: 'insensitive' as const } }] } : {}) };
+  const [rows, total] = await Promise.all([prisma.inbox.findMany({ where, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }), countIf(pp, () => prisma.inbox.count({ where }))]);
+  sendPage(res, pp, rows, total);
+});
+core.post('/inbox/read', async (req, res) => {
+  const b = z.object({ ids: z.array(z.string()).max(200).optional(), all: z.boolean().optional() }).parse(req.body ?? {});
+  const where = { userId: req.user!.id, readAt: null, ...(b.all ? {} : { id: { in: b.ids ?? [] } }) };
+  const r = await prisma.inbox.updateMany({ where, data: { readAt: new Date() } });
+  res.json({ updated: r.count });
+});
+
 /* ── dashboard ── */
 core.get('/dashboard', async (req, res) => {
   res.json(await buildDashboard(req.user!));

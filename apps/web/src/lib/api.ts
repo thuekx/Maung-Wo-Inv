@@ -59,6 +59,17 @@ export const TYPE_LABEL: Record<string, string> = {
   NEW_INSTALL: 'Pasang Baru', TROUBLE: 'Trouble Ticket', SUSPEND: 'Suspend', UNSUSPEND: 'Unsuspend', TERMINATE: 'Terminate', STOCK_REQUEST: 'Permintaan Barang',
 };
 
+/** "5 mnt lalu", "kemarin", atau tanggal bila lebih dari seminggu. */
+export function timeAgo(d: string | Date) {
+  const s = Math.round((Date.now() - new Date(d).getTime()) / 1000);
+  if (s < 45) return 'baru saja';
+  if (s < 3600) return `${Math.round(s / 60)} mnt lalu`;
+  if (s < 86400) return `${Math.round(s / 3600)} jam lalu`;
+  if (s < 172800) return 'kemarin';
+  if (s < 7 * 86400) return `${Math.round(s / 86400)} hari lalu`;
+  return new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-');
 
 /** Hapus data (konfirmasi + notifikasi ke Admin di server). Mengembalikan true bila berhasil. */

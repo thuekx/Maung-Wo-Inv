@@ -47,6 +47,9 @@ export class Effects {
     for (const r of roles) add('TELEGRAM', roleChats[r]);
     for (const e of o.emails ?? []) add('EMAIL', e);
 
+    // kotak masuk dalam aplikasi (lonceng): sekali per pengguna, tidak bergantung pada sukses kirim email/Telegram
+    if (users.length) await this.tx.inbox.createMany({ data: users.map((u) => ({ userId: u.id, subject: o.subject, body: o.body, woId: o.woId })) });
+
     for (const row of rows) {
       const n = await this.tx.notification.create({ data: row });
       this.jobs.push({ queue: 'notifications', id: n.id });
