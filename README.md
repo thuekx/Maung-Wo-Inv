@@ -152,7 +152,7 @@ Cek mutu dari root repo: `npm run typecheck`.
 | `api` restart terus | `docker compose logs api` — biasanya `JWT_SECRET`/`POSTGRES_PASSWORD` kosong atau Postgres belum sehat. |
 | Notifikasi tidak terkirim | Lihat Admin → Log notifikasi; tanpa `SMTP_HOST`/`TELEGRAM_BOT_TOKEN` sistem hanya mencatat (dry-run). |
 
-> Container `api` memakai `prisma db push` agar langsung jalan. Sebelum produksi sungguhan, buat migrasi (`npm run db:migrate`), commit `prisma/migrations`, dan ganti perintah start ke `prisma migrate deploy`.
+> Skema database dikelola lewat migrasi (`apps/api/prisma/migrations`). Service `migrate` menjalankan `prisma migrate deploy` sekali sebelum `api` dan `worker` start. Setelah mengubah `schema.prisma`, buat migrasi baru di dev (`cd apps/api && npx prisma migrate dev --name <nama>`) dan commit foldernya; **jangan** memakai `db push` di staging/produksi. Build image memakai `npm ci` dari `package-lock.json` (commit lockfile bila dependency berubah).
 
 ## 5. Pemetaan alur ke aplikasi
 

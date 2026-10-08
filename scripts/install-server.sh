@@ -16,6 +16,10 @@ apt-get update -y
 apt-get install -y ca-certificates curl git gnupg openssl ufw
 
 if ! command -v docker >/dev/null 2>&1; then
+  echo "==> Hapus paket Docker tidak resmi yang bentrok (bila ada)"
+  for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
+    apt-get remove -y "$pkg" >/dev/null 2>&1 || true
+  done
   echo "==> Docker Engine + Compose plugin (repo resmi Docker)"
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL "https://download.docker.com/linux/$ID/gpg" -o /etc/apt/keyrings/docker.asc

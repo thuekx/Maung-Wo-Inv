@@ -3,6 +3,29 @@ name: maung-wo-inv
 # Semua konfigurasi lewat variabel (file .env otomatis dibaca `docker compose`,
 # atau isi di kolom "Environment variables" saat deploy sebagai Stack di Portainer).
 
+x-app: &app
+  build: ./apps/api
+  environment:
+    TZ: Asia/Jakarta
+    DATABASE_URL: postgresql://l1v:${POSTGRES_PASSWORD}@postgres:5432/l1v_wo
+    REDIS_URL: redis://redis:6379
+    UPLOAD_DIR: /app/uploads
+    JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET}
+    WEB_URL: ${WEB_URL:-http://localhost:3000}
+    CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASS: ${SMTP_PASS:-}
+    SMTP_FROM: ${SMTP_FROM:-L1V WO <noreply@l1v.local>}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-change-me}
+    TELEGRAM_ROLE_CHATS: ${TELEGRAM_ROLE_CHATS:-}
+    BILLING_API_KEY: ${BILLING_API_KEY:-dev-billing-key}
+    BILLING_WEBHOOK_URL: ${BILLING_WEBHOOK_URL:-}
+    BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-dev-webhook-secret}
+    SEED_PASSWORD: ${SEED_PASSWORD:-Passw0rd!}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -23,42 +46,46 @@ services:
     # appendonly: antrian notifikasi/billing tidak hilang saat restart
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  api: &api
-    build: ./apps/api
-    restart: unless-stopped
-    environment:
-      TZ: Asia/Jakarta
-      DATABASE_URL: postgresql://l1v:${POSTGRES_PASSWORD}@postgres:5432/l1v_wo
-      REDIS_URL: redis://redis:6379
-      UPLOAD_DIR: /app/uploads
-      JWT_SECRET: ${JWT_SECRET:?isi JWT_SECRET}
-      WEB_URL: ${WEB_URL:-http://localhost:3000}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-L1V WO <noreply@l1v.local>}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-change-me}
-      TELEGRAM_ROLE_CHATS: ${TELEGRAM_ROLE_CHATS:-}
-      BILLING_API_KEY: ${BILLING_API_KEY:-dev-billing-key}
-      BILLING_WEBHOOK_URL: ${BILLING_WEBHOOK_URL:-}
-      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-dev-webhook-secret}
-      SEED_PASSWORD: ${SEED_PASSWORD:-Passw0rd!}
+  # Migrasi skema (prisma migrate deploy) berjalan sekali sebelum api & worker.
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["npx", "prisma", "migrate", "deploy"]
     depends_on:
       postgres: { condition: service_healthy }
-      redis: { condition: service_started }
+
+  api:
+    <<: *app
+    restart: unless-stopped
+    command: ["node", "dist/src/index.js"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     volumes: [uploads:/app/uploads]
     ports: ["4000:4000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
 
   worker:
-    <<: *api
-    ports: []
+    <<: *app
+    restart: unless-stopped
     command: ["node", "dist/src/worker.js"]
     depends_on:
-      - api
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    volumes: [uploads:/app/uploads]
 
   web:
     build:
@@ -66,7 +93,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     restart: unless-stopped
-    depends_on: [api]
+    depends_on:
+      api: { condition: service_healthy }
     ports: ["3000:3000"]
 
 volumes:

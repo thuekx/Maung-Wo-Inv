@@ -36,7 +36,7 @@ Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC
 | Halaman | `apps/web/src/app/(app)/*` |
 
 ## Daftar pekerjaan berikutnya (prioritas)
-1. Jalankan typecheck/build kedua app, perbaiki error; buat migrasi Prisma (`npm run db:migrate`) dan commit folder `prisma/migrations`, ganti start container ke `prisma migrate deploy`.
+1. ~~Typecheck, migrasi Prisma, `migrate deploy`, lockfile + `npm ci`~~ — selesai (migrasi `20261008000000_init` diverifikasi terhadap Postgres 16). `next build` dan build API lolos. Masih perlu: uji stack Docker penuh di VM Ubuntu 24.04.
 2. Uji end-to-end ke-7 alur; tulis test (Vitest) untuk `engine`, `inventory` (stok tak boleh negatif), dan webhook billing.
 3. Hubungkan billing nyata: pemetaan `Customer.code` ↔ ID pelanggan billing (tambah `externalId`), isi `BILLING_*` di `.env`, sepakati format payload.
 4. Set bot Telegram (webhook) dan SMTP nyata; uji notifikasi tiap tahap.

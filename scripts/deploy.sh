@@ -24,6 +24,7 @@ setenv() { # setenv KEY VALUE  (ganti baris bila ada, tambah bila belum)
 if [ ! -f .env ]; then
   echo "==> Membuat .env dengan secret acak"
   cp .env.example .env
+  chmod 600 .env   # berisi secret; hanya pemilik yang boleh baca
   setenv POSTGRES_PASSWORD "$(rand 16)"
   setenv JWT_SECRET "$(rand 32)"
   setenv TELEGRAM_WEBHOOK_SECRET "$(rand 16)"
@@ -32,6 +33,8 @@ if [ ! -f .env ]; then
   setenv SEED_PASSWORD "$(rand 6)Aa1!"
   CREATED=1
 fi
+
+chmod 600 .env   # juga untuk .env yang sudah ada
 
 if [ -n "$WEB_DOMAIN" ]; then
   setenv WEB_URL "https://$WEB_DOMAIN"; setenv CORS_ORIGIN "https://$WEB_DOMAIN"; setenv NEXT_PUBLIC_API_URL "https://$API_DOMAIN"
@@ -45,9 +48,19 @@ fi
 echo "==> Build & start"
 docker compose "${FILES[@]}" up -d --build
 echo "==> Menunggu API siap"
-for i in $(seq 1 40); do
-  docker compose "${FILES[@]}" exec -T api wget -qO- http://localhost:4000/health >/dev/null 2>&1 && break || sleep 3
+# Gate: lanjut hanya bila healthcheck container api (fetch /health via Node) berstatus healthy.
+API_OK=0
+for i in $(seq 1 60); do
+  cid="$(docker compose "${FILES[@]}" ps -q api)"
+  st="$([ -n "$cid" ] && docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || echo none)"
+  [ "$st" = healthy ] && { API_OK=1; break; }
+  sleep 3
 done
+if [ "$API_OK" != 1 ]; then
+  echo "GAGAL: API tidak healthy dalam 3 menit. Log terakhir:"
+  docker compose "${FILES[@]}" logs --tail=40 migrate api
+  exit 1
+fi
 echo "==> Seed data awal (aman diulang)"
 docker compose "${FILES[@]}" exec -T api node dist/prisma/seed.js
 
