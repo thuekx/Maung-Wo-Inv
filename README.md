@@ -221,7 +221,7 @@ Paginasi/urut/cari di server, dashboard agregasi SQL, indeks trigram, ekspor str
 apps/api/prisma/schema.prisma   model data (WO, event, gudang, item, aset, stok, PO, notifikasi, outbox)
 apps/api/src/workflows.ts       definisi 6 workflow (status, peran, form, aturan bisnis)
 apps/api/src/engine.ts          mesin transisi + hak akses + notifikasi otomatis
-apps/api/src/inventory.ts       mutasi stok/aset, mobile stock, QC
+apps/api/src/inventory.ts       mutasi stok/aset, stok berjalan, QC
 apps/api/src/worker.ts          pengirim email/Telegram/billing, cron
 apps/api/src/routes/*           REST API
 apps/web/src/components/DynamicForm.tsx   form dinamis (scan SN, foto, material, QC)

@@ -87,6 +87,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {mobile && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobile(false)} />}
       {/* Sidebar (TailAdmin): grup menu, bisa diciutkan, drawer di HP; aktif = penanda emas */}
       <aside className={`fixed bottom-0 left-0 top-16 z-40 overflow-y-auto border-r border-slate-200 bg-white px-3 py-4 transition-all duration-200 ${mobile ? 'translate-x-0' : '-translate-x-full'} w-64 lg:translate-x-0 ${collapsed ? 'lg:w-[76px]' : 'lg:w-64'}`}>
+        <div className={`mb-4 flex items-center gap-3 rounded-xl bg-brand-50 px-3 py-3 ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}>
+          <Avatar name={user.name} size={36} />
+          <div className={`min-w-0 leading-tight ${collapsed ? 'lg:hidden' : ''}`}>
+            <div className="text-[11px] text-slate-500">Selamat datang,</div>
+            <div className="truncate text-sm font-semibold text-brand-900">{user.name}</div>
+            <div className="truncate text-[11px] text-accent-700">{ROLE_LABEL[user.role] ?? user.role}</div>
+          </div>
+        </div>
         {GROUPS.map((g) => {
           const items = g.items.filter((i) => !i.roles || i.roles.includes(user.role));
           if (!items.length) return null;

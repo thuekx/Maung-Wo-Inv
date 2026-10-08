@@ -2,17 +2,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, timeAgo } from '@/lib/api';
+import { api, timeAgo, TYPE_LABEL } from '@/lib/api';
 import { Icon } from './icons';
 import { Tip } from './Tip';
 
+interface Task { id: string; number: string; type: string; title: string; statusLabel: string }
 interface Item { id: string; subject: string; body: string; woId: string | null; readAt: string | null; createdAt: string }
 
 /** Lonceng: daftar notifikasi terbaru (dibaca/belum) + "Lihat semua notifikasi". Menyegarkan tiap 60 dtk dan saat dibuka. */
 export function NotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [data, setData] = useState<{ items: Item[]; unread: number } | null>(null);
+  const [data, setData] = useState<{ items: Item[]; unread: number; tasks: { total: number; items: Task[] } } | null>(null);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -39,6 +40,8 @@ export function NotificationBell() {
   }, [open, load]);
 
   const unread = data?.unread ?? 0;
+  const tasks = data?.tasks;
+  const badge = unread + (tasks?.total ?? 0);
   const go = async (n: Item) => {
     setOpen(false);
     if (!n.readAt) { api('/inbox/read', { body: { ids: [n.id] } }).then(load).catch(() => {}); }
@@ -48,11 +51,11 @@ export function NotificationBell() {
 
   return (
     <div ref={ref} className="relative">
-      <Tip label={unread ? `Notifikasi — ${unread} belum dibaca` : 'Notifikasi'} align="right" disabled={open}>
-        <button type="button" onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open} aria-label={data ? `Notifikasi, ${unread} belum dibaca` : 'Notifikasi'}
+      <Tip label={badge ? `${unread} notifikasi baru · ${tasks?.total ?? 0} butuh tindakan` : 'Notifikasi'} align="right" disabled={open}>
+        <button type="button" onClick={() => setOpen(!open)} aria-haspopup="dialog" aria-expanded={open} aria-label={data ? `Notifikasi, ${unread} belum dibaca, ${tasks?.total ?? 0} butuh tindakan` : 'Notifikasi'}
           className="relative flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10">
           <Icon name="bell" />
-          {unread > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-bold text-brand-900">{unread > 99 ? '99+' : unread}</span>}
+          {badge > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-bold text-brand-900">{badge > 99 ? '99+' : badge}</span>}
         </button>
       </Tip>
       {open && (
@@ -61,7 +64,23 @@ export function NotificationBell() {
             <h2 className="font-semibold text-slate-800">Notifikasi{unread > 0 && <span className="ml-2 rounded-full bg-accent-100 px-2 py-0.5 text-xs font-semibold text-brand-900">{unread} baru</span>}</h2>
             <button type="button" className="text-xs font-medium text-brand-700 hover:underline disabled:opacity-40" disabled={!unread} onClick={markAll}>Tandai semua dibaca</button>
           </div>
-          <ul className="max-h-[60vh] divide-y divide-slate-100 overflow-y-auto">
+          {!!tasks?.total && (
+            <div className="border-b border-slate-100 bg-amber-50/60">
+              <div className="flex items-center justify-between px-4 pt-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-800">Butuh tindakan ({tasks.total})</h3>
+                <Link href="/work-orders" onClick={() => setOpen(false)} className="text-xs font-medium text-brand-700 hover:underline">Tampilkan semua</Link>
+              </div>
+              <ul className="px-2 pb-2 pt-1">
+                {tasks.items.map((t) => (
+                  <li key={t.id}><Link href={`/work-orders/${t.id}`} onClick={() => setOpen(false)} className="block rounded-lg px-2 py-1.5 hover:bg-amber-100/60">
+                    <span className="block truncate text-sm font-medium text-slate-800">{t.number} · {t.title}</span>
+                    <span className="block text-[11px] text-slate-500">{TYPE_LABEL[t.type] ?? t.type} · {t.statusLabel}</span>
+                  </Link></li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <ul className="max-h-[50vh] divide-y divide-slate-100 overflow-y-auto">
             {data?.items.map((n) => (
               <li key={n.id}>
                 <button type="button" onClick={() => go(n)} className={`flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 ${n.readAt ? '' : 'bg-accent-50/60'}`}>

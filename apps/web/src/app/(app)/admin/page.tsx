@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, useFetch } from '@/lib/api';
+import { confirmDialog, toast } from '@/lib/dialog';
 import { loadBranding } from '@/lib/brand';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
@@ -67,7 +68,7 @@ function Users() {
             <td className="td"><input type="checkbox" checked={sel.includes(u.id)} onChange={() => toggle(u.id)} aria-label={`pilih ${u.name}`} /></td>
             <td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td"><Badge>{ROLE_LABEL[u.role] ?? u.role}</Badge></td>
             <td className="td">{u.telegramChatId ? '✓ terhubung' : '-'}</td>
-            <td className="td"><button className="text-brand-700 hover:underline" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).catch((e) => alert(e.message)); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button>{u.mustChangePassword && <div><Badge tone="amber">wajib ganti password</Badge></div>}</td>
+            <td className="td"><button className="text-brand-700 hover:underline" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).catch((e) => toast.error(e.message)); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button>{u.mustChangePassword && <div><Badge tone="amber">wajib ganti password</Badge></div>}</td>
             <td className="td whitespace-nowrap"><LinkBtn onClick={() => setEdit(u)}>Edit</LinkBtn> · <LinkBtn onClick={() => { setErr(''); setPw({ ids: [u.id] }); }}>Reset PW</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/users/${u.id}`, `user ${u.email}`)) reload(); }}>Hapus</LinkBtn></td>
           </tr>
         ))}
@@ -114,19 +115,24 @@ function AuditLog() {
     filters={<select className="input w-52" value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Jenis data"><option value="">Semua data</option>{['pelanggan', 'user', 'item', 'gudang', 'aset', 'paket', 'merk', 'tipe', 'PO', 'WO'].map((x) => <option key={x}>{x}</option>)}</select>} />;
 }
 
-const sTone = (s: string): any => (s === 'SENT' ? 'green' : s === 'FAILED' ? 'red' : s === 'SKIPPED' ? 'slate' : 'amber');
+const sTone = (s: string): any => (s === 'SENT' ? 'green' : s === 'FAILED' ? 'red' : s === 'NOT_SENT' ? 'amber' : s === 'SKIPPED' ? 'slate' : 'blue');
+const sLabel: Record<string, string> = { SENT: 'Terkirim', FAILED: 'GAGAL', NOT_SENT: 'TIDAK TERKIRIM', PENDING: 'Menunggu', SKIPPED: 'Dilewati' };
 
 function Notifs() {
   const [status, setStatus] = useState('');
+  const [n, setN] = useState(0);
+  const resend = async (id: string) => { try { await api(`/admin/notifications/${id}/resend`, { body: {} }); toast.success('Dikirim ulang — cek status beberapa detik lagi.'); setN((x) => x + 1); } catch (e) { toast.error((e as Error).message); } };
+  const resendAll = async () => { try { const r = await api<{ queued: number }>('/admin/notifications/resend-all', { body: {} }); toast.success(`${r.queued} notifikasi dikirim ulang.`); setN((x) => x + 1); } catch (e) { toast.error((e as Error).message); } };
   const cols: Column<any>[] = [
     { key: 'createdAt', header: 'Waktu', sort: 'createdAt', render: (n) => fmtDate(n.createdAt) },
     { key: 'channel', header: 'Kanal', sort: 'channel' },
     { key: 'target', header: 'Tujuan', className: 'text-xs' },
     { key: 'subject', header: 'Subjek' },
-    { key: 'status', header: 'Status', sort: 'status', render: (n) => <><Badge tone={sTone(n.status)}>{n.status}</Badge>{n.error && <div className="text-xs text-red-600">{n.error}</div>}</> },
+    { key: 'status', header: 'Status', sort: 'status', render: (n) => <><Badge tone={sTone(n.status)}>{sLabel[n.status] ?? n.status}</Badge>{n.error && <div className="text-xs text-red-600">{n.error}</div>}</> },
+    { key: 'act', header: '', render: (n) => (n.status === 'SENT' || n.status === 'PENDING' ? null : <button className="text-xs text-brand-700 hover:underline" onClick={() => resend(n.id)}>Kirim ulang</button>) },
   ];
-  return <DataTable<any> path="/admin/notifications" columns={cols} params={{ status }} defaultSort="createdAt" searchPlaceholder="Cari subjek / tujuan…"
-    filters={<select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['PENDING', 'SENT', 'FAILED', 'SKIPPED'].map((x) => <option key={x}>{x}</option>)}</select>} />;
+  return <DataTable<any> path="/admin/notifications" columns={cols} params={{ status, r: String(n) }} defaultSort="createdAt" searchPlaceholder="Cari subjek / tujuan…"
+    filters={<><button className="btn-ghost" onClick={resendAll}>Kirim ulang semua yang belum terkirim</button><select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['PENDING', 'SENT', 'NOT_SENT', 'FAILED', 'SKIPPED'].map((x) => <option key={x} value={x}>{sLabel[x]}</option>)}</select></>} />;
 }
 
 function Outbound() {
@@ -206,7 +212,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
     await api('/admin/settings/branding', { method: 'PUT', body: { companyName: f.companyName, tagline: f.tagline, subtitle: f.subtitle, loginText: f.loginText, colors: { primary: f.primary, accent: f.accent, charts: f.charts } } });
     await loadBranding(true); reload();
   }, 'Tampilan & brand disimpan — langsung berlaku');
-  const reset = () => { if (!window.confirm('Kembalikan teks dan warna ke bawaan panduan MAUNG by LIV? (Logo tidak dihapus)')) return; a.run(async () => { await api('/admin/settings/branding/reset', { body: {} }); await loadBranding(true); reload(); setTimeout(() => window.location.reload(), 600); }, 'Dikembalikan ke bawaan'); };
+  const reset = async () => { if (!(await confirmDialog('Kembalikan teks dan warna ke bawaan panduan MAUNG by LIV? (Logo tidak dihapus)'))) return; a.run(async () => { await api('/admin/settings/branding/reset', { body: {} }); await loadBranding(true); reload(); setTimeout(() => window.location.reload(), 600); }, 'Dikembalikan ke bawaan'); };
   return (
     <div className="card space-y-5">
       <div><h2 className="font-semibold">Tampilan & brand</h2><p className="text-sm text-slate-500">Logo, tagline, teks halaman login, dan warna. Dipakai di halaman login, top bar, dashboard, dan banner foto lapangan.</p></div>
@@ -215,6 +221,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
         <UploadBox title="Logo horizontal (latar gelap)" hint="Teks putih/terang, sebaiknya TANPA tagline (tagline tampil terpisah & bisa diganti). Dipakai di login dan banner foto. PNG/WEBP transparan ≤ 2 MB." url={b.logoUrl} dark variant="horizontal" onDone={reload} />
         <UploadBox title="Ikon / logo ringkas (top bar)" hint="Hanya lambang tanpa teks, mendekati persegi. Dipakai di top bar bersama nama brand. ≤ 1 MB. Contoh: docs/branding/logo-mark.png" url={b.logoMarkUrl} dark variant="mark" onDone={reload} />
         <UploadBox title="Logo tegak (latar terang)" hint="Untuk cetakan/dokumen latar putih. ≤ 2 MB." url={b.logoStackedUrl} variant="stacked" onDone={reload} />
+        <UploadBox title="Logo untuk foto GPS (logo perusahaan)" hint="Logo PT yang ditempel di banner foto lapangan (bersama koordinat GPS). Terpisah dari logo aplikasi; bila kosong dipakai logo horizontal. PNG/WEBP ≤ 2 MB." url={b.gpsLogoUrl} dark variant="gps" onDone={reload} />
         <UploadBox title="Gambar latar login (opsional)" hint="Foto lanskap/pegunungan. Diberi lapisan navy otomatis. JPG/WEBP ≤ 6 MB." url={b.loginBgUrl} dark variant="loginbg" onDone={reload} />
       </div>
 

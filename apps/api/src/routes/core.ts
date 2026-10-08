@@ -9,12 +9,12 @@ import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { authenticate, publicUser, requireRole, signToken } from '../auth';
 import { config } from '../config';
-import { connection } from '../queue';
+import { connection, requeueNotification } from '../queue';
 import { workflows } from '../workflows';
 import { getBranding, getTelegram } from '../settings';
 import { auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { transact } from '../effects';
-import { buildDashboard } from '../dashboard';
+import { buildDashboard, mineWhere } from '../dashboard';
 import { countIf, pageParams, sendPage } from '../paging';
 
 export const core = Router();
@@ -43,7 +43,7 @@ core.get('/search', async (req, res) => {
   if (q.length < 2) return void res.json({ customers: [], workOrders: [], assets: [] });
   const like = { contains: q, mode: 'insensitive' as const };
   const [customers, workOrders, assets] = await Promise.all([
-    prisma.customer.findMany({ where: { OR: [{ name: like }, { code: like }, { phone: { contains: q } }, { ip: { contains: q } }] }, select: { id: true, code: true, name: true, status: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    prisma.customer.findMany({ where: { archivedAt: null, OR: [{ name: like }, { code: like }, { phone: { contains: q } }, { ip: { contains: q } }] }, select: { id: true, code: true, name: true, status: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
     prisma.workOrder.findMany({ where: { OR: [{ number: like }, { title: like }] }, select: { id: true, number: true, title: true, status: true, type: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
     prisma.asset.findMany({ where: { OR: [{ serialNumber: like }, { assetCode: like }] }, select: { id: true, serialNumber: true, assetCode: true, status: true, item: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }),
   ]);
@@ -119,12 +119,14 @@ core.get('/customers', async (req, res) => {
   const q = req.query.q ? String(req.query.q).trim() : '';
   const status = req.query.status ? String(req.query.status).split(',') : undefined;
   const packageName = req.query.packageName ? String(req.query.packageName) : undefined;
+  const archivedView = req.query.archived === '1' && req.user!.role === 'ADMIN'; // Admin dapat melihat arsip
   const pp = pageParams(req, {
     sorts: { code: (d) => ({ code: d }), name: (d) => ({ name: d }), phone: (d) => ({ phone: d }), packageName: (d) => ({ packageName: d }), status: (d) => ({ status: d }), ip: (d) => ({ ip: d }), createdAt: (d) => ({ createdAt: d }) },
     defaultSort: { key: 'createdAt', dir: 'desc' },
     legacyLimit: 100,
   });
   const where = {
+    archivedAt: archivedView ? { not: null } : null,
     ...(status ? { status: { in: status as any } } : {}),
     ...(packageName ? { packageName } : {}),
     ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { code: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }, { ip: { contains: q } }] } : {}),
@@ -181,11 +183,16 @@ core.post('/uploads', upload.single('file'), async (req, res) => {
 /* ── kotak masuk notifikasi (lonceng) ── */
 core.get('/inbox/summary', async (req, res) => {
   const userId = req.user!.id;
-  const [items, unread] = await Promise.all([
+  const where = mineWhere(req.user!);
+  const [items, unread, taskTotal, taskRows] = await Promise.all([
     prisma.inbox.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.inbox.count({ where: { userId, readAt: null } }),
+    prisma.workOrder.count({ where }),
+    prisma.workOrder.findMany({ where, select: { id: true, number: true, type: true, status: true, title: true }, orderBy: { createdAt: 'asc' }, take: 5 }),
   ]);
-  res.json({ items, unread });
+  // "Butuh tindakan": WO yang menunggu divisi/orang ini (sama dengan tab "WO saya")
+  const tasks = { total: taskTotal, items: taskRows.map((w) => ({ ...w, statusLabel: (workflows as any)[w.type]?.statuses[w.status]?.label ?? w.status })) };
+  res.json({ items, unread, tasks });
 });
 core.get('/inbox', async (req, res) => {
   const userId = req.user!.id;
@@ -216,6 +223,20 @@ core.get('/admin/notifications', requireRole('ADMIN'), async (req, res) => {
   const where = { ...(status ? { status } : {}), ...(q ? { OR: [{ subject: { contains: q, mode: 'insensitive' as const } }, { target: { contains: q, mode: 'insensitive' as const } }] } : {}) };
   const [rows, total] = await Promise.all([prisma.notification.findMany({ where, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }), countIf(pp, () => prisma.notification.count({ where }))]);
   sendPage(res, pp, rows, total);
+});
+core.post('/admin/notifications/:id/resend', requireRole('ADMIN'), async (req, res) => {
+  const n = await prisma.notification.findUnique({ where: { id: String(req.params.id) } });
+  if (!n) throw new AppError(404, 'Notifikasi tidak ditemukan');
+  if (n.status === 'SENT') throw new AppError(400, 'Notifikasi sudah terkirim');
+  await prisma.notification.update({ where: { id: n.id }, data: { status: 'PENDING', error: null } });
+  await requeueNotification(n.id);
+  res.json({ ok: true });
+});
+core.post('/admin/notifications/resend-all', requireRole('ADMIN'), async (_req, res) => {
+  const rows = await prisma.notification.findMany({ where: { status: { in: ['NOT_SENT', 'FAILED'] } }, select: { id: true }, take: 500 });
+  await prisma.notification.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { status: 'PENDING', error: null } });
+  for (const r of rows) await requeueNotification(r.id);
+  res.json({ queued: rows.length });
 });
 core.get('/admin/outbound', requireRole('ADMIN'), async (_req, res) => {
   res.json(await prisma.outboundEvent.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }));

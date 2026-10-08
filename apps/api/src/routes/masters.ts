@@ -5,7 +5,7 @@ import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { CustomerStatus } from '../orm';
-import { AppError, prisma } from '../db';
+import { AppError, fieldError, prisma } from '../db';
 import { authenticate, requireRole } from '../auth';
 import { Effects, transact } from '../effects';
 import { nextNumber } from '../inventory';
@@ -43,12 +43,12 @@ const customerBody = z.object({
 
 async function assertNetworkFree(tx: Effects['tx'], d: { ip?: string | null; odp?: string | null; port?: string | null }, selfId?: string) {
   if (d.ip) {
-    const dup = await tx.customer.findFirst({ where: { ip: d.ip, id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' } } });
-    if (dup) throw new AppError(409, `IP ${d.ip} sudah dipakai ${dup.name}`);
+    const dup = await tx.customer.findFirst({ where: { ip: d.ip, id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' }, archivedAt: null } });
+    if (dup) throw fieldError('ip', `IP ${d.ip} sudah dipakai ${dup.name}`, 409);
   }
   if (d.odp && d.port) {
-    const dup = await tx.customer.findFirst({ where: { odp: d.odp, port: d.port, id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' } } });
-    if (dup) throw new AppError(409, `Port ${d.odp}/${d.port} sudah dipakai ${dup.name}`);
+    const dup = await tx.customer.findFirst({ where: { odp: d.odp, port: d.port, id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' }, archivedAt: null } });
+    if (dup) throw fieldError('port', `Port ${d.odp}/${d.port} sudah dipakai ${dup.name}`, 409);
   }
 }
 
@@ -57,7 +57,7 @@ masterRoutes.post('/customers', requireRole('MKT', 'NOC'), async (req, res) => {
   const who = whoOf(req);
   const c = await transact(async (fx) => {
     const code = b.code ?? (await nextNumber(fx.tx, 'CUST'));
-    if (await fx.tx.customer.findUnique({ where: { code } })) throw new AppError(409, `Kode pelanggan ${code} sudah ada`);
+    if (await fx.tx.customer.findUnique({ where: { code } })) throw fieldError('code', `Kode pelanggan ${code} sudah ada`, 409);
     await assertNetworkFree(fx.tx, b);
     if (b.warehouseId && !(await fx.tx.warehouse.findUnique({ where: { id: b.warehouseId } }))) throw new AppError(400, 'Gudang tidak valid');
     const row = await fx.tx.customer.create({ data: { ...b, code, activatedAt: b.activatedAt ?? (b.status === 'ACTIVE' ? new Date() : null) } as any });
@@ -76,20 +76,48 @@ masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res)
   if (!cur) throw new AppError(404, 'Pelanggan tidak ditemukan');
   const ch = changes(cur, b);
   const updated = await auditedUpdate(who, 'pelanggan', id, `${cur.code} ${cur.name}`, ch, async (fx) => {
-    if (b.code && b.code !== cur.code && (await fx.tx.customer.findUnique({ where: { code: b.code } }))) throw new AppError(409, `Kode ${b.code} sudah ada`);
+    if (b.code && b.code !== cur.code && (await fx.tx.customer.findUnique({ where: { code: b.code } }))) throw fieldError('code', `Kode ${b.code} sudah ada`, 409);
     await assertNetworkFree(fx.tx, { ip: b.ip === undefined ? undefined : b.ip, odp: b.odp ?? cur.odp, port: b.port ?? cur.port }, id);
     return fx.tx.customer.update({ where: { id }, data: b as any });
   });
   res.json(updated);
 });
 
+/**
+ * Hapus pelanggan:
+ *  - tanpa riwayat WO/aset → dihapus permanen;
+ *  - punya riwayat WO yang sudah selesai → DIARSIPKAN (hilang dari daftar & pencarian, riwayat tetap utuh; Admin dapat memulihkan);
+ *  - masih ada WO berjalan atau aset terpasang → ditolak dengan alasan jelas.
+ */
 masterRoutes.delete('/customers/:id', requireRole('MKT'), async (req, res) => {
   const id = String(req.params.id);
-  const c = await prisma.customer.findUnique({ where: { id }, include: { _count: { select: { workOrders: true, assets: true } } } });
+  const c = await prisma.customer.findUnique({ where: { id }, include: { _count: { select: { workOrders: true } } } });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
-  if (c._count.workOrders) throw new AppError(409, `Pelanggan punya ${c._count.workOrders} WO — tidak bisa dihapus (ubah statusnya jadi TERMINATED bila sudah berhenti)`);
-  if (c._count.assets) throw new AppError(409, 'Masih ada aset terpasang di pelanggan ini');
-  await auditedDelete(whoOf(req), 'pelanggan', id, `${c.code} ${c.name}`, c as any, (fx) => fx.tx.customer.delete({ where: { id } }));
+  const [openWos, installed] = await Promise.all([
+    prisma.workOrder.findMany({ where: { customerId: id, closedAt: null }, select: { number: true }, take: 5 }),
+    prisma.asset.count({ where: { customerId: id, status: 'INSTALLED' } }),
+  ]);
+  if (openWos.length) throw new AppError(409, `Masih ada WO berjalan (${openWos.map((w) => w.number).join(', ')}) — selesaikan atau batalkan dulu`);
+  if (installed) throw new AppError(409, `Masih ada ${installed} perangkat terpasang di pelanggan ini — tarik lewat WO Terminate dulu`);
+  const who = whoOf(req);
+  if (c._count.workOrders === 0) {
+    await auditedDelete(who, 'pelanggan', id, `${c.code} ${c.name}`, c as any, (fx) => fx.tx.customer.delete({ where: { id } }));
+    return void res.json({ ok: true, mode: 'deleted' });
+  }
+  if (c.archivedAt) throw new AppError(409, 'Pelanggan ini sudah diarsipkan');
+  await auditedDelete(who, 'pelanggan (diarsipkan)', id, `${c.code} ${c.name}`, { id, code: c.code, name: c.name, status: c.status, wo: c._count.workOrders }, (fx) => fx.tx.customer.update({ where: { id }, data: { archivedAt: new Date() } }));
+  res.json({ ok: true, mode: 'archived' });
+});
+
+masterRoutes.post('/customers/:id/restore', requireRole('ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const c = await prisma.customer.findUnique({ where: { id } });
+  if (!c || !c.archivedAt) throw new AppError(404, 'Pelanggan arsip tidak ditemukan');
+  const who = whoOf(req);
+  await transact(async (fx) => {
+    await fx.tx.customer.update({ where: { id }, data: { archivedAt: null } });
+    await writeAudit(fx, who, { action: 'UPDATE', entity: 'pelanggan', entityId: id, summary: `${who.name} memulihkan pelanggan ${c.code} ${c.name} dari arsip` });
+  });
   res.json({ ok: true });
 });
 
@@ -189,7 +217,7 @@ masterRoutes.get('/customers/import-template.xlsx', async (_req, res) => {
 masterRoutes.get('/customers/export.xlsx', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) => {
   const q = z.object({ q: z.string().optional(), status: z.string().optional() }).parse(req.query);
   const status = q.status ? q.status.split(',') : undefined;
-  const where = { ...(status ? { status: { in: status as CustomerStatus[] } } : {}), ...(q.q ? { OR: [{ name: { contains: q.q, mode: 'insensitive' as const } }, { code: { contains: q.q, mode: 'insensitive' as const } }, { phone: { contains: q.q } }, { ip: { contains: q.q } }] } : {}) };
+  const where = { archivedAt: null, ...(status ? { status: { in: status as CustomerStatus[] } } : {}), ...(q.q ? { OR: [{ name: { contains: q.q, mode: 'insensitive' as const } }, { code: { contains: q.q, mode: 'insensitive' as const } }, { phone: { contains: q.q } }, { ip: { contains: q.q } }] } : {}) };
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="pelanggan-${new Date().toISOString().slice(0, 10)}.xlsx"`);
   const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true });
@@ -296,7 +324,7 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
       if (creates.length) await tx.customer.createMany({ data: creates.map((p) => ({ ...p.data, activatedAt: p.data.activatedAt ?? null })) });
       for (const p of plan.filter((x) => x.id)) {
         const { code, activatedAt, ...rest } = p.data;
-        await tx.customer.update({ where: { id: p.id! }, data: { ...rest, ...(code ? { code } : {}), ...(activatedAt !== undefined ? { activatedAt } : {}) } });
+        await tx.customer.update({ where: { id: p.id! }, data: { ...rest, archivedAt: null, ...(code ? { code } : {}), ...(activatedAt !== undefined ? { activatedAt } : {}) } });
       }
       await writeAudit(fx, who, { action: 'IMPORT', entity: 'pelanggan', summary: `${who.name} impor Excel pelanggan: ${creates.length} baru, ${plan.length - creates.length} diperbarui, ${errors.length} baris dilewati (${req.file!.originalname})` });
     },

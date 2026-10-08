@@ -1,6 +1,7 @@
 'use client';
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { confirmDialog, toast } from '@/lib/dialog';
 import { QRCodeSVG } from 'qrcode.react';
 import { api, doDelete, fmtDate, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -19,14 +20,14 @@ function StockTab() {
   return (
     <>
       <select className="input mb-3 max-w-xs" value={wh} onChange={(e) => setWh(e.target.value)}>
-        <option value="">Semua gudang (termasuk mobile stock)</option>
+        <option value="">Semua gudang (termasuk stok berjalan)</option>
         {whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
       </select>
       <ErrorMsg>{error}</ErrorMsg>
       <Table head={['Gudang', 'Item', 'Kategori', 'Status', 'Qty']}>
         {data?.map((r, i) => (
           <tr key={i}>
-            <td className="td">{r.warehouse.name} <span className="text-xs text-slate-400">{r.warehouse.kind}</span></td>
+            <td className="td">{r.warehouse.name} <span className="text-xs text-slate-400">{KIND[r.warehouse.kind] ?? r.warehouse.kind}</span></td>
             <td className="td">{r.item.name}</td>
             <td className="td text-xs text-slate-500">{CAT[r.item.category]}</td>
             <td className="td"><Badge tone={ST_TONE[r.status]}>{r.status === 'QTY' ? 'Stok' : r.status}</Badge></td>
@@ -76,7 +77,7 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
       const p = new URLSearchParams({ idsOnly: '1', ...(q ? { q } : {}), ...(status ? { status } : {}), ...(category ? { category } : {}) });
       const r = await api<{ ids: string[]; capped: boolean }>(`/assets?${p}`);
       setSel(r.ids);
-      if (r.capped) window.alert('Dibatasi 5.000 aset pertama. Persempit filter untuk memilih sisanya.');
+      if (r.capped) toast.info('Dibatasi 5.000 aset pertama. Persempit filter untuk memilih sisanya.');
     } finally { setBusyAll(false); }
   };
   const cols: Column<any>[] = [
@@ -123,7 +124,7 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
           </select>
           {regItem && (
             <DynamicForm key={regItem} fields={regFields} submitLabel="Simpan & buat QR"
-              onSubmit={async (v) => { const r = await api<any[]>('/assets/register', { body: { itemId: regItem, ...v } }); setShowReg(false); await reload(); if (window.confirm(`${r.length} aset terdaftar. Cetak label QR sekarang (lembar A4)?`)) printSel(r.map((a) => a.id)); }} />
+              onSubmit={async (v) => { const r = await api<any[]>('/assets/register', { body: { itemId: regItem, ...v } }); setShowReg(false); await reload(); toast.success(`${r.length} aset terdaftar.`); if (await confirmDialog('Cetak label QR sekarang (lembar A4)?')) printSel(r.map((a) => a.id)); }} />
           )}
         </div>
       )}
@@ -181,7 +182,7 @@ function WarehousesTab({ canManage }: { canManage: boolean }) {
   const fields: Field[] = [
     { name: 'code', label: 'Kode', type: 'text', required: true },
     { name: 'name', label: 'Nama gudang', type: 'text', required: true },
-    { name: 'kind', label: 'Jenis', type: 'select', options: edit?.id ? ['MAIN', 'BRANCH', 'TRANSIT'] : ['MAIN', 'BRANCH', 'TRANSIT', 'MOBILE'], required: true },
+    { name: 'kind', label: 'Jenis', type: 'select', options: edit?.id ? ['MAIN', 'BRANCH', 'TRANSIT'] : ['MAIN', 'BRANCH', 'TRANSIT', 'MOBILE'], help: 'MOBILE = Stok berjalan (stok yang dibawa teknisi)', required: true },
     { name: 'address', label: 'Alamat', type: 'textarea' },
   ];
   return (
@@ -189,7 +190,7 @@ function WarehousesTab({ canManage }: { canManage: boolean }) {
       {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah gudang</button>}
       <Table head={['Kode', 'Nama', 'Jenis', 'Pemilik', 'Aktif', '']}>
         {data?.map((w) => (
-          <tr key={w.id}><td className="td font-mono">{w.code}</td><td className="td">{w.name}</td><td className="td"><Badge>{w.kind}</Badge></td><td className="td">{w.owner?.name ?? '-'}</td>
+          <tr key={w.id}><td className="td font-mono">{w.code}</td><td className="td">{w.name}</td><td className="td"><Badge>{KIND[w.kind] ?? w.kind}</Badge></td><td className="td">{w.owner?.name ?? '-'}</td>
             <td className="td">{canManage ? <button className="text-brand-700 hover:underline" onClick={async () => { await api(`/warehouses/${w.id}`, { method: 'PATCH', body: { active: !w.active } }); reload(); }}>{w.active ? 'Aktif' : 'Nonaktif'}</button> : w.active ? 'Ya' : 'Tidak'}</td>
             <td className="td whitespace-nowrap">{canManage && <>{w.kind !== 'MOBILE' && <LinkBtn onClick={() => setEdit(w)}>Edit</LinkBtn>}{w.kind !== 'MOBILE' && ' · '}<LinkBtn danger onClick={async () => { if (await doDelete(`/warehouses/${w.id}`, `gudang ${w.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
         ))}
@@ -299,6 +300,8 @@ function Inventory() {
     </>
   );
 }
+
+const KIND: Record<string, string> = { MAIN: 'Gudang utama', BRANCH: 'Cabang', TRANSIT: 'Transit', MOBILE: 'Stok berjalan' };
 
 export default function InventoryPage() {
   return <Suspense fallback={<p>Memuat…</p>}><Inventory /></Suspense>;

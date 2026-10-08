@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import { confirmDialog, toast } from './dialog';
 
 export const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
@@ -21,6 +22,11 @@ export const setToken = (t: string | null, remember = true) => {
   } catch { /* ignore */ }
 };
 
+/** Galat API; `fields` berisi pesan per-isian (untuk galat inline di form). */
+export class ApiError extends Error {
+  constructor(message: string, public fields?: Record<string, string>, public status?: number) { super(message); }
+}
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${API}/api${path}`, {
     method: opts.method ?? (opts.body !== undefined ? 'POST' : 'GET'),
@@ -32,7 +38,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     setToken(null);
     if (typeof window !== 'undefined') window.location.href = '/login';
   }
-  if (!res.ok) throw new Error(json.error ?? `Error ${res.status}`);
+  if (!res.ok) throw new ApiError(json.error ?? `Error ${res.status}`, json.fields, res.status);
   return json as T;
 }
 
@@ -74,8 +80,12 @@ export const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('i
 
 /** Hapus data (konfirmasi + notifikasi ke Admin di server). Mengembalikan true bila berhasil. */
 export async function doDelete(path: string, label: string): Promise<boolean> {
-  if (!window.confirm(`Hapus ${label}?\nTindakan ini tidak dapat dibatalkan dan akan dicatat serta diberitahukan ke Admin.`)) return false;
-  try { await api(path, { method: 'DELETE' }); return true; } catch (e) { window.alert((e as Error).message); return false; }
+  if (!(await confirmDialog(`Hapus ${label}?\nTindakan ini akan dicatat dan diberitahukan ke Admin.`, { danger: true }))) return false;
+  try {
+    const r = await api<{ mode?: string }>(path, { method: 'DELETE' });
+    toast.success(r?.mode === 'archived' ? `${label} diarsipkan (masih punya riwayat Work Order, jadi tidak dihapus permanen).` : `${label} dihapus.`);
+    return true;
+  } catch (e) { toast.error((e as Error).message); return false; }
 }
 
 /** Unduh file dari API (butuh header Authorization, jadi lewat fetch → blob). */

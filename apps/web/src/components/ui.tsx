@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { fileUrl } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { api, fileUrl } from '@/lib/api';
 import { Icon } from './icons';
 
 export function PageHeader({ title, sub, pretitle, children }: { title: string; sub?: string; pretitle?: string; children?: React.ReactNode }) {
@@ -98,11 +99,34 @@ export function Table({ head, children, empty }: { head: string[]; children: Rea
   );
 }
 
+/* Nama barang & gudang (id → nama) dimuat sekali dan dipakai bersama. */
+let nameCache: { items: Record<string, string>; wh: Record<string, string> } | null = null;
+let namePromise: Promise<void> | null = null;
+export function useNames() {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (nameCache) return;
+    namePromise ??= Promise.all([api<any[]>('/items'), api<any[]>('/warehouses')]).then(([i, w]) => {
+      nameCache = { items: Object.fromEntries(i.map((x) => [x.id, `${x.name}${x.sku ? ` (${x.sku})` : ''}`])), wh: Object.fromEntries(w.map((x) => [x.id, x.name])) };
+    }).catch(() => { namePromise = null; });
+    namePromise.then(() => bump((n) => n + 1));
+  }, []);
+  return nameCache;
+}
+
+const LABELS: Record<string, string> = {
+  itemId: 'Barang', warehouseId: 'Gudang', qty: 'Jumlah', serial: 'Nomor seri', serialsNew: 'SN terpasang', serialsOld: 'SN dilepas',
+  cableMeters: 'Kabel terpakai (m)', opmDbm: 'Redaman OPM (dBm)', note: 'Catatan', photos: 'Foto', materials: 'Material', result: 'Hasil',
+  odp: 'ODP', odpPort: 'Port ODP', port: 'Port', vlan: 'VLAN', ip: 'IP', lat: 'Lintang', lng: 'Bujur', accuracy: 'Akurasi (m)',
+};
+
 /** Render object data WO secara generik (foto otomatis jadi thumbnail). */
-export function DataView({ value, depth = 0 }: { value: any; depth?: number }) {
+export function DataView({ value, depth = 0, field }: { value: any; depth?: number; field?: string }) {
+  const names = useNames();
   if (value === null || value === undefined || value === '') return <span className="text-slate-400">-</span>;
   if (typeof value === 'string' && value.startsWith('/uploads/'))
     return <a href={fileUrl(value)} target="_blank" rel="noreferrer"><img src={fileUrl(value)} alt="" className="h-20 w-20 rounded-lg border object-cover" /></a>;
+  if (typeof value === 'string' && names && (field === 'itemId' || field === 'warehouseId')) return <span>{(field === 'itemId' ? names.items : names.wh)[value] ?? value}</span>;
   if (typeof value === 'boolean') return <span>{value ? 'Ya' : 'Tidak'}</span>;
   if (typeof value !== 'object') return <span>{/^\d{4}-\d\d-\d\dT/.test(String(value)) ? new Date(String(value)).toLocaleString('id-ID') : String(value)}</span>;
   if (Array.isArray(value)) {
@@ -114,8 +138,8 @@ export function DataView({ value, depth = 0 }: { value: any; depth?: number }) {
     <dl className={`grid gap-x-4 gap-y-1 ${depth ? 'text-sm' : ''}`} style={{ gridTemplateColumns: 'max-content 1fr' }}>
       {Object.entries(value).map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="text-xs text-slate-500">{k}</dt>
-          <dd><DataView value={v} depth={depth + 1} /></dd>
+          <dt className="text-xs text-slate-500">{LABELS[k] ?? k}</dt>
+          <dd><DataView value={v} depth={depth + 1} field={k} /></dd>
         </div>
       ))}
     </dl>

@@ -5,7 +5,7 @@ import { colorScale, cssVars, TINT } from './brandColors';
 
 export interface Branding {
   companyName: string; tagline: string; subtitle: string; loginText: string;
-  logoUrl: string | null; logoStackedUrl: string | null; logoMarkUrl: string | null; loginBgUrl: string | null;
+  logoUrl: string | null; logoStackedUrl: string | null; logoMarkUrl: string | null; loginBgUrl: string | null; gpsLogoUrl: string | null;
   colors: { primary: string; accent: string; charts: string[] };
   requireGps: boolean;
 }
@@ -14,7 +14,7 @@ export interface Branding {
 export const DEFAULT_BRAND: Branding = {
   companyName: 'MAUNG by LIV', tagline: 'Gerak Cepat, Kerja Tepat.', subtitle: 'Marketing • Asset • Unified Network & Governance',
   loginText: 'Satu Ekosistem.\nDampak Lebih Besar\nuntuk Jawa Barat dan Indonesia.',
-  logoUrl: null, logoStackedUrl: null, logoMarkUrl: null, loginBgUrl: null,
+  logoUrl: null, logoStackedUrl: null, logoMarkUrl: null, loginBgUrl: null, gpsLogoUrl: null,
   colors: { primary: '#0B1F3B', accent: '#F59E0B', charts: ['#2F5D9E', '#F59E0B', '#14B8A6', '#8B5CF6', '#F43F5E', '#0EA5E9'] },
   requireGps: true,
 };

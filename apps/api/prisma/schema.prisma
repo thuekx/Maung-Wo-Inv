@@ -100,12 +100,14 @@ model Customer {
   ip          String?
   activatedAt DateTime?
   createdAt   DateTime       @default(now())
+  archivedAt  DateTime? // diarsipkan (dihapus dari daftar tetapi riwayat WO tetap utuh); Admin dapat memulihkan
 
   warehouse  Warehouse?  @relation(fields: [warehouseId], references: [id])
   workOrders WorkOrder[]
   assets     Asset[]
 
   @@index([status])
+  @@index([archivedAt])
   @@index([createdAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_name_trgm")
   @@index([code(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_code_trgm")

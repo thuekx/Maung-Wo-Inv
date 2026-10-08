@@ -24,3 +24,8 @@ export async function enqueue(jobs: QueuedJob[]) {
     await q.add(j.queue, { id: j.id }, opts(j.id));
   }
 }
+
+/** Kirim ulang notifikasi: jobId unik agar tidak dianggap duplikat job lama. */
+export async function requeueNotification(id: string) {
+  await notificationQueue.add('notifications', { id }, { ...opts(`${id}-r${Date.now()}`) });
+}

@@ -60,7 +60,7 @@ export async function buildDashboard(user: Pick<User, 'id' | 'role'>) {
     prisma.stockLevel.groupBy({ by: ['itemId'], where: { warehouse: { kind: { not: 'MOBILE' } } }, _sum: { qty: true } }),
     prisma.asset.findMany({ where: { item: { category: 'GA' }, nextMaintenanceAt: { lte: new Date(now + 14 * DAY) } }, include: { item: true }, orderBy: { nextMaintenanceAt: 'asc' }, take: 20 }),
     prisma.asset.count({ where: { status: 'RETURNED_PENDING_QC' } }),
-    prisma.customer.groupBy({ by: ['status'], _count: true }),
+    prisma.customer.groupBy({ by: ['status'], where: { archivedAt: null }, _count: true }),
   ]);
 
   const byType: Record<string, number> = {};

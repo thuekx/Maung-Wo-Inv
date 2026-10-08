@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { WoType } from './orm';
-import { AppError } from './db';
+import { AppError, fieldError } from './db';
 import { config } from './config';
 import { AVAILABLE, installAvailability, mobileWarehouse, moveAsset, moveStock, mustAsset, nextNumber, normSn, qcAssets } from './inventory';
 import type { ActionDef, Ctx, Field, Workflow } from './wf-types';
@@ -33,7 +33,7 @@ async function setCustomer(ctx: Ctx, data: Record<string, any>) {
   await ctx.tx.customer.update({ where: { id: await customerOf(ctx) }, data });
 }
 
-/** Teknisi mengambil material dari gudang → Mobile Stock miliknya. */
+/** Teknisi mengambil material dari gudang → Stok Berjalan miliknya. */
 async function pickup(ctx: Ctx, input: unknown) {
   const i = z.object({ sourceWarehouseId: z.string().min(1), serials: sn.default([]), materials }).parse(input);
   const techId = ctx.wo.assigneeId ?? ctx.actor.id;
@@ -42,14 +42,14 @@ async function pickup(ctx: Ctx, input: unknown) {
     const a = await mustAsset(ctx.tx, s);
     if (a.warehouseId !== i.sourceWarehouseId || !AVAILABLE.includes(a.status))
       throw new AppError(409, `SN ${a.serialNumber} tidak tersedia di gudang sumber`);
-    await moveAsset(ctx.tx, a, { status: 'IN_STOCK', toWarehouseId: mob.id, reason: 'Ambil material ke mobile stock', woId: ctx.wo.id, actorId: ctx.actor.id });
+    await moveAsset(ctx.tx, a, { status: 'IN_STOCK', toWarehouseId: mob.id, reason: 'Ambil material ke stok berjalan', woId: ctx.wo.id, actorId: ctx.actor.id });
   }
   for (const m of i.materials)
-    await moveStock(ctx.tx, { itemId: m.itemId, qty: m.qty, from: i.sourceWarehouseId, to: mob.id, reason: 'Ambil material ke mobile stock', woId: ctx.wo.id, actorId: ctx.actor.id });
+    await moveStock(ctx.tx, { itemId: m.itemId, qty: m.qty, from: i.sourceWarehouseId, to: mob.id, reason: 'Ambil material ke stok berjalan', woId: ctx.wo.id, actorId: ctx.actor.id });
   ctx.data.pickup = { serials: i.serials, materials: i.materials, at: new Date() };
 }
 
-/** Pakai material habis pakai dari Mobile Stock (kabel dihitung per meter dari item SKU DROPCORE). */
+/** Pakai material habis pakai dari Stok Berjalan (kabel dihitung per meter dari item SKU DROPCORE). */
 async function consume(ctx: Ctx, cableMeters: number, lines: { itemId: string; qty: number }[]) {
   const mob = await mobileWarehouse(ctx.tx, ctx.wo.assigneeId ?? ctx.actor.id);
   const all = [...lines];
@@ -63,12 +63,12 @@ async function consume(ctx: Ctx, cableMeters: number, lines: { itemId: string; q
   return mob;
 }
 
-/** Perangkat ber-SN terpasang di pelanggan: harus ada di Mobile Stock teknisi. */
+/** Perangkat ber-SN terpasang di pelanggan: harus ada di Stok Berjalan teknisi. */
 async function installSerials(ctx: Ctx, serials: string[], mobId: string) {
   for (const s of serials) {
     const a = await mustAsset(ctx.tx, s);
     if (a.warehouseId !== mobId || !AVAILABLE.includes(a.status))
-      throw new AppError(409, `SN ${a.serialNumber} tidak ada di Mobile Stock teknisi — lakukan "Ambil material" dulu`);
+      throw new AppError(409, `SN ${a.serialNumber} tidak ada di Stok Berjalan teknisi — lakukan "Ambil material" dulu`);
     await moveAsset(ctx.tx, a, { status: 'INSTALLED', toWarehouseId: null, customerId: ctx.wo.customerId, reason: `Terpasang – ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
   }
 }
@@ -126,8 +126,8 @@ const newInstall: Workflow = {
     { name: 'phone', label: 'No. telepon / WA', type: 'text', required: true },
     { name: 'email', label: 'Email pelanggan', type: 'text' },
     { name: 'address', label: 'Alamat pemasangan', type: 'textarea', required: true },
-    { name: 'lat', label: 'Latitude (GPS)', type: 'number', required: true, help: 'contoh: -6.2088' },
-    { name: 'lng', label: 'Longitude (GPS)', type: 'number', required: true, help: 'contoh: 106.8456' },
+    { name: 'lat', label: 'Latitude (GPS)', type: 'number', help: 'Opsional. contoh: -6.2088' },
+    { name: 'lng', label: 'Longitude (GPS)', type: 'number', help: 'Opsional. contoh: 106.8456' },
     { name: 'packageName', label: 'Paket langganan', type: 'package', required: true },
     { name: 'warehouseId', label: 'Gudang / cabang terkait', type: 'warehouse', required: true },
     { name: 'notes', label: 'Catatan sales', type: 'textarea' },
@@ -140,8 +140,8 @@ const newInstall: Workflow = {
         phone: z.string().min(6),
         email: z.string().email().optional().or(z.literal('')),
         address: z.string().min(5),
-        lat: z.coerce.number().min(-90).max(90),
-        lng: z.coerce.number().min(-180).max(180),
+        lat: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().min(-90).max(90).optional()),
+        lng: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().min(-180).max(180).optional()),
         packageName: z.string().min(1),
         warehouseId: z.string().min(1),
         notes: optNote,
@@ -174,10 +174,10 @@ const newInstall: Workflow = {
           ],
           run: async (ctx, input) => {
             const i = z.object({ odp: z.string().min(1), port: z.string().min(1), vlan: z.string().min(1), ip: z.string().min(7), note: optNote }).parse(input);
-            const dup = await ctx.tx.customer.findFirst({ where: { ip: i.ip, id: { not: ctx.wo.customerId! }, status: { not: 'TERMINATED' } } });
-            if (dup) throw new AppError(409, `IP ${i.ip} sudah dipakai ${dup.name}`);
-            const portDup = await ctx.tx.customer.findFirst({ where: { odp: i.odp, port: i.port, id: { not: ctx.wo.customerId! }, status: { not: 'TERMINATED' } } });
-            if (portDup) throw new AppError(409, `Port ${i.odp}/${i.port} sudah dipakai ${portDup.name}`);
+            const dup = await ctx.tx.customer.findFirst({ where: { ip: i.ip, id: { not: ctx.wo.customerId! }, status: { not: 'TERMINATED' }, archivedAt: null } });
+            if (dup) throw fieldError('ip', `IP ${i.ip} sudah dipakai ${dup.name}`, 409);
+            const portDup = await ctx.tx.customer.findFirst({ where: { odp: i.odp, port: i.port, id: { not: ctx.wo.customerId! }, status: { not: 'TERMINATED' }, archivedAt: null } });
+            if (portDup) throw fieldError('port', `Port ${i.odp}/${i.port} sudah dipakai ${portDup.name}`, 409);
             await setCustomer(ctx, { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip });
             ctx.data.validation = { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip };
           },

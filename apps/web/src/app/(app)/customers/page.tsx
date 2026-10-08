@@ -1,4 +1,5 @@
 'use client';
+import { toast } from '@/lib/dialog';
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { API, api, download, getToken, useFetch } from '@/lib/api';
@@ -81,10 +82,12 @@ export default function Customers() {
   const [imp, setImp] = useState(false);
   const [err, setErr] = useState('');
   const [rk, setRk] = useState(0);
+  const [arch, setArch] = useState(false);
   const { data: pkgs } = useFetch<any[]>('/packages?all=1');
   const role = user?.role ?? '';
   const canEdit = ['ADMIN', 'MKT', 'NOC'].includes(role);
   const canExport = ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(role);
+  const restore = async (c: any) => { try { await api(`/customers/${c.id}/restore`, { body: {} }); toast.success(`${c.name} dipulihkan dari arsip.`); setRk((x) => x + 1); } catch (e) { toast.error((e as Error).message); } };
   const cols: Column<any>[] = [
     { key: 'code', header: 'Kode', sort: 'code', render: (c) => <Link className="font-medium text-brand-700 hover:underline" href={`/customers/${c.id}`}>{c.code}</Link> },
     { key: 'name', header: 'Nama', sort: 'name' },
@@ -92,6 +95,7 @@ export default function Customers() {
     { key: 'packageName', header: 'Paket', sort: 'packageName' },
     { key: 'ip', header: 'IP', sort: 'ip', className: 'font-mono text-xs', render: (c) => c.ip ?? '-' },
     { key: 'status', header: 'Status', sort: 'status', render: (c) => <Badge tone={custTone(c.status)}>{c.status}</Badge> },
+    ...(arch ? [{ key: 'act', header: '', render: (c: any) => <button className="text-xs text-brand-700 hover:underline" onClick={() => restore(c)}>Pulihkan</button> }] : []),
   ];
   const exportQs = new URLSearchParams({ ...(status ? { status } : {}) }).toString();
   return (
@@ -102,11 +106,12 @@ export default function Customers() {
         {canExport && <button className="btn-ghost" onClick={() => download(`/customers/export.xlsx${exportQs ? `?${exportQs}` : ''}`, 'pelanggan.xlsx').catch((e) => setErr(e.message))}>⬇ Ekspor Excel</button>}
       </PageHeader>
       <ErrorMsg>{err}</ErrorMsg>
-      <DataTable<any> path="/customers" columns={cols} params={{ status, packageName: pkg }} defaultSort="createdAt" refreshKey={rk}
+      <DataTable<any> path="/customers" columns={cols} params={{ status, packageName: pkg, archived: arch ? '1' : undefined }} defaultSort="createdAt" refreshKey={rk}
         searchPlaceholder="Cari nama / kode / telepon / IP…" empty="Belum ada pelanggan — tambah manual atau impor dari Excel"
         filters={<>
           <select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{CUSTOMER_STATUS.map((s) => <option key={s}>{s}</option>)}</select>
           <select className="input w-52" value={pkg} onChange={(e) => setPkg(e.target.value)} aria-label="Paket"><option value="">Semua paket</option>{pkgs?.map((p) => <option key={p.id}>{p.name}</option>)}</select>
+          {role === 'ADMIN' && <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={arch} onChange={(e) => setArch(e.target.checked)} /> Tampilkan arsip</label>}
         </>} />
       {add && (
         <Modal title="Tambah pelanggan (input manual)" onClose={() => setAdd(false)}>

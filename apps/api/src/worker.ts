@@ -14,8 +14,12 @@ new Worker(
     if (!n || n.status === 'SENT') return;
     try {
       const text = `${n.subject}\n\n${n.body}`;
-      if (n.channel === 'EMAIL') await sendEmail(n.target, n.subject, n.body);
-      else await sendTelegram(n.target, text);
+      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : await sendTelegram(n.target, text);
+      if (r === 'dry-run') {
+        const why = n.channel === 'EMAIL' ? 'SMTP belum dikonfigurasi (Admin → Integrasi)' : 'Token bot Telegram belum dikonfigurasi (Admin → Integrasi)';
+        await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
+        return;
+      }
       await prisma.notification.update({ where: { id: n.id }, data: { status: 'SENT', sentAt: new Date(), error: null } });
     } catch (e) {
       await prisma.notification.update({ where: { id: n.id }, data: { status: 'FAILED', error: String(e).slice(0, 500) } });

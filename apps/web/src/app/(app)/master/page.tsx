@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { api, doDelete, useFetch } from '@/lib/api';
+import { promptDialog, toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
@@ -40,8 +41,8 @@ function Packages({ canManage }: { canManage: boolean }) {
 
 function Brands({ canManage }: { canManage: boolean }) {
   const { data, error, reload } = useFetch<any[]>('/asset-brands');
-  const ask = async (label: string, def = '') => window.prompt(label, def)?.trim();
-  const call = async (fn: () => Promise<unknown>) => { try { await fn(); await reload(); } catch (e) { window.alert((e as Error).message); } };
+  const ask = async (label: string, def = '') => (await promptDialog(label, def))?.trim();
+  const call = async (fn: () => Promise<unknown>) => { try { await fn(); await reload(); } catch (e) { toast.error((e as Error).message); } };
   return (
     <>
       <p className="mb-3 text-sm text-slate-500">Pilihan <b>merk</b> dan <b>tipe/model</b> saat registrasi aset. Merk/tipe yang sudah dipakai aset tidak bisa dihapus.</p>

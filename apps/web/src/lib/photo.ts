@@ -81,7 +81,7 @@ export async function uploadPhoto(file: File, ctx: { woId?: string; label?: stri
   let fix: Fix | null = null;
   try { fix = await getFix(); } catch (e) { if (ctx.strict && branding.requireGps) throw e; }
   ctx.onStep?.('Menempel logo & koordinat…');
-  const blob = await stampPhoto(file, { company: branding.companyName, logoUrl: branding.logoUrl, fix, label: ctx.label });
+  const blob = await stampPhoto(file, { company: branding.companyName, logoUrl: branding.gpsLogoUrl || branding.logoUrl, fix, label: ctx.label });
   ctx.onStep?.('Mengunggah…');
   const fd = new FormData();
   fd.append('file', blob, 'foto.jpg');

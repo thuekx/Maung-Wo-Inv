@@ -98,6 +98,7 @@ export async function getBranding() {
     logoStackedUrl: (b.logoStackedUrl as string) || null, // tegak: untuk latar terang (kartu login)
     logoMarkUrl: (b.logoMarkUrl as string) || null, // ikon ringkas (tanpa teks): top bar
     loginBgUrl: (b.loginBgUrl as string) || null,
+    gpsLogoUrl: (b.gpsLogoUrl as string) || null, // logo perusahaan untuk banner foto GPS (terpisah dari logo aplikasi)
     colors: {
       primary: HEX.test(c.primary) ? c.primary : BRAND_DEFAULTS.colors.primary,
       accent: HEX.test(c.accent) ? c.accent : BRAND_DEFAULTS.colors.accent,

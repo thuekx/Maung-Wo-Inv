@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, doDelete, fmtDate, ROLE_LABEL, TYPE_LABEL, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
+import { toast } from '@/lib/dialog';
 import { Badge, DataView, ErrorMsg, Modal, PageHeader, statusTone } from '@/components/ui';
 import { fileUrl } from '@/lib/api';
 
@@ -65,7 +66,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
                   {current && (
                     <div className="rounded-lg border bg-slate-50 p-3">
                       <DynamicForm key={current.key} fields={current.fields} woId={wo.id} woNumber={wo.number} danger={current.danger} submitLabel={current.label}
-                        onSubmit={async (input) => { await api(`/work-orders/${wo.id}/actions/${current.key}`, { body: input }); setActive(null); await reload(); }} />
+                        onSubmit={async (input) => { await api(`/work-orders/${wo.id}/actions/${current.key}`, { body: input }); setActive(null); toast.success(`${current.label} berhasil.`); await reload(); }} />
                     </div>
                   )}
                 </>
@@ -79,7 +80,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
               <p className="mb-2 text-sm text-slate-500">Kirim foto progres (GPS + logo otomatis) tanpa mengubah tahap WO. NOC dan pembuat WO diberi tahu.</p>
               <DynamicForm key={`progress-${events.length}`} woId={wo.id} woNumber={wo.number} photoKind="PROGRESS" submitLabel="Kirim progres"
                 fields={[{ name: 'photos', label: 'Foto progres', type: 'photos', required: true }, { name: 'note', label: 'Catatan progres', type: 'textarea' }]}
-                onSubmit={async (v) => { await api(`/work-orders/${wo.id}/progress`, { body: v }); await reload(); }} />
+                onSubmit={async (v) => { await api(`/work-orders/${wo.id}/progress`, { body: v }); toast.success('Progres disimpan.'); await reload(); }} />
             </div>
           )}
 

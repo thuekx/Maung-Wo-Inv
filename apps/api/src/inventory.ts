@@ -97,7 +97,7 @@ export async function mobileWarehouse(tx: Tx, userId: string) {
   if (found) return found;
   const u = await tx.user.findUniqueOrThrow({ where: { id: userId } });
   return tx.warehouse.create({
-    data: { code: `MOB-${u.id.slice(-6).toUpperCase()}`, name: `Mobile Stock – ${u.name}`, kind: 'MOBILE', ownerId: userId },
+    data: { code: `MOB-${u.id.slice(-6).toUpperCase()}`, name: `Stok Berjalan – ${u.name}`, kind: 'MOBILE', ownerId: userId },
   });
 }
 

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { api, fileUrl, useFetch } from '@/lib/api';
+import { api, ApiError, fileUrl, useFetch } from '@/lib/api';
+import { promptDialog } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { uploadPhoto, useBranding } from '@/lib/photo';
 import { ErrorMsg } from './ui';
@@ -191,7 +192,7 @@ export function BrandModelInput({ value, onChange, canCreate }: { value: { brand
   const { data: brands } = useFetch<any[]>(`/asset-brands?${n}`);
   const models = brands?.find((b) => b.id === value.brandId)?.models ?? [];
   const add = async (kind: 'brand' | 'model') => {
-    const name = window.prompt(kind === 'brand' ? 'Nama merk baru (mis. Huawei, ZTE, Mikrotik):' : 'Nama tipe baru (mis. HG8145V5):');
+    const name = await promptDialog(kind === 'brand' ? 'Nama merk baru (mis. Huawei, ZTE, Mikrotik):' : 'Nama tipe baru (mis. HG8145V5):');
     if (!name?.trim()) return;
     setErr('');
     try {
@@ -235,6 +236,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
     return init;
   });
   const [err, setErr] = useState('');
+  const [fe, setFe] = useState<Record<string, string>>({});
   const { data: techs } = useFetch<any[]>(fields.some((f) => f.type === 'technician') ? '/users/lookup?role=FOC' : null);
   const { data: whs } = useFetch<any[]>(fields.some((f) => f.type === 'warehouse') ? '/warehouses' : null);
   const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
@@ -243,10 +245,17 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr('');
+    const miss: Record<string, string> = {};
     for (const f of fields) {
       const x = v[f.name];
       const empty = Array.isArray(x) ? x.length === 0 : f.type === 'bool' ? x !== true : x === '' || x == null;
-      if (f.required && empty) return setErr(`${f.label} wajib diisi`);
+      if (f.required && empty) miss[f.name] = `${f.label} wajib diisi`;
+    }
+    setFe(miss);
+    if (Object.keys(miss).length) {
+      setErr('Lengkapi isian yang ditandai merah.');
+      document.getElementById(`fld-${Object.keys(miss)[0]}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
     }
     const out: Record<string, any> = {};
     for (const f of fields) {
@@ -259,13 +268,20 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
       if (f.type === 'datetime') x = new Date(x).toISOString(); // zona waktu browser → UTC
       out[f.name] = x;
     }
-    try { await onSubmit(out); } catch (e) { setErr((e as Error).message); }
+    try { await onSubmit(out); } catch (e) {
+      const fields2 = (e as ApiError).fields ?? {};
+      const known = Object.fromEntries(Object.entries(fields2).filter(([k]) => fields.some((f) => f.name === k || (f.type === 'brandmodel' && (k === 'brandId' || k === 'modelId')))));
+      setFe(known);
+      setErr(Object.keys(known).length ? 'Periksa isian yang ditandai merah.' : (e as Error).message);
+      const first = Object.keys(known)[0];
+      if (first) document.getElementById(`fld-${first}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
   }
 
   return (
     <form onSubmit={submit} className="space-y-3">
       {fields.map((f) => (
-        <div key={f.name}>
+        <div key={f.name} id={`fld-${f.name}`} className={fe[f.name] ? 'rounded-lg ring-1 ring-red-400 ring-offset-4 ring-offset-transparent' : ''}>
           <label className="mb-1 block text-sm font-medium">{f.label}{f.required && <span className="text-red-500"> *</span>}</label>
           {f.type === 'textarea' ? <textarea className="input" rows={3} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />
             : f.type === 'select' ? (
@@ -297,6 +313,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
             : f.type === 'photos' ? <PhotosInput value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
             : f.type === 'qc' ? <QcInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
+          {fe[f.name] && <p className="mt-1 text-xs font-medium text-red-600" role="alert">{fe[f.name]}</p>}
           {f.help && <p className="mt-0.5 text-xs text-slate-500">{f.help}</p>}
         </div>
       ))}

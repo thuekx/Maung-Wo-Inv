@@ -35,6 +35,8 @@ async function photo(lat: number, lng: number, label: string, by = 'budi') {
   const name = `demo-photo-${String(photoN).padStart(3, '0')}.svg`;
   const hue = (photoN * 47) % 360;
   const stamp = new Date().toLocaleString('id-ID');
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  label = esc(label);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
 <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},55%,38%)"/><stop offset="1" stop-color="hsl(${(hue + 60) % 360},60%,22%)"/></linearGradient></defs>
 <rect width="960" height="720" fill="url(#g)"/>
