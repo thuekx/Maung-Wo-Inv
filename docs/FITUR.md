@@ -49,3 +49,9 @@ Dashboard: KPI merah, panel dengan rincian **per divisi penanggung jawab**, dan 
 
 ## 9. Master paket/jasa
 *Master Data → Paket / jasa* (MKT, NOC, Admin): tambah, ubah nama (ikut memperbarui pelanggan), urutan, nonaktifkan, hapus. Menjadi pilihan di WO Pasang Baru dan form pelanggan.
+
+## Notifikasi dalam aplikasi (lonceng)
+- Klik lonceng membuka **kotak notifikasi** (8 terbaru; yang belum dibaca bergaris emas dan tebal) — tidak langsung pindah halaman. Klik satu notifikasi untuk membuka WO terkait (otomatis ditandai dibaca). Hover lonceng menampilkan jumlah yang belum dibaca.
+- Tombol **Lihat semua notifikasi** membuka halaman `/notifications` (paginasi, cari, filter belum dibaca, "Tandai semua dibaca"). Tombol **WO saya** membuka daftar tugas Anda.
+- Setiap notifikasi tahap WO tersimpan per pengguna di tabel `Inbox` (terpisah dari email/Telegram; tetap muncul walau pengiriman gagal). Disegarkan tiap 60 detik dan saat tab kembali aktif; dibersihkan otomatis setelah 90 hari. Notifikasi sebelum fitur ini tidak ikut (hanya yang baru).
+- Pilihan tema di top bar kini tiga ikon yang langsung terlihat (terang / ikuti sistem / gelap) dengan tooltip saat hover dan sorotan pada pilihan aktif; di layar kecil menjadi satu tombol siklus.
