@@ -1,70 +1,108 @@
-# HANDOFF — Maung-Wo-Inv
+# HANDOFF — Maung-Wo-Inv (MAUNG by LIV · WO & Inventory ISP)
 
-Dokumen serah-terima agar pekerjaan bisa dilanjutkan di komputer/sesi mana pun.
+> Diperbarui di akhir sesi. **Satu-satunya sumber serah-terima**; dokumen rinci ada di `docs/`.
 
-## Status (2026-10-08)
-Kode lengkap tahap awal sudah ditulis, **belum pernah dijalankan, di-typecheck, atau diuji** (lingkungan pembuatnya tidak punya Node/Docker). Anggap ini "draft lengkap yang perlu di-debug", bukan "siap produksi".
-
-## Langkah pertama di komputer Anda
-```bash
-git clone https://github.com/thuekx/Maung-Wo-Inv.git && cd Maung-Wo-Inv
-cd apps/api && npm install && npm run typecheck   # perbaiki error tipe bila ada
-cd ../web && npm install && npm run typecheck
+## Kalimat pembuka untuk sesi baru (salin-tempel)
 ```
-Lalu jalankan penuh: `sudo bash scripts/install-server.sh` lalu `bash scripts/deploy.sh` — lihat README bagian 4. **Platform target: Ubuntu 24.04 LTS saja** (skrip Windows sudah dihapus). Skrip instalasi belum pernah dijalankan; uji di VM Ubuntu 24.04 bersih dulu (Node 24 untuk typecheck: `sudo INSTALL_NODE=1 bash scripts/install-server.sh` atau nvm, ada `.nvmrc`).
-Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC) jadwal/ambil material/lapor → noc aktivasi → mkt kirim BA) dengan login `*@l1v.local` / `Passw0rd!`. Perhatikan: SN demo ada di Gudang Pusat (`ONT-DEMO-0001…`); pelanggan di Cabang A sengaja kekurangan stok sehingga memicu WO Permintaan Barang otomatis.
+Lanjutkan proyek Maung-Wo-Inv (repo thuekx/Maung-Wo-Inv, branch main, sudah ter-clone di sesi ini).
+Baca dulu HANDOFF.md, lalu docs/RADIUS-API.md dan docs/BRANDING.md. Kerjakan backlog 36 butir di HANDOFF.md
+sesuai urutan batch di sana; jangan menambah fitur di luar daftar. Butir 29 (field/master dari API MSRadius)
+menunggu konfirmasi saya — tanyakan lebih dulu. Gunakan Bahasa Indonesia; identitas git thuekx <thuekx@kolu.web.id>
+tanpa trailer/atribusi Claude; uji sungguhan (API + browser) sebelum push; push ke main setiap batch selesai
+dan perbarui HANDOFF.md.
+```
 
-## Keputusan desain (jangan diubah tanpa alasan)
-- Stack: Next.js 16 + React 19.2, Node 24 LTS, Express 5 + TypeScript 5.9, Prisma 7 (adapter-pg, klien di `src/generated/prisma` format CJS), PostgreSQL 16, Redis 7 + BullMQ 5, Tailwind 3.
-- Upgrade Prisma 6→7 & Next 15→16 ditulis tanpa dijalankan: periksa `apps/api/src/orm.ts`, `db.ts`, `prisma.config.ts`, `schema.prisma` (generator `prisma-client`) bila build gagal. TypeScript sengaja ditahan di 5.9 (TS 7 = compiler native, belum diuji); Tailwind tetap v3 (v4 butuh migrasi config).
-- Semua alur = **satu mesin workflow data-driven** (`apps/api/src/workflows.ts` + `engine.ts`). Menambah/ubah tahap = edit definisi status/aksi; frontend merender form otomatis dari metadata (`GET /api/work-orders/meta`).
-- Efek samping (notifikasi email/Telegram, event ke billing) ditulis ke DB dalam transaksi yang sama (outbox), dikirim worker BullMQ setelah commit.
-- Stok kuantitas lewat `moveStock` (atomik, tidak boleh negatif); aset ber-SN lewat `moveAsset`. Setiap teknisi punya gudang `MOBILE`.
-- Cek stok pasang baru otomatis berdasar `Item.installDefaultQty` di gudang pelanggan; kurang → WO anak `STOCK_REQUEST`, induk lanjut sendiri saat anak selesai.
-- Finance hanya **pengingat** (Telegram + email) saat NOC aktivasi dan saat Marketing kirim BA; tidak ada event ke billing. Data keluar lewat Export API (`routes/export.ts`, `docs/API.md`).
-- Pengaturan Admin (SMTP, Telegram, logo PT, kebijakan GPS) disimpan di tabel `Setting` (rahasia AES-GCM, kunci dari `JWT_SECRET`), dibaca lewat `src/settings.ts` dengan cache 10 dtk; `.env` hanya fallback. Foto lapangan: watermark di browser (`web/src/lib/photo.ts`), metadata GPS di `Attachment`; progres lapangan `POST /work-orders/:id/progress`.
-- Data demo: `prisma/seed-demo.ts` (menjalankan engine asli; notifikasi demo di-set SKIPPED).
-- Tema terang/gelap/ikuti-sistem: `apps/web/src/lib/theme.tsx` (kelas `dark`, override di `globals.css`); grafik SVG tanpa library di `components/charts.tsx`.
+## 1. Ringkasan proyek
+Aplikasi Work Order + Inventori multi-gudang untuk ISP. Brand **MAUNG by LIV** ("Gerak Cepat, Kerja Tepat."). Repo privat `github.com/thuekx/Maung-Wo-Inv`, branch `main`. Pengguna berbahasa Indonesia; UI dan dokumen berbahasa Indonesia.
 
-## Peta file
-| Area | File |
+| | |
 |---|---|
-| Model data | `apps/api/prisma/schema.prisma`, seed `apps/api/prisma/seed.ts` |
-| Alur bisnis (6 workflow) | `apps/api/src/workflows.ts`, tipe `wf-types.ts` |
-| Mesin transisi, hak akses | `apps/api/src/engine.ts` |
-| Stok/aset/QC | `apps/api/src/inventory.ts`, `routes/inventory.ts` |
-| Notifikasi & outbox | `effects.ts`, `worker.ts`, `senders.ts`, `queue.ts` |
-| Integrasi billing & Telegram | `routes/integrations.ts` |
-| Form dinamis (scan SN, foto, QC) | `apps/web/src/components/DynamicForm.tsx` |
-| Halaman | `apps/web/src/app/(app)/*` |
+| Stack | Next.js 16 + React 19 + Tailwind 3 (web) · Node 24 + Express 5 + TypeScript 5.9 (api) · Prisma 7 (adapter-pg) · PostgreSQL 16 · Redis 7 + BullMQ · Docker Compose |
+| Staging pemilik | VirtualBox Ubuntu 24.04, 4 vCPU/6 GB, `http://172.24.12.23` (web :3000, api :4000), Docker sudah berjalan; **HTTP polos → GPS browser dan webhook Telegram belum bisa** (butuh HTTPS/Caddy) |
+| Deploy | `git fetch origin && git reset --hard origin/main && bash scripts/deploy.sh` (**satu baris dengan `&&`**). `DEMO=1` menambah data demo. Service `migrate` menjalankan `reconcile-migrations` lalu `prisma migrate deploy` |
+| Akun demo | `*@l1v.local` (admin, mkt, noc, budi, andi (FOC), ga, fin), kata sandi = `SEED_PASSWORD` di `.env` (bawaan `Passw0rd!`) |
+| Peran | `ADMIN, MKT, NOC, FOC, GA (GA+Procurement satu peran), FIN` (PROC sudah dihapus) |
+| Peringatan tooling | jangan `pkill -f <pola>` (membunuh shell sendiri) → pakai `fuser -k 3000/tcp`; `redis-server` harus hidup untuk API; Postgres lokal sering mati (`service postgresql start`); Playwright ada di `/opt/node-tools/node_modules/playwright-core` dengan `executablePath: '/opt/pw-browsers/chromium'`; skrip uji di `/tmp` **tidak persisten** |
 
-## Daftar pekerjaan berikutnya (prioritas)
-1. ~~Typecheck, migrasi Prisma, `migrate deploy`, lockfile + `npm ci`~~ — selesai (migrasi `20261008000000_init` diverifikasi terhadap Postgres 16). `next build` dan build API lolos. Masih perlu: uji stack Docker penuh di VM Ubuntu 24.04.
-2. Uji end-to-end ke-7 alur; tulis test (Vitest) untuk `engine`, `inventory` (stok tak boleh negatif), dan webhook billing.
-3. Hubungkan billing nyata: pemetaan `Customer.code` ↔ ID pelanggan billing (tambah `externalId`), isi `BILLING_*` di `.env`, sepakati format payload.
-4. Set bot Telegram (webhook) dan SMTP nyata; uji notifikasi tiap tahap.
-5. Reservasi stok untuk pasang baru bersamaan.
-6. Produksi: foto ke S3 + signed URL, token ke cookie httpOnly, backup Postgres, reverse proxy TLS.
-7. Opsional: laporan SLA/MTTR/stok, integrasi OLT/Mikrotik, peta teknisi.
+### Aturan kerja yang disepakati dengan pemilik
+- Semua commit atas nama **thuekx <thuekx@kolu.web.id>**, **tanpa** trailer Co-Authored-By/Claude dan tanpa kata "claude" di repo.
+- Uji sungguhan (typecheck API+web, API nyata, browser Playwright, data besar bila relevan) sebelum push; laporkan jujur apa yang belum teruji (Docker penuh tidak bisa dijalankan di sandbox).
+- Pemilik mereview kode dan mengirim "catatan minor" — tanggapi, perbaiki, push. Beri perintah update satu baris.
+- Keputusan desain besar/ambigu → tanyakan dulu (mis. butir 29). Migrasi: ikuti `docs/MIGRATIONS.md` (stempel UTC asli via `scripts/new-migration.sh`, migrasi yang sudah di-push tidak diubah).
+- Tidak ada API billing untuk Finance: Finance hanya **pengingat** Telegram/email. Foto lapangan: GPS + banner logo di browser.
 
-## Melanjutkan pekerjaan
-Buka folder repo di editor/asisten pengembangan Anda, lalu minta: *"Baca HANDOFF.md dan README.md, jalankan typecheck, lalu kerjakan butir 1 dan 2."* Kedua file itu cukup sebagai konteks.
+## 2. Apa yang sudah ada (jangan dibuat ulang)
+Dokumen: `README.md`, `docs/{API,BRANDING,DEMO,FITUR,MIGRATIONS,NOTIFIKASI,RADIUS-API,SCALE,UI-DESIGN}.md`.
+- **Alur WO** (satu mesin data-driven `apps/api/src/workflows.ts` + `engine.ts`): Pasang Baru, Trouble Ticket, Suspend, Unsuspend, Terminate (+penarikan aset/QC), Permintaan Barang/PO. Outbox notifikasi → BullMQ (`effects.ts`, `worker.ts`).
+- **Inventori**: gudang (termasuk MOBILE per teknisi), item (CONSUMABLE/NETWORK/GA), aset ber-SN, merk/tipe, QC, opname, PO + penerimaan, QR massal A4 (`/qr-print`).
+- **Admin**: user (edit, reset password satuan/massal, hapus), pengaturan SMTP/Telegram/branding (tabel `Setting`, rahasia terenkripsi), log notifikasi, log audit (edit/hapus tercatat; hapus oleh non-Admin memberi notif ke Admin).
+- **Pelanggan**: input manual, impor/ekspor Excel, master paket, paginasi server.
+- **Foto lapangan**: GPS + banner logo dibubuhkan di browser, galeri di WO, progres lapangan.
+- **UI**: tema MAUNG (navy/emas, Playfair+Inter self-host), top bar + sidebar ciut, pencarian global, lonceng + kotak masuk (`Inbox`, FK cascade ke User), tema terang/gelap/sistem di kanan atas, `DataTable` server-side, `Toast` belum ada.
+- **Skala**: paginasi/urut/cari di server, dashboard agregasi SQL (29 dtk → ±50 ms pada 100 rb pelanggan/300 rb WO), indeks trigram.
+- **Export API** baca-saja `/api/export/*` (`EXPORT_API_KEY`), `docs/API.md`.
+- Peta file penting: `apps/api/src/{workflows,engine,inventory,dashboard,paging,settings,audit,effects,worker}.ts`, `routes/{core,wo,inventory,masters,admin,export,integrations}.ts`, `prisma/{schema.prisma,seed.ts,seed-demo.ts,reconcile-migrations.ts}`; web: `apps/web/src/app/(app)/*`, `components/{DataTable,DynamicForm,ui,icons,SearchBox,NotificationBell,Tip}.tsx`, `lib/{api,auth,brand,theme,photo}.ts`.
 
-## Fitur tambahan (selesai)
-Sepuluh fitur tambahan sudah dikerjakan — lihat `docs/FITUR.md`: reset password satuan/massal, cetak QR massal A4, edit semua data master, GA+Procurement satu peran (migrasi `PROC`→`GA`), merk & tipe aset, impor/ekspor Excel pelanggan, dashboard WO > 7 hari, pelanggan manual, master paket/jasa, hapus per peran + notifikasi Admin + log audit.
-Penambahan berikutnya akan diinfokan oleh pemilik proyek; jangan menambah fitur di luar daftar tanpa konfirmasi.
+## 3. BACKLOG — 36 butir dari pemilik (belum dikerjakan kecuali ditandai)
+Status: ✅ selesai · ◑ sebagian · ☐ belum · ⛔ menunggu keputusan/berkas. Batch = urutan kerja yang disarankan (A→E).
 
-## Catatan teknis fitur tambahan
-- Jejak audit: `src/audit.ts` (`auditedUpdate`, `auditedDelete`, `writeAudit`), tabel `AuditLog`; hapus oleh non-Admin → notify ADMIN.
-- `routes/masters.ts`: pelanggan (manual/impor/ekspor, exceljs), paket, merk/tipe, reset password, hapus user, audit.
-- Peran `PROC` dihapus dari enum (migrasi `20261009000000_roles_masters_audit`); owner status workflow memakai `GA`.
-- Cetak QR: `web/src/app/qr-print/page.tsx` (di luar layout aplikasi; ukuran dalam mm).
+| # | Butir | Status | Catatan analisis / rencana |
+|---|---|---|---|
+| 1 | Alert modal → flash/toast | ☐ A | Buat `Toast` (provider + `useToast`), ganti `window.alert/confirm` (mis. `doDelete`, prompt merk) dengan toast + dialog konfirmasi kustom |
+| 2 | Error isian form inline di bawah field | ☐ A | Backend: ubah `ZodError` handler agar mengembalikan `{error, fields:{path:msg}}`; `DynamicForm` tampilkan per-field; `api()` lempar error ber-`fields` |
+| 3 | Lat/lng pelanggan tidak wajib | ☐ A | `NEW_INSTALL.createFields` + zod `lat/lng` → opsional; form pelanggan sudah opsional |
+| 4 | Customer ID dari API radius | ☐ E | `Customer.code` = `kode` MSRadius; WO Pasang Baru: pilih dari hasil sinkron atau ketik manual (butir 28). Butuh butir 35 |
+| 5 | PR (Purchase Request) → PO oleh sistem lain (Accurate) → PO diinput ulang dengan detail barang riil | ☐ D | Ganti alur `create_po`: PR di Maung; PO dicatat Procurement (nomor Accurate, vendor, baris barang riil ≠ pengajuan); lalu QC + penerimaan. Lihat butir 23/27 |
+| 6 | Superadmin bisa "act as" NOC/FOC/GA/MKT | ☐ B | ADMIN sudah lolos semua cek peran; "act as" = pemilih peran efektif di top bar (klaim `actAs` di JWT/sesi), menu & aksi mengikuti peran itu, jejak "Admin (sebagai NOC)" |
+| 7 | Sidebar: "Selamat datang, nama/role" | ◑ A | Profil kini di menu akun top bar; tambahkan sapaan di top bar/sidebar |
+| 8 | Pilihan terang/gelap/sistem di kanan atas | ✅ | selesai (segmented control + tooltip) |
+| 9 | Ikon notif kanan atas per peran + show all ke daftar tindakan | ◑ A | Lonceng + `Inbox` + `/notifications` ada; tambahkan bagian "Butuh tindakan (N)" per peran dan "Lihat semua" → daftar WO yang harus ditindak |
+| 10 | itemId/warehouseId tampil kode, bukan nama | ☐ A | Sumber: `DataView` pada "Detail & laporan" menampilkan JSON mentah. Perbaiki: resolver referensi di backend (`itemId`, `warehouseId`, `technicianId`, `serials` → nama) atau simpan nama saat transisi |
+| 11 | Sembunyikan menu & tab yang tak relevan per peran | ☐ B | Matriks izin tunggal (server + web); contoh FOC tidak melihat Inventori & Aset |
+| 12 | Teknisi punya riwayat permintaan barang | ☐ B | Halaman "Permintaan saya" (WO STOCK_REQUEST/PR milik pembuat + status + penerimaan/pengembalian) |
+| 13 | Galat XML `demo-photo-041.svg` (`&` tak di-escape) | ☐ A | Escape label di `seed-demo.ts` (`&amp;`); file di volume VM sudah rusak → skrip perbaikan sekali jalan (`&` → `&amp;` pada `uploads/demo-photo-*.svg`) |
+| 14 | Pratinjau BA Digital pelanggan | ☐ D | Halaman/preview BA (logo, data pelanggan, paket, tanggal, nomor BA) sebelum "Kirim BA"; cetak/PDF |
+| 15 | NOC tidak boleh tambah pelanggan, lihat inventori, master data | ☐ B | Bagian matriks izin (butir 11) |
+| 16 | Sub-role (manager/supervisor/staff); penjadwalan FOC hanya supervisor/manager | ☐ B | `User.subRole` (MANAGER/SUPERVISOR/STAFF); untuk sekarang hanya FOC yang dibedakan; peran lain tetap bisa diberi sub-role tapi fungsi sama |
+| 17 | FOC staff: hanya minta material + laporan survei/instalasi/troubleshooting; manager/supervisor semua | ☐ B | Hak aksi `schedule/start/…` per sub-role di definisi workflow (`ActionDef.subRoles`) |
+| 18 | Laporan instalasi: material habis pakai hanya yang diajukan di awal; rekonsiliasi sisa; belum dikembalikan/diterima GA tetap atas nama teknisi | ☐ C | Perlu daftar "material dibawa" per WO (dari pickup/permintaan); laporan membatasi pilihan; langkah pengembalian sisa diterima GA; selisih tercatat |
+| 19 | Celah pemakaian kabel tanpa catatan pengambilan | ☐ C | Hapus `cableMeters` hardcode DROPCORE; kabel = item master dengan atribut **jumlah core**; harus diminta di pengajuan/pickup; pemakaian hanya dari yang dibawa |
+| 20 | Input SN di kantor: peringatan jika teks belum "Tambah" | ☐ C | `SerialInput`: deteksi teks tertunda + pesan inline; info jika nilai sudah ditambahkan |
+| 21 | Hapus pelanggan: pesan muncul tapi data masih ada | ☐ A (selidiki) | Reproduksi dulu: kemungkinan daftar tidak segar, atau pelanggan berstatus TERMINATED/ber-WO (dihapus diblokir). Cek `DELETE /customers/:id`, cache `DataTable`, dan "penumpukan data" (arsip/sembunyikan TERMINATED?) |
+| 22 | Cegah IP sama pada VLAN sama; batasi isian IP & VLAN | ☐ C | Kebijakan: format IPv4, rentang VLAN valid, subnet per VLAN (master), unik `(ip, vlan)` aktif, bukan network/broadcast; perlu rencana VLAN/subnet pemilik |
+| 23 | Form Purchase Request sesuai PDF pengajuan + perbandingan harga vendor (master vendor) | ⛔ D | **Berkas PDF/gambar form PR tidak terlampir di sesi ini** → minta ulang. Perlu master Vendor, form PR, perbandingan ≥ 2–3 vendor, persetujuan |
+| 24 | Registrasi aset: perlu maintenance atau tidak (juga dari penerimaan PR); dashboard item jatuh tempo | ☐ C | `Asset.maintenanceRequired`, interval; dashboard "maintenance jatuh tempo" sudah ada untuk GA → perluas |
+| 25 | Kendaraan: nomor plat, nomor rangka, catatan | ☐ C | Atribut tambahan aset GA (plat, rangka, mesin, STNK/pajak) bila item bertipe kendaraan |
+| 26 | Riwayat: tampilkan nama + role + sub-role pelaku | ☐ A/B | `WoEvent` simpan snapshot `actorRole`, `actorSubRole`; tampilkan di timeline |
+| 27 | Permintaan pembelian hanya supervisor/manager + GA/Procurement | ☐ B/D | Izin aksi PR berdasarkan sub-role (butir 16) |
+| 28 | Pelanggan existing dari API; yang baru bisa kode manual + info "tarik data API" bila otomatis gagal | ☐ E | Form Pasang Baru: pilih dari hasil sinkron atau ketik kode; pesan inline + tombol tarik data |
+| 29 | Tentukan field/master dari API | ⛔ E | **Menunggu konfirmasi pemilik** — usulan di `docs/RADIUS-API.md` |
+| 30 | Tombol tarik data (MKT & Admin) + otomatis; IP dari API dipakai cek/isi saat NOC isi VLAN+IP | ☐ E | Cron BullMQ + tombol; `SyncRun`; upsert by `kode`; lihat rancangan di `docs/RADIUS-API.md` |
+| 31 | ODP/port diisi NOC tetapi FOC boleh ubah di lapangan (cek duplikat); IP & VLAN tetap | ☐ C | Aksi/field FOC di laporan instalasi; validasi unik ODP+port |
+| 32 | Log notifikasi: jangan "SENT" bila belum diset; status Failed/Not sent + alasan + tombol kirim ulang | ☐ A | Sekarang dry-run mencatat SENT. Ubah: `NOT_SENT` (alasan "SMTP/Telegram belum diatur"), tombol kirim ulang (endpoint + antre ulang) |
+| 33 | "Stock mobile" → "Stok berjalan" | ☐ A | Ganti label di UI & dokumen (kode `MOBILE` boleh tetap) |
+| 34 | Logo GPS (banner foto) terpisah dari logo aplikasi | ☐ A | Varian branding baru `gpsLogoUrl` (logo perusahaan); `photo.ts` memakainya; fallback logo horizontal |
+| 35 | Admin: menu token API + form lain | ☐ E | Kartu "Integrasi MSRadius" di Admin → Pengaturan (URL, token terenkripsi, sakelar auto-sync, interval, uji koneksi, riwayat) |
+| 36 | Daftar data/fitur Maung vs data API yang bisa dipakai | ✅ | `docs/RADIUS-API.md` (menunggu persetujuan butir 29) |
 
-## Tahap 2 (skala data) — selesai
-Lihat `docs/SCALE.md`. Kontrak list API: `?page&pageSize&sort&dir&q` → `{rows,total,page,pageSize,pageCount}` (helper `src/paging.ts`); dashboard `src/dashboard.ts`; komponen web `components/DataTable.tsx`. Berikutnya **Tahap 1 (tampilan)** mengikuti `docs/BRANDING.md` (MAUNG by LIV: navy/emas, Playfair Display + Inter; logo, tagline, dan teks login harus dapat diubah Admin).
+### Urutan batch yang disarankan
+- **A (cepat, UX/infra)**: 1, 2, 3, 7, 9, 10, 13, 21, 26(sebagian), 32, 33, 34.
+- **B (peran & izin)**: 16 → 17, 6, 11, 15, 12, 27(sebagian), 26. *Sub-role dulu karena menjadi dasar izin.*
+- **C (logika lapangan & aset)**: 19 → 18, 20, 22, 31, 24, 25.
+- **D (pengadaan)**: 23, 5, 27, 14 — butuh berkas form PR dan keputusan master Vendor.
+- **E (integrasi MSRadius)**: 35 → 29 (konfirmasi) → 30 → 4/28.
 
-## Tahap 1 (tampilan) — selesai
-Lihat `docs/UI-DESIGN.md`. Token warna: `lib/brandColors.ts` + variabel CSS `--brand-*`/`--accent-*` (default di `globals.css`, ditimpa `lib/brand.ts` dari `/api/branding`). Layout: `(app)/layout.tsx`; komponen: `components/ui.tsx`, `icons.tsx`, `SearchBox.tsx`, `DataTable.tsx`. Kunci browser kini `maung_*` (nilai lama `l1v_*` dimigrasi otomatis). Pencarian global: `GET /api/search`.
+## 4. Pertanyaan terbuka untuk pemilik
+1. **Butir 29**: setujui pemetaan di `docs/RADIUS-API.md` (Customer ← `databilling/data`; Master Paket ← `databilling/profile` tanpa harga modal/komisi; NAS/Area opsional; voucher & report tidak dipakai)? Apakah `name` di API nama orang atau username PPPoE? Apakah ID pelanggan = `kode`?
+2. **Butir 23**: kirim ulang PDF/gambar form Purchase Request (tidak ada di sesi ini); berapa vendor minimal untuk perbandingan; siapa yang menyetujui PR?
+3. **Butir 22**: rencana VLAN/subnet (daftar VLAN yang boleh, subnet per VLAN) agar validasi tidak menebak.
+4. **Butir 35**: API MSRadius **HTTP polos** — apakah server bisa menjangkaunya lewat VPN/allowlist, atau bisa dimintakan HTTPS?
+5. **Butir 21**: langkah persis saat hapus pelanggan yang datanya "masih ada" (halaman/akun/status).
+6. **Butir 16/17**: siapa yang menetapkan sub-role (Admin saja?) dan apakah sub-role perlu tampil di label akun.
 
-## Migrasi
-Aturan penamaan/perubahan migrasi: `docs/MIGRATIONS.md` (stempel waktu asli via `scripts/new-migration.sh`; migrasi yang sudah di-push tidak diubah; pengecualian satu kali ditangani `reconcile-migrations.ts`). `Inbox.userId` kini punya FK + cascade ke `User`.
+## 5. Catatan teknis & risiko
+- Migrasi terakhir: `20261008175910_inbox_user_fk`. Tabel yang menyimpan id user tanpa FK sengaja: `AuditLog`, `Notification`, `Attachment.uploadedBy`, `StockMovement.actorId`.
+- `seed-demo` hanya sekali (penanda `Setting.demoSeed`); foto demo SVG di volume `uploads` (butir 13).
+- Logo yang diberikan pemilik memuat tagline di gambar; ada slot ikon ringkas untuk top bar (`docs/branding/logo-mark.png`).
+- Kunci browser memakai `maung_*` (nilai `l1v_*` dimigrasi otomatis).
+- Docker penuh tidak dapat dijalankan di sandbox: selalu sebutkan itu dan minta pemilik menguji di VM.
