@@ -1,35 +1,122 @@
 'use client';
 import { useState } from 'react';
-import { API, api, fileUrl, fmtDate, getToken, ROLE_LABEL, useFetch } from '@/lib/api';
+import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, useFetch } from '@/lib/api';
 import { loadBranding } from '@/lib/photo';
 import { useAuth } from '@/lib/auth';
-import { DynamicForm } from '@/components/DynamicForm';
-import { Badge, ErrorMsg, PageHeader, Table, Tabs } from '@/components/ui';
+import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
+import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
+
+function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string }[]; onClose: () => void }) {
+  const csv = () => {
+    const body = 'nama,email,password_sementara\n' + list.map((u) => `"${u.name}",${u.email},${u.password ?? ''}`).join('\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([body], { type: 'text/csv' })); a.download = 'password-sementara.csv'; a.click();
+  };
+  const hasPw = list.some((u) => u.password);
+  return (
+    <Modal title="Password berhasil direset" onClose={onClose} wide>
+      <div className="space-y-3 text-sm">
+        {hasPw ? <p className="rounded-lg bg-amber-100 px-3 py-2 text-amber-800">Catat/unduh sekarang — password acak <b>hanya ditampilkan sekali</b> dan tidak dapat dilihat lagi.</p> : <p>Password disetel sama untuk semua user yang dipilih.</p>}
+        <Table head={['Nama', 'Email', 'Password sementara']}>
+          {list.map((u) => <tr key={u.email}><td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td font-mono">{u.password ?? '(sesuai yang Anda isi)'}</td></tr>)}
+        </Table>
+        <div className="flex gap-2">{hasPw && <button className="btn-ghost" onClick={csv}>⬇ Unduh CSV</button>}<button className="btn" onClick={onClose}>Selesai</button></div>
+      </div>
+    </Modal>
+  );
+}
+
+const userFields: FormField[] = [
+  { name: 'name', label: 'Nama', type: 'text', required: true },
+  { name: 'email', label: 'Email', type: 'text', required: true },
+  { name: 'role', label: 'Divisi', type: 'select', required: true, options: Object.keys(ROLE_LABEL) },
+  { name: 'telegramChatId', label: 'Telegram chat ID (opsional)', type: 'text' },
+];
 
 function Users() {
   const { data, reload } = useFetch<any[]>('/users');
   const [show, setShow] = useState(false);
+  const [edit, setEdit] = useState<any>(null);
+  const [pw, setPw] = useState<any>(null); // {ids}
+  const [result, setResult] = useState<any[] | null>(null);
+  const [sel, setSel] = useState<string[]>([]);
+  const [opt, setOpt] = useState({ mode: 'random', password: '', mustChange: true, notify: true, sendPassword: false });
+  const [err, setErr] = useState('');
+  const users = data?.filter((u) => u.email !== 'system@l1v.local') ?? [];
+  const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  const doReset = async () => {
+    setErr('');
+    try {
+      const body = { password: opt.mode === 'same' ? opt.password : undefined, mustChange: opt.mustChange, notify: opt.notify, sendPassword: opt.sendPassword };
+      if (opt.mode === 'same' && opt.password.length < 8) return setErr('Password minimal 8 karakter');
+      const r = pw.ids.length === 1 ? { users: [await api(`/users/${pw.ids[0]}/reset-password`, { body })] } : await api('/users/bulk-password', { body: { ...body, userIds: pw.ids } });
+      setResult(r.users.map((u: any) => ({ ...u, password: u.password ?? (opt.mode === 'same' ? opt.password : undefined) }))); setPw(null); setSel([]); reload();
+    } catch (e) { setErr((e as Error).message); }
+  };
+
   return (
     <>
-      <button className="btn mb-3" onClick={() => setShow(!show)}>+ Tambah user</button>
-      {show && (
-        <div className="card mb-4 max-w-lg">
-          <DynamicForm submitLabel="Buat user" onSubmit={async (v) => { await api('/users', { body: v }); setShow(false); await reload(); }}
-            fields={[
-              { name: 'name', label: 'Nama', type: 'text', required: true },
-              { name: 'email', label: 'Email', type: 'text', required: true },
-              { name: 'role', label: 'Divisi', type: 'select', required: true, options: Object.keys(ROLE_LABEL) },
-              { name: 'password', label: 'Password awal (min 8)', type: 'password', required: true },
-              { name: 'telegramChatId', label: 'Telegram chat ID (opsional — atau user menautkan sendiri via /link)', type: 'text' },
-            ]} />
-        </div>
-      )}
-      <Table head={['Nama', 'Email', 'Divisi', 'Telegram', 'Aktif']}>
-        {data?.filter((u) => u.email !== 'system@l1v.local').map((u) => (
+      <div className="mb-3 flex flex-wrap gap-2">
+        <button className="btn" onClick={() => setShow(true)}>+ Tambah user</button>
+        <button className="btn-ghost" disabled={!sel.length} onClick={() => { setErr(''); setPw({ ids: sel }); }}>🔑 Reset password terpilih ({sel.length})</button>
+      </div>
+      <Table head={['', 'Nama', 'Email', 'Divisi', 'Telegram', 'Status', '']}>
+        {users.map((u) => (
           <tr key={u.id}>
-            <td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td"><Badge>{ROLE_LABEL[u.role]}</Badge></td>
+            <td className="td"><input type="checkbox" checked={sel.includes(u.id)} onChange={() => toggle(u.id)} aria-label={`pilih ${u.name}`} /></td>
+            <td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td"><Badge>{ROLE_LABEL[u.role] ?? u.role}</Badge></td>
             <td className="td">{u.telegramChatId ? '✓ terhubung' : '-'}</td>
-            <td className="td"><button className="text-brand-700 hover:underline" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button></td>
+            <td className="td"><button className="text-brand-700 hover:underline" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).catch((e) => alert(e.message)); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button>{u.mustChangePassword && <div><Badge tone="amber">wajib ganti password</Badge></div>}</td>
+            <td className="td whitespace-nowrap"><LinkBtn onClick={() => setEdit(u)}>Edit</LinkBtn> · <LinkBtn onClick={() => { setErr(''); setPw({ ids: [u.id] }); }}>Reset PW</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/users/${u.id}`, `user ${u.email}`)) reload(); }}>Hapus</LinkBtn></td>
+          </tr>
+        ))}
+      </Table>
+      {show && (
+        <Modal title="Tambah user" onClose={() => setShow(false)}>
+          <DynamicForm submitLabel="Buat user" onSubmit={async (v) => { await api('/users', { body: v }); setShow(false); await reload(); }} fields={[...userFields.slice(0, 3), { name: 'password', label: 'Password awal (min 8)', type: 'password', required: true }, userFields[3]]} />
+        </Modal>
+      )}
+      {edit && (
+        <Modal title={`Edit user ${edit.email}`} onClose={() => setEdit(null)}>
+          <DynamicForm fields={userFields} initial={edit} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/users/${edit.id}`, { method: 'PATCH', body: v }); setEdit(null); await reload(); }} />
+        </Modal>
+      )}
+      {pw && (
+        <Modal title={pw.ids.length === 1 ? 'Reset password user' : `Reset password ${pw.ids.length} user`} onClose={() => setPw(null)}>
+          <div className="space-y-3 text-sm">
+            <label className="flex items-center gap-2"><input type="radio" checked={opt.mode === 'random'} onChange={() => setOpt({ ...opt, mode: 'random' })} /> Buat password acak per user (ditampilkan sekali ke Anda)</label>
+            <label className="flex items-center gap-2"><input type="radio" checked={opt.mode === 'same'} onChange={() => setOpt({ ...opt, mode: 'same' })} /> Satu password yang sama:</label>
+            {opt.mode === 'same' && <input className="input" type="text" placeholder="min 8 karakter" value={opt.password} onChange={(e) => setOpt({ ...opt, password: e.target.value })} />}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={opt.mustChange} onChange={(e) => setOpt({ ...opt, mustChange: e.target.checked })} /> Wajib ganti password saat login berikutnya</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={opt.notify} onChange={(e) => setOpt({ ...opt, notify: e.target.checked })} /> Kirim notifikasi ke user (email + Telegram)</label>
+            {opt.notify && <label className="ml-6 flex items-center gap-2"><input type="checkbox" checked={opt.sendPassword} onChange={(e) => setOpt({ ...opt, sendPassword: e.target.checked })} /> Sertakan password sementara di pesan <span className="text-xs text-amber-700">(kurang aman — email/chat dapat tersimpan)</span></label>}
+            <ErrorMsg>{err}</ErrorMsg>
+            <button className="btn" onClick={doReset}>Reset sekarang</button>
+          </div>
+        </Modal>
+      )}
+      {result && <PwResult list={result} onClose={() => setResult(null)} />}
+    </>
+  );
+}
+
+function AuditLog() {
+  const [entity, setEntity] = useState('');
+  const { data, error } = useFetch<any[]>(`/admin/audit${entity ? `?entity=${encodeURIComponent(entity)}` : ''}`);
+  const tone = (a: string): any => (a === 'DELETE' ? 'red' : a === 'UPDATE' ? 'amber' : a === 'PASSWORD_RESET' ? 'violet' : a === 'IMPORT' ? 'blue' : 'green');
+  return (
+    <>
+      <select className="input mb-3 w-52" value={entity} onChange={(e) => setEntity(e.target.value)}>
+        <option value="">Semua data</option>{['pelanggan', 'user', 'item', 'gudang', 'aset', 'paket', 'merk', 'tipe', 'PO', 'WO'].map((x) => <option key={x}>{x}</option>)}
+      </select>
+      <ErrorMsg>{error}</ErrorMsg>
+      <Table head={['Waktu', 'Aksi', 'Ringkasan', 'Data sebelumnya']} empty="Belum ada catatan">
+        {data?.map((a) => (
+          <tr key={a.id}>
+            <td className="td whitespace-nowrap">{fmtDate(a.createdAt)}</td>
+            <td className="td"><Badge tone={tone(a.action)}>{a.action}</Badge></td>
+            <td className="td">{a.summary}</td>
+            <td className="td max-w-xs truncate font-mono text-xs text-slate-500" title={a.before ? JSON.stringify(a.before) : ''}>{a.before ? JSON.stringify(a.before) : '-'}</td>
           </tr>
         ))}
       </Table>
@@ -210,10 +297,11 @@ export default function Admin() {
   return (
     <>
       <PageHeader title="Admin" sub="User, pengaturan (logo PT, SMTP, Telegram), dan log notifikasi" />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'users', label: 'User' }, { key: 'settings', label: 'Pengaturan' }, { key: 'notif', label: 'Log notifikasi' }, { key: 'out', label: 'Event ke Billing' }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'users', label: 'User' }, { key: 'settings', label: 'Pengaturan' }, { key: 'notif', label: 'Log notifikasi' }, { key: 'audit', label: 'Log audit' }, { key: 'out', label: 'Event ke Billing' }]} />
       {tab === 'users' && <Users />}
       {tab === 'settings' && <Settings />}
       {tab === 'notif' && <Notifs />}
+      {tab === 'audit' && <AuditLog />}
       {tab === 'out' && <Outbound />}
     </>
   );

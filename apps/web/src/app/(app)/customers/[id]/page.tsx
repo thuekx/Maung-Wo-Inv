@@ -1,17 +1,29 @@
 'use client';
-import { use } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
-import { fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
-import { Badge, custTone, ErrorMsg, PageHeader, Table } from '@/components/ui';
+import { useRouter } from 'next/navigation';
+import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { DynamicForm } from '@/components/DynamicForm';
+import { Badge, custTone, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
+import { customerFields } from '../page';
 
 export default function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: c, error } = useFetch<any>(`/customers/${id}`);
+  const { data: c, error, reload } = useFetch<any>(`/customers/${id}`);
+  const { user } = useAuth();
+  const router = useRouter();
+  const [edit, setEdit] = useState(false);
+  const role = user?.role ?? '';
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!c) return <p className="text-slate-500">Memuat…</p>;
   return (
     <div className="space-y-4">
-      <PageHeader title={`${c.name}`} sub={c.code}><Badge tone={custTone(c.status)}>{c.status}</Badge></PageHeader>
+      <PageHeader title={`${c.name}`} sub={c.code}>
+        <Badge tone={custTone(c.status)}>{c.status}</Badge>
+        {['ADMIN', 'MKT', 'NOC'].includes(role) && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}
+        {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/customers/${c.id}`, `pelanggan ${c.name}`)) router.replace('/customers'); }}>🗑 Hapus</button>}
+      </PageHeader>
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card space-y-1 text-sm">
           <div>📞 {c.phone}{c.email && ` · ${c.email}`}</div>
@@ -45,6 +57,11 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           ))}
         </Table>
       </section>
+      {edit && (
+        <Modal title={`Edit pelanggan ${c.code}`} onClose={() => setEdit(false)}>
+          <DynamicForm fields={customerFields(['ADMIN', 'NOC'].includes(role), true)} initial={c} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/customers/${c.id}`, { method: 'PATCH', body: v }); setEdit(false); await reload(); }} />
+        </Modal>
+      )}
     </div>
   );
 }

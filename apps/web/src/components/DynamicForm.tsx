@@ -185,19 +185,59 @@ function CustomerSelect({ value, onChange, statuses }: { value: string; onChange
   );
 }
 
+export function BrandModelInput({ value, onChange, canCreate }: { value: { brandId?: string; modelId?: string }; onChange: (v: { brandId?: string; modelId?: string }) => void; canCreate?: boolean }) {
+  const [n, setN] = useState(0);
+  const [err, setErr] = useState('');
+  const { data: brands } = useFetch<any[]>(`/asset-brands?${n}`);
+  const models = brands?.find((b) => b.id === value.brandId)?.models ?? [];
+  const add = async (kind: 'brand' | 'model') => {
+    const name = window.prompt(kind === 'brand' ? 'Nama merk baru (mis. Huawei, ZTE, Mikrotik):' : 'Nama tipe baru (mis. HG8145V5):');
+    if (!name?.trim()) return;
+    setErr('');
+    try {
+      if (kind === 'brand') { const b = await api('/asset-brands', { body: { name } }); onChange({ brandId: b.id }); }
+      else { const m = await api(`/asset-brands/${value.brandId}/models`, { body: { name } }); onChange({ brandId: value.brandId, modelId: m.id }); }
+      setN((x) => x + 1);
+    } catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <select className="input" value={value.brandId ?? ''} onChange={(e) => onChange({ brandId: e.target.value || undefined })}>
+          <option value="">— merk (opsional) —</option>
+          {brands?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        {canCreate && <button type="button" className="btn-ghost shrink-0" onClick={() => add('brand')}>+ Merk</button>}
+      </div>
+      <div className="flex gap-2">
+        <select className="input" value={value.modelId ?? ''} disabled={!value.brandId} onChange={(e) => onChange({ brandId: value.brandId, modelId: e.target.value || undefined })}>
+          <option value="">— tipe / model (opsional) —</option>
+          {models.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        {canCreate && <button type="button" className="btn-ghost shrink-0" disabled={!value.brandId} onClick={() => add('model')}>+ Tipe</button>}
+      </div>
+      <ErrorMsg>{err}</ErrorMsg>
+    </div>
+  );
+}
+
 /* ───────── form dinamis ───────── */
 
-export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, woId, woNumber, photoKind, busy }: {
+export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, woId, woNumber, photoKind, busy, initial, sendEmpty }: {
   fields: Field[]; onSubmit: (values: Record<string, any>) => void | Promise<void>; submitLabel?: string; danger?: boolean; woId?: string; woNumber?: string; photoKind?: 'REPORT' | 'PROGRESS'; busy?: boolean;
+  /** nilai awal (mode edit) */ initial?: Record<string, any>;
+  /** kolom yang dikosongkan dikirim sebagai null (mode edit) */ sendEmpty?: boolean;
 }) {
+  const { user } = useAuth();
   const [v, setV] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
-    for (const f of fields) init[f.name] = ['serials', 'photos', 'materials', 'qc'].includes(f.type) ? [] : f.type === 'bool' ? false : '';
+    for (const f of fields) init[f.name] = initial && initial[f.name] !== undefined && initial[f.name] !== null ? (f.type === 'datetime' ? String(initial[f.name]).slice(0, 16) : initial[f.name]) : f.type === 'brandmodel' ? {} : ['serials', 'photos', 'materials', 'qc'].includes(f.type) ? [] : f.type === 'bool' ? false : '';
     return init;
   });
   const [err, setErr] = useState('');
   const { data: techs } = useFetch<any[]>(fields.some((f) => f.type === 'technician') ? '/users/lookup?role=FOC' : null);
   const { data: whs } = useFetch<any[]>(fields.some((f) => f.type === 'warehouse') ? '/warehouses' : null);
+  const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
   const set = (name: string, val: any) => setV((p) => ({ ...p, [name]: val }));
 
   async function submit(e: React.FormEvent) {
@@ -213,6 +253,8 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
       let x = v[f.name];
       if (f.type === 'materials') x = x.filter((m: any) => m.itemId && Number(m.qty) > 0).map((m: any) => ({ itemId: m.itemId, qty: Number(m.qty) }));
       if (f.type === 'qc') x = x.map((r: any) => ({ ...r, warehouseId: r.warehouseId || undefined, note: r.note || undefined }));
+      if (f.type === 'brandmodel') { out.brandId = x?.brandId; out.modelId = x?.modelId; continue; }
+      if ((x === '' || x == null) && sendEmpty && !['serials', 'photos', 'materials', 'qc'].includes(f.type)) { out[f.name] = null; continue; }
       if (x === '' || x == null) continue;
       if (f.type === 'datetime') x = new Date(x).toISOString(); // zona waktu browser → UTC
       out[f.name] = x;
@@ -242,6 +284,13 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
                 <option value="">— pilih gudang —</option>
                 {whs?.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.kind})</option>)}
               </select>)
+            : f.type === 'package' ? (
+              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+                <option value="">— pilih paket —</option>
+                {v[f.name] && !pkgs?.some((p) => p.name === v[f.name]) && <option>{v[f.name]}</option>}
+                {pkgs?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>)
+            : f.type === 'brandmodel' ? <BrandModelInput value={v[f.name] ?? {}} onChange={(x) => set(f.name, x)} canCreate={user?.role === 'GA' || user?.role === 'ADMIN'} />
             : f.type === 'customer' ? <CustomerSelect value={v[f.name]} onChange={(x) => set(f.name, x)} statuses={f.customerStatus} />
             : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} />

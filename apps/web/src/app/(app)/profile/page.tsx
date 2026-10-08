@@ -12,6 +12,7 @@ export default function Profile() {
   if (!user) return null;
   return (
     <div className="max-w-xl space-y-4">
+      {user.mustChangePassword && <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">⚠ Password Anda diatur ulang oleh Admin. Ganti password di bawah sebelum melanjutkan.</p>}
       <PageHeader title="Profil" sub={`${user.email} · ${ROLE_LABEL[user.role]}`} />
       <div className="card space-y-2">
         <h2 className="font-semibold">Notifikasi Telegram {user.telegramLinked && <span className="text-sm font-normal text-green-700">✓ terhubung</span>}</h2>
@@ -26,7 +27,7 @@ export default function Profile() {
       </div>
       <div className="card">
         <h2 className="mb-2 font-semibold">Ganti password</h2>
-        <DynamicForm submitLabel="Ganti password" onSubmit={async (v) => { await api('/auth/change-password', { body: { current: v.current, next: v.next } }); setMsg('Password diganti.'); }}
+        <DynamicForm submitLabel="Ganti password" onSubmit={async (v) => { await api('/auth/change-password', { body: { current: v.current, next: v.next } }); setMsg('Password diganti.'); if (user.mustChangePassword) window.location.href = '/'; }}
           fields={[{ name: 'current', label: 'Password lama', type: 'password', required: true }, { name: 'next', label: 'Password baru (min 8)', type: 'password', required: true }]} />
         {msg && <p className="mt-2 text-sm text-green-700">{msg}</p>}
       </div>

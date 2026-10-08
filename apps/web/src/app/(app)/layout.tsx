@@ -13,7 +13,8 @@ const NAV = [
   { href: '/work-orders', label: 'Work Order', icon: '✎' },
   { href: '/customers', label: 'Pelanggan', icon: '☺' },
   { href: '/inventory', label: 'Inventori & Aset', icon: '▤' },
-  { href: '/purchase-orders', label: 'Purchase Order', icon: '⛟', roles: ['ADMIN', 'PROC', 'GA', 'FIN'] },
+  { href: '/purchase-orders', label: 'Purchase Order', icon: '⛟', roles: ['ADMIN', 'GA', 'FIN'] },
+  { href: '/master', label: 'Master Data', icon: '☰', roles: ['ADMIN', 'MKT', 'NOC', 'GA'] },
   { href: '/admin', label: 'Admin', icon: '⚙', roles: ['ADMIN'] },
 ];
 
@@ -26,6 +27,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => { if (ready && !user) router.replace('/login'); }, [ready, user, router]);
   useEffect(() => setOpen(false), [path]);
+  // password baru dari Admin: wajib diganti dulu
+  useEffect(() => { if (user?.mustChangePassword && path !== '/profile') router.replace('/profile'); }, [user, path, router]);
   if (!ready || !user) return <div className="p-8 text-slate-500">Memuat…</div>;
 
   const nav = NAV.filter((n) => !n.roles || n.roles.includes(user.role));

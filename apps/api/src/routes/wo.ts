@@ -5,6 +5,8 @@ import { authenticate } from '../auth';
 import { transact } from '../effects';
 import { allowedActions, applyAction, bindPhotos, createWorkOrder } from '../engine';
 import { config } from '../config';
+import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
+import { requireRole } from '../auth';
 import { workflowMeta, workflows } from '../workflows';
 
 export const woRoutes = Router();
@@ -14,13 +16,14 @@ woRoutes.get('/work-orders/meta', (_req, res) => res.json(workflowMeta()));
 
 woRoutes.get('/work-orders', async (req, res) => {
   const q = z
-    .object({ type: z.string().optional(), status: z.string().optional(), scope: z.enum(['open', 'closed', 'all', 'mine']).default('open'), q: z.string().optional(), customerId: z.string().optional() })
+    .object({ type: z.string().optional(), status: z.string().optional(), scope: z.enum(['open', 'closed', 'all', 'mine']).default('open'), q: z.string().optional(), customerId: z.string().optional(), olderThanDays: z.coerce.number().int().min(1).optional() })
     .parse(req.query);
   const rows = await prisma.workOrder.findMany({
     where: {
       ...(q.type ? { type: q.type as any } : {}),
       ...(q.status ? { status: q.status } : {}),
       ...(q.customerId ? { customerId: q.customerId } : {}),
+      ...(q.olderThanDays ? { createdAt: { lt: new Date(Date.now() - q.olderThanDays * 86400_000) } } : {}),
       ...(q.scope === 'open' || q.scope === 'mine' ? { closedAt: null } : q.scope === 'closed' ? { closedAt: { not: null } } : {}),
       ...(q.q ? { OR: [{ number: { contains: q.q, mode: 'insensitive' } }, { title: { contains: q.q, mode: 'insensitive' } }, { customer: { name: { contains: q.q, mode: 'insensitive' } } }] } : {}),
     },
@@ -106,6 +109,35 @@ woRoutes.post('/work-orders/:id/progress', async (req, res) => {
       subject: `[${wo.number}] Update progres lapangan`,
       body: `${u.name} mengirim ${b.photos.length} foto progres (GPS) untuk ${wo.title}.${b.note ? `\nCatatan: ${b.note}` : ''}\n${config.webUrl}/work-orders/${wo.id}`,
     });
+  });
+  res.json({ ok: true });
+});
+
+/** Edit ringan WO terbuka (judul & catatan) oleh pembuatnya atau Admin. Perubahan tahap tetap lewat aksi workflow. */
+woRoutes.patch('/work-orders/:id', async (req, res) => {
+  const id = String(req.params.id);
+  const b = z.object({ title: z.string().trim().min(3).max(150), notes: z.string().trim().max(1000) }).partial().parse(req.body);
+  const wo = await prisma.workOrder.findUnique({ where: { id } });
+  if (!wo) throw new AppError(404, 'WO tidak ditemukan');
+  const u = req.user!;
+  if (wo.closedAt) throw new AppError(409, 'WO sudah selesai/dibatalkan');
+  if (u.role !== 'ADMIN' && wo.createdById !== u.id) throw new AppError(403, 'Hanya pembuat WO / Admin yang dapat mengubah');
+  const patch: Record<string, unknown> = { ...(b.title ? { title: b.title } : {}) };
+  const data = { ...(wo.data as object), ...(b.notes !== undefined ? { notes: b.notes } : {}) };
+  const ch = changes({ title: wo.title, notes: (wo.data as any)?.notes ?? null }, { title: b.title, notes: b.notes });
+  await auditedUpdate(whoOf(req), 'WO', id, wo.number, ch, (fx) => fx.tx.workOrder.update({ where: { id }, data: { ...patch, ...(b.notes !== undefined ? { data } : {}) } as any }));
+  res.json({ ok: true });
+});
+
+/** Hapus WO (khusus Admin; notifikasi/audit tercatat). Pelanggan/stok TIDAK dikembalikan otomatis. */
+woRoutes.delete('/work-orders/:id', requireRole('ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
+  const wo = await prisma.workOrder.findUnique({ where: { id }, include: { children: { select: { number: true } }, purchase: { select: { number: true } } } });
+  if (!wo) throw new AppError(404, 'WO tidak ditemukan');
+  if (wo.children.length || wo.purchase.length) throw new AppError(409, `WO punya turunan (${[...wo.children, ...wo.purchase].map((x) => x.number).join(', ')}) — hapus/batalkan turunannya dulu`);
+  await auditedDelete(whoOf(req), 'WO', id, `${wo.number} ${wo.title}`, { id, number: wo.number, type: wo.type, status: wo.status, title: wo.title }, async (fx) => {
+    await fx.tx.attachment.deleteMany({ where: { woId: id } });
+    await fx.tx.workOrder.delete({ where: { id } });
   });
   res.json({ ok: true });
 });

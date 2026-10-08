@@ -1,9 +1,11 @@
 'use client';
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { api, fmtDate, ROLE_LABEL, TYPE_LABEL, useFetch } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { api, doDelete, fmtDate, ROLE_LABEL, TYPE_LABEL, useFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
-import { Badge, DataView, ErrorMsg, PageHeader, statusTone } from '@/components/ui';
+import { Badge, DataView, ErrorMsg, Modal, PageHeader, statusTone } from '@/components/ui';
 import { fileUrl } from '@/lib/api';
 
 export default function WoDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -11,6 +13,9 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
   const { data: wo, error, reload } = useFetch<any>(`/work-orders/${id}`);
   const { data: meta } = useFetch<any[]>('/work-orders/meta');
   const [active, setActive] = useState<string | null>(null);
+  const [editWo, setEditWo] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
 
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!wo || !meta) return <p className="text-slate-500">Memuat…</p>;
@@ -31,6 +36,8 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
     <div className="space-y-4">
       <PageHeader title={`${wo.number} · ${wo.title}`} sub={`${TYPE_LABEL[wo.type]} · dibuat ${fmtDate(wo.createdAt)} oleh ${createdBy.name}${wo.source === 'BILLING' ? ' (otomatis dari Billing)' : ''}`}>
         <Badge tone={statusTone(wo.final, wo.status)}>{wo.statusLabel}</Badge>
+        {!wo.closedAt && (user?.role === 'ADMIN' || wo.createdById === user?.id) && <button className="btn-ghost" onClick={() => setEditWo(true)}>✎ Edit</button>}
+        {user?.role === 'ADMIN' && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/work-orders/${wo.id}`, `WO ${wo.number}`)) router.replace('/work-orders'); }}>🗑 Hapus</button>}
       </PageHeader>
 
       {wf && (
@@ -145,6 +152,12 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
           )}
         </div>
       </div>
+      {editWo && (
+        <Modal title={`Edit ${wo.number}`} onClose={() => setEditWo(false)}>
+          <p className="mb-2 text-xs text-slate-500">Hanya judul dan catatan. Perubahan tahap dilakukan lewat tombol Tindakan.</p>
+          <DynamicForm fields={[{ name: 'title', label: 'Judul WO', type: 'text', required: true }, { name: 'notes', label: 'Catatan', type: 'textarea' }]} initial={{ title: wo.title, notes: (data as any)?.notes }} submitLabel="Simpan" onSubmit={async (v) => { await api(`/work-orders/${wo.id}`, { method: 'PATCH', body: v }); setEditWo(false); await reload(); }} />
+        </Modal>
+      )}
     </div>
   );
 }

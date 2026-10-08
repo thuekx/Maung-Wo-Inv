@@ -15,7 +15,7 @@ import { sendTelegram, telegramApi } from '../senders';
 export const adminRoutes = Router();
 adminRoutes.use('/admin/settings', requireRole('ADMIN'));
 
-const ROLES = ['ADMIN', 'MKT', 'NOC', 'FOC', 'PROC', 'GA', 'FIN'] as const;
+const ROLES = ['ADMIN', 'MKT', 'NOC', 'FOC', 'GA', 'FIN'] as const;
 const hint = (s: string) => (s ? `••••${s.slice(-4)}` : '');
 
 async function overview() {

@@ -20,9 +20,9 @@ body { @apply bg-slate-50 text-slate-800 antialiased; background-image: radial-g
 
 
 @media print {
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; left: 0; top: 0; }
+  body:not(.free-print) * { visibility: hidden; }
+  body:not(.free-print) .print-area, body:not(.free-print) .print-area * { visibility: visible; }
+  body:not(.free-print) .print-area { position: absolute; left: 0; top: 0; }
 }
 
 /* ── Tema gelap: dipetakan dari utilitas terang yang dipakai di seluruh halaman ── */

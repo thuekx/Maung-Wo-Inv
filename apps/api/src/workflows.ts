@@ -128,7 +128,7 @@ const newInstall: Workflow = {
     { name: 'address', label: 'Alamat pemasangan', type: 'textarea', required: true },
     { name: 'lat', label: 'Latitude (GPS)', type: 'number', required: true, help: 'contoh: -6.2088' },
     { name: 'lng', label: 'Longitude (GPS)', type: 'number', required: true, help: 'contoh: 106.8456' },
-    { name: 'packageName', label: 'Paket langganan', type: 'select', required: true, options: PACKAGES },
+    { name: 'packageName', label: 'Paket langganan', type: 'package', required: true },
     { name: 'warehouseId', label: 'Gudang / cabang terkait', type: 'warehouse', required: true },
     { name: 'notes', label: 'Catatan sales', type: 'textarea' },
   ],
@@ -149,6 +149,7 @@ const newInstall: Workflow = {
       .parse(input);
     const wh = await tx.warehouse.findFirst({ where: { id: i.warehouseId, kind: { not: 'MOBILE' }, active: true } });
     if (!wh) throw new AppError(400, 'Gudang tidak valid');
+    if (!(await tx.package.findFirst({ where: { name: i.packageName, active: true } }))) throw new AppError(400, `Paket "${i.packageName}" tidak ada di Master Paket / sudah nonaktif`);
     const customer = await tx.customer.create({
       data: { code: await nextNumber(tx, 'CUST'), name: i.name, phone: i.phone, email: i.email || null, address: i.address, lat: i.lat, lng: i.lng, packageName: i.packageName, warehouseId: wh.id },
     });
@@ -186,7 +187,7 @@ const newInstall: Workflow = {
     },
     STOCK_CHECK: {
       label: 'Cek Stok (otomatis)',
-      owner: 'PROC',
+      owner: 'GA',
       actions: [],
       onEnter: async (ctx) => {
         const wh = ctx.wo.customer?.warehouseId;
@@ -203,11 +204,11 @@ const newInstall: Workflow = {
       },
     },
     STOCK_PENDING: {
-      label: 'Menunggu Stok (PROC)',
-      owner: 'PROC',
+      label: 'Menunggu Stok (GA/Procurement)',
+      owner: 'GA',
       actions: [
-        { key: 'recheck', label: 'Cek ulang stok', roles: ['PROC', 'GA'], to: 'STOCK_CHECK', fields: [] },
-        { key: 'force_ready', label: 'Lanjutkan tanpa cek (override)', roles: ['PROC'], to: 'READY_TO_SCHEDULE', fields: [note(true)] },
+        { key: 'recheck', label: 'Cek ulang stok', roles: ['GA'], to: 'STOCK_CHECK', fields: [] },
+        { key: 'force_ready', label: 'Lanjutkan tanpa cek (override)', roles: ['GA'], to: 'READY_TO_SCHEDULE', fields: [note(true)] },
       ],
     },
     READY_TO_SCHEDULE: { label: 'Siap Dijadwalkan (FOC)', owner: 'FOC', actions: [scheduleAction('schedule', 'Jadwalkan teknisi', 'SCHEDULED')] },
@@ -606,7 +607,7 @@ const terminate: Workflow = {
         {
           key: 'qc',
           label: 'Simpan hasil QC',
-          roles: ['GA', 'PROC'],
+          roles: ['GA'],
           to: 'FIN_CLOSE',
           fields: [{ name: 'results', label: 'Hasil QC per perangkat', type: 'qc', required: true }],
           run: async (ctx, input) => {
@@ -650,8 +651,8 @@ const stockRequest: Workflow = {
   type: 'STOCK_REQUEST',
   prefix: 'WO-SR',
   label: 'Permintaan Barang',
-  description: 'FOC/NOC/GA meminta barang → PROC mutasi antar-gudang atau terbitkan PO → penerimaan & barcoding.',
-  createRoles: ['FOC', 'NOC', 'GA', 'PROC'],
+  description: 'FOC/NOC/GA meminta barang → GA/Procurement mutasi antar-gudang atau terbitkan PO → penerimaan & barcoding.',
+  createRoles: ['FOC', 'NOC', 'GA'],
   createFields: [
     { name: 'toWarehouseId', label: 'Gudang tujuan', type: 'warehouse', required: true },
     { name: 'lines', label: 'Barang yang diminta', type: 'materials', required: true },
@@ -666,13 +667,13 @@ const stockRequest: Workflow = {
   },
   statuses: {
     PROC_REVIEW: {
-      label: 'Review Procurement',
-      owner: 'PROC',
+      label: 'Review GA/Procurement',
+      owner: 'GA',
       actions: [
         {
           key: 'transfer',
           label: 'Stok ada di gudang lain → mutasi',
-          roles: ['PROC'],
+          roles: ['GA'],
           to: 'AWAITING_RECEIPT',
           fields: [
             { name: 'fromWarehouseId', label: 'Gudang asal', type: 'warehouse', required: true },
@@ -706,7 +707,7 @@ const stockRequest: Workflow = {
         {
           key: 'create_po',
           label: 'Stok habis → terbitkan PO ke vendor',
-          roles: ['PROC'],
+          roles: ['GA'],
           to: 'PO_ISSUED',
           fields: [{ name: 'vendor', label: 'Vendor', type: 'text', required: true }, note()],
           run: async (ctx, input) => {
@@ -731,14 +732,14 @@ const stockRequest: Workflow = {
     AWAITING_RECEIPT: {
       label: 'Barang Dikirim – Menunggu Penerimaan',
       owner: 'GA',
-      actions: [{ key: 'receive', label: 'Barang diterima', roles: ['FOC', 'NOC', 'GA', 'PROC'], to: 'CLOSED', fields: [note()] }],
+      actions: [{ key: 'receive', label: 'Barang diterima', roles: ['FOC', 'NOC', 'GA'], to: 'CLOSED', fields: [note()] }],
     },
     PO_ISSUED: {
-      label: 'PO Terbit – Menunggu Barang (PROC)',
-      owner: 'PROC',
+      label: 'PO Terbit – Menunggu Barang (GA/Procurement)',
+      owner: 'GA',
       actions: [{ key: 'po_received', label: 'PO diterima', roles: [], system: true, to: 'CLOSED', fields: [] }],
     },
-    CLOSED: { label: 'Selesai', owner: 'PROC', final: true, actions: [] },
+    CLOSED: { label: 'Selesai', owner: 'GA', final: true, actions: [] },
   },
 };
 

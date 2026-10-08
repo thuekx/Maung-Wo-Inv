@@ -12,6 +12,8 @@ import { config } from '../config';
 import { connection } from '../queue';
 import { workflows } from '../workflows';
 import { getBranding, getTelegram } from '../settings';
+import { auditedUpdate, changes, whoOf, writeAudit } from '../audit';
+import { transact } from '../effects';
 
 export const core = Router();
 
@@ -41,7 +43,7 @@ core.post('/auth/telegram-code', async (req, res) => {
 core.post('/auth/change-password', async (req, res) => {
   const { current, next } = z.object({ current: z.string(), next: z.string().min(8) }).parse(req.body);
   if (!(await bcrypt.compare(current, req.user!.passwordHash))) throw new AppError(400, 'Password lama salah');
-  await prisma.user.update({ where: { id: req.user!.id }, data: { passwordHash: await bcrypt.hash(next, 10) } });
+  await prisma.user.update({ where: { id: req.user!.id }, data: { passwordHash: await bcrypt.hash(next, 10), mustChangePassword: false } });
   res.json({ ok: true });
 });
 
@@ -59,23 +61,37 @@ core.get('/users/lookup', async (req, res) => {
 const userBody = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  role: z.enum(['ADMIN', 'MKT', 'NOC', 'FOC', 'PROC', 'GA', 'FIN']),
+  role: z.enum(['ADMIN', 'MKT', 'NOC', 'FOC', 'GA', 'FIN']),
   password: z.string().min(8),
   telegramChatId: z.string().optional().nullable(),
 });
 
 core.get('/users', requireRole('ADMIN'), async (_req, res) => {
-  res.json(await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, active: true, telegramChatId: true }, orderBy: { name: 'asc' } }));
+  res.json(await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, active: true, telegramChatId: true, mustChangePassword: true }, orderBy: { name: 'asc' } }));
 });
 core.post('/users', requireRole('ADMIN'), async (req, res) => {
   const { password, ...b } = userBody.parse(req.body);
-  const u = await prisma.user.create({ data: { ...b, email: b.email.toLowerCase(), passwordHash: await bcrypt.hash(password, 10) } });
+  const who = whoOf(req);
+  const hash = await bcrypt.hash(password, 10);
+  const u = await transact(async (fx) => {
+    const row = await fx.tx.user.create({ data: { ...b, email: b.email.toLowerCase(), passwordHash: hash } });
+    await writeAudit(fx, who, { action: 'CREATE', entity: 'user', entityId: row.id, summary: `${who.name} membuat user ${row.email} (${row.role})` });
+    return row;
+  });
   res.status(201).json(publicUser(u));
 });
 core.patch('/users/:id', requireRole('ADMIN'), async (req, res) => {
+  const id = String(req.params.id);
   const b = userBody.partial().extend({ active: z.boolean().optional() }).parse(req.body);
   const { password, ...rest } = b;
-  const u = await prisma.user.update({ where: { id: String(req.params.id) }, data: { ...rest, ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}) } });
+  const cur = await prisma.user.findUnique({ where: { id } });
+  if (!cur) throw new AppError(404, 'User tidak ditemukan');
+  if (id === req.user!.id && (rest.active === false || (rest.role && rest.role !== cur.role))) throw new AppError(400, 'Tidak bisa menonaktifkan / mengubah peran akun sendiri');
+  const data = { ...rest, ...(rest.email ? { email: rest.email.toLowerCase() } : {}) };
+  const ch = changes(cur, data);
+  const u = await auditedUpdate(whoOf(req), 'user', id, cur.email, ch, async (fx) =>
+    fx.tx.user.update({ where: { id }, data: { ...data, ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}) } }),
+  );
   res.json(publicUser(u));
 });
 
@@ -94,7 +110,8 @@ core.get('/customers', async (req, res) => {
   res.json(rows);
 });
 
-core.get('/customers/:id', async (req, res) => {
+core.get('/customers/:id', async (req, res, next) => {
+  if (!/^[a-z0-9]{20,32}$/.test(String(req.params.id))) return next(); // mis. /customers/export.xlsx ditangani router lain
   const c = await prisma.customer.findUnique({
     where: { id: String(req.params.id) },
     include: {
@@ -105,11 +122,6 @@ core.get('/customers/:id', async (req, res) => {
   });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
   res.json(c);
-});
-
-core.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res) => {
-  const b = z.object({ name: z.string().min(2), phone: z.string().min(6), email: z.string().email().nullable(), address: z.string().min(5) }).partial().parse(req.body);
-  res.json(await prisma.customer.update({ where: { id: String(req.params.id) }, data: b }));
 });
 
 /* ── upload foto (laporan lapangan) ── */
@@ -192,7 +204,9 @@ core.get('/dashboard', async (req, res) => {
     return { day, created: recent.filter((w) => dayKey(w.createdAt) === day).length, done: recent.filter((w) => w.closedAt && isDone(w) && dayKey(w.closedAt) === day).length };
   });
   const overdue7 = withMeta.filter((w) => Date.now() - w.createdAt.getTime() > 7 * DAY);
-  const overdue = { total: overdue7.length, items: overdue7.slice(0, 8).map((w) => ({ id: w.id, number: w.number, type: w.type, title: w.title, statusLabel: w.statusLabel, owner: w.owner, ageDays: Math.floor((Date.now() - w.createdAt.getTime()) / DAY) })) };
+  const byOwner: Record<string, number> = {};
+  for (const w of overdue7) if (w.owner) byOwner[w.owner] = (byOwner[w.owner] ?? 0) + 1;
+  const overdue = { total: overdue7.length, byOwner, items: overdue7.slice(0, 8).map((w) => ({ id: w.id, number: w.number, type: w.type, title: w.title, statusLabel: w.statusLabel, owner: w.owner, ageDays: Math.floor((Date.now() - w.createdAt.getTime()) / DAY) })) };
 
   const maintenanceDue = await prisma.asset.findMany({
     where: { item: { category: 'GA' }, nextMaintenanceAt: { lte: new Date(Date.now() + 14 * 86400_000) } },

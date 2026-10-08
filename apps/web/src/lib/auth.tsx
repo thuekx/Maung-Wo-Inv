@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api, getToken, setToken } from './api';
 
-export interface Me { id: string; name: string; email: string; role: string; telegramLinked: boolean }
+export interface Me { id: string; name: string; email: string; role: string; telegramLinked: boolean; mustChangePassword?: boolean }
 interface AuthCtx { user: Me | null; ready: boolean; login(email: string, password: string): Promise<void>; logout(): void }
 
 const Ctx = createContext<AuthCtx>(null as unknown as AuthCtx);

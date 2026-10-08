@@ -1,6 +1,7 @@
 import type { Role, ItemCategory } from '../src/orm';
 import { prisma } from '../src/db';
 import bcrypt from 'bcryptjs';
+import { PACKAGES } from '../src/workflows';
 
 const PASSWORD = process.env.SEED_PASSWORD ?? 'Passw0rd!';
 
@@ -20,12 +21,14 @@ async function main() {
     ['NOC Engineer', 'noc@l1v.local', 'NOC'],
     ['Teknisi Budi', 'budi@l1v.local', 'FOC'],
     ['Teknisi Andi', 'andi@l1v.local', 'FOC'],
-    ['Procurement', 'proc@l1v.local', 'PROC'],
-    ['General Affair', 'ga@l1v.local', 'GA'],
+    ['GA / Procurement', 'ga@l1v.local', 'GA'],
     ['Finance', 'fin@l1v.local', 'FIN'],
   ];
   for (const [name, email, role] of users)
     await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, role, passwordHash: hash } });
+
+  // Master paket/jasa awal (dapat ditambah/dikurangi di menu Master Paket)
+  for (const [i, name] of PACKAGES.entries()) await prisma.package.upsert({ where: { name }, update: {}, create: { name, sortOrder: i } });
 
   const wh = async (code: string, name: string, kind: 'MAIN' | 'BRANCH' | 'TRANSIT') =>
     prisma.warehouse.upsert({ where: { code }, update: {}, create: { code, name, kind } });

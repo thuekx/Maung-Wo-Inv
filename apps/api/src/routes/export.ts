@@ -105,8 +105,8 @@ const resources: Record<string, Resource> = {
     description: 'Aset ber-serial number (status, lokasi, pelanggan, jadwal maintenance)',
     sinceField: 'createdAt',
     fetch: async (q) => {
-      const rows = await prisma.asset.findMany({ ...page(q, 'createdAt'), include: { item: { select: { sku: true, name: true, category: true } }, warehouse: { select: { code: true } }, customer: { select: { code: true, name: true } } } });
-      return rows.map(({ item, warehouse, customer, ...a }) => ({ ...a, sku: item.sku, itemName: item.name, category: item.category, warehouseCode: warehouse?.code ?? null, customerCode: customer?.code ?? null, customerName: customer?.name ?? null }));
+      const rows = await prisma.asset.findMany({ ...page(q, 'createdAt'), include: { item: { select: { sku: true, name: true, category: true } }, warehouse: { select: { code: true } }, customer: { select: { code: true, name: true } }, brand: { select: { name: true } }, model: { select: { name: true } } } });
+      return rows.map(({ item, warehouse, customer, brand, model, ...a }) => ({ ...a, brand: brand?.name ?? null, model: model?.name ?? null, sku: item.sku, itemName: item.name, category: item.category, warehouseCode: warehouse?.code ?? null, customerCode: customer?.code ?? null, customerName: customer?.name ?? null }));
     },
   },
   movements: {

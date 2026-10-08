@@ -6,11 +6,12 @@ import { authenticate, requireRole } from '../auth';
 import { transact } from '../effects';
 import { applyAction, systemActor } from '../engine';
 import { moveStock, normSn, nextNumber, qcAssets } from '../inventory';
+import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
 
 export const inventoryRoutes = Router();
 inventoryRoutes.use(authenticate);
 
-const stockRoles = requireRole('PROC', 'GA');
+const stockRoles = requireRole('GA');
 
 /* ── gudang ── */
 inventoryRoutes.get('/warehouses', async (req, res) => {
@@ -22,8 +23,24 @@ inventoryRoutes.post('/warehouses', stockRoles, async (req, res) => {
   res.status(201).json(await prisma.warehouse.create({ data: b }));
 });
 inventoryRoutes.patch('/warehouses/:id', stockRoles, async (req, res) => {
-  const b = z.object({ name: z.string().min(2), address: z.string(), active: z.boolean() }).partial().parse(req.body);
-  res.json(await prisma.warehouse.update({ where: { id: String(req.params.id) }, data: b }));
+  const id = String(req.params.id);
+  const b = z.object({ code: z.string().min(2).toUpperCase(), name: z.string().min(2), address: z.string().nullable(), kind: z.enum(['MAIN', 'BRANCH', 'TRANSIT']), active: z.boolean() }).partial().parse(req.body);
+  const cur = await prisma.warehouse.findUnique({ where: { id } });
+  if (!cur) throw new AppError(404, 'Gudang tidak ditemukan');
+  if (b.kind && cur.kind === 'MOBILE') throw new AppError(400, 'Jenis gudang Mobile tidak dapat diubah');
+  res.json(await auditedUpdate(whoOf(req), 'gudang', id, `${cur.code} ${cur.name}`, changes(cur, b), (fx) => fx.tx.warehouse.update({ where: { id }, data: b })));
+});
+inventoryRoutes.delete('/warehouses/:id', stockRoles, async (req, res) => {
+  const id = String(req.params.id);
+  const w = await prisma.warehouse.findUnique({ where: { id }, include: { _count: { select: { assets: true, customers: true } }, stock: { where: { qty: { not: 0 } } } } });
+  if (!w) throw new AppError(404, 'Gudang tidak ditemukan');
+  if (w.kind === 'MOBILE') throw new AppError(409, 'Gudang Mobile milik teknisi — nonaktifkan, bukan dihapus');
+  if (w._count.assets || w.stock.length || w._count.customers) throw new AppError(409, `Gudang masih berisi ${w._count.assets} aset, ${w.stock.length} jenis stok, dan terkait ${w._count.customers} pelanggan — pindahkan dulu atau nonaktifkan`);
+  await auditedDelete(whoOf(req), 'gudang', id, `${w.code} ${w.name}`, { id, code: w.code, name: w.name, kind: w.kind }, async (fx) => {
+    await fx.tx.stockLevel.deleteMany({ where: { warehouseId: id } });
+    await fx.tx.warehouse.delete({ where: { id } });
+  });
+  res.json({ ok: true });
 });
 
 /* ── master item ── */
@@ -43,8 +60,22 @@ inventoryRoutes.post('/items', stockRoles, async (req, res) => {
   res.status(201).json(await prisma.item.create({ data: { ...b, tracked: b.category !== 'CONSUMABLE' } }));
 });
 inventoryRoutes.patch('/items/:id', stockRoles, async (req, res) => {
-  const b = itemBody.partial().omit({ sku: true, category: true }).parse(req.body);
-  res.json(await prisma.item.update({ where: { id: String(req.params.id) }, data: b }));
+  const id = String(req.params.id);
+  const b = itemBody.partial().omit({ category: true }).parse(req.body);
+  const cur = await prisma.item.findUnique({ where: { id } });
+  if (!cur) throw new AppError(404, 'Item tidak ditemukan');
+  res.json(await auditedUpdate(whoOf(req), 'item', id, `${cur.sku} ${cur.name}`, changes(cur, b), (fx) => fx.tx.item.update({ where: { id }, data: b })));
+});
+inventoryRoutes.delete('/items/:id', stockRoles, async (req, res) => {
+  const id = String(req.params.id);
+  const it = await prisma.item.findUnique({ where: { id }, include: { _count: { select: { assets: true, poLines: true } }, stock: { where: { qty: { not: 0 } } } } });
+  if (!it) throw new AppError(404, 'Item tidak ditemukan');
+  if (it._count.assets || it.stock.length || it._count.poLines) throw new AppError(409, `Item masih dipakai (${it._count.assets} aset, ${it.stock.length} stok, ${it._count.poLines} baris PO)`);
+  await auditedDelete(whoOf(req), 'item', id, `${it.sku} ${it.name}`, { id, sku: it.sku, name: it.name, category: it.category }, async (fx) => {
+    await fx.tx.stockLevel.deleteMany({ where: { itemId: id } });
+    await fx.tx.item.delete({ where: { id } });
+  });
+  res.json({ ok: true });
 });
 
 /* ── stok ── */
@@ -79,7 +110,7 @@ inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
       await moveStock(fx.tx, d > 0 ? { itemId: c.itemId, qty: d, to: b.warehouseId, reason: 'Stock opname (+)', actorId: u.id } : { itemId: c.itemId, qty: -d, from: b.warehouseId, reason: 'Stock opname (−)', actorId: u.id });
       out.push({ itemId: c.itemId, before: cur, after: c.counted, diff: d });
     }
-    if (out.length) await fx.notify({ roles: ['PROC', 'GA'], subject: 'Stock opname dengan selisih', body: `${u.name} melakukan opname, ${out.length} item berselisih.` });
+    if (out.length) await fx.notify({ roles: ['GA'], subject: 'Stock opname dengan selisih', body: `${u.name} melakukan opname, ${out.length} item berselisih.` });
     return out;
   });
   res.json({ diffs });
@@ -87,19 +118,20 @@ inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
 
 /* ── aset (ber-SN & GA) ── */
 inventoryRoutes.get('/assets', async (req, res) => {
-  const q = z.object({ q: z.string().optional(), status: z.string().optional(), warehouseId: z.string().optional(), category: z.string().optional(), customerId: z.string().optional() }).parse(req.query);
+  const q = z.object({ q: z.string().optional(), status: z.string().optional(), warehouseId: z.string().optional(), category: z.string().optional(), customerId: z.string().optional(), ids: z.string().optional(), limit: z.coerce.number().int().min(1).max(2000).default(200) }).parse(req.query);
   res.json(
     await prisma.asset.findMany({
       where: {
+        ...(q.ids ? { id: { in: q.ids.split(',').slice(0, 2000) } } : {}),
         ...(q.status ? { status: q.status as AssetStatus } : {}),
         ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}),
         ...(q.customerId ? { customerId: q.customerId } : {}),
         ...(q.category ? { item: { category: q.category as any } } : {}),
-        ...(q.q ? { OR: [{ serialNumber: { contains: q.q, mode: 'insensitive' } }, { assetCode: { contains: q.q, mode: 'insensitive' } }, { item: { name: { contains: q.q, mode: 'insensitive' } } }] } : {}),
+        ...(q.q ? { OR: [{ serialNumber: { contains: q.q, mode: 'insensitive' } }, { assetCode: { contains: q.q, mode: 'insensitive' } }, { item: { name: { contains: q.q, mode: 'insensitive' } } }, { brand: { name: { contains: q.q, mode: 'insensitive' } } }, { model: { name: { contains: q.q, mode: 'insensitive' } } }] } : {}),
       },
-      include: { item: true, warehouse: true, customer: { select: { id: true, name: true, code: true } } },
+      include: { item: true, warehouse: true, brand: true, model: true, customer: { select: { id: true, name: true, code: true } } },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: q.limit,
     }),
   );
 });
@@ -109,20 +141,26 @@ inventoryRoutes.get('/assets/pending-qc', async (_req, res) => {
 });
 
 inventoryRoutes.get('/assets/by-serial/:sn', async (req, res) => {
-  const a = await prisma.asset.findUnique({ where: { serialNumber: normSn(String(req.params.sn)) }, include: { item: true, warehouse: true, customer: { select: { id: true, name: true, code: true } } } });
+  const a = await prisma.asset.findUnique({ where: { serialNumber: normSn(String(req.params.sn)) }, include: { item: true, warehouse: true, brand: true, model: true, customer: { select: { id: true, name: true, code: true } } } });
   if (!a) throw new AppError(404, 'SN tidak terdaftar');
   res.json(a);
 });
 
-export async function createAsset(tx: Tx, p: { itemId: string; serial?: string; warehouseId: string; status?: AssetStatus; actorId: string; reason: string; woId?: string; nextMaintenanceAt?: Date; notes?: string }) {
+export async function createAsset(tx: Tx, p: { itemId: string; serial?: string; warehouseId: string; status?: AssetStatus; actorId: string; reason: string; woId?: string; nextMaintenanceAt?: Date; notes?: string; brandId?: string; modelId?: string }) {
   const item = await tx.item.findUnique({ where: { id: p.itemId } });
   if (!item || !item.tracked) throw new AppError(400, 'Item harus bertipe ber-SN (Perangkat Jaringan / Aset GA)');
+  if (p.modelId) {
+    const m = await tx.assetModel.findUnique({ where: { id: p.modelId } });
+    if (!m || (p.brandId && m.brandId !== p.brandId)) throw new AppError(400, 'Tipe tidak sesuai dengan merk yang dipilih');
+    p.brandId = m.brandId;
+  }
+  if (p.brandId && !(await tx.assetBrand.findUnique({ where: { id: p.brandId } }))) throw new AppError(400, 'Merk tidak valid');
   const assetCode = item.category === 'GA' ? await nextNumber(tx, 'GA', false) : null;
   const serialNumber = p.serial ? normSn(p.serial) : assetCode;
   if (!serialNumber) throw new AppError(400, 'Serial number wajib diisi');
   if (await tx.asset.findUnique({ where: { serialNumber } })) throw new AppError(409, `SN ${serialNumber} sudah terdaftar`);
   const asset = await tx.asset.create({
-    data: { itemId: item.id, serialNumber, assetCode, warehouseId: p.warehouseId, status: p.status ?? 'IN_STOCK', nextMaintenanceAt: p.nextMaintenanceAt, notes: p.notes },
+    data: { itemId: item.id, serialNumber, assetCode, warehouseId: p.warehouseId, status: p.status ?? 'IN_STOCK', nextMaintenanceAt: p.nextMaintenanceAt, notes: p.notes, brandId: p.brandId ?? null, modelId: p.modelId ?? null },
   });
   await tx.stockMovement.create({ data: { itemId: item.id, assetId: asset.id, qty: 1, toWarehouseId: p.warehouseId, reason: p.reason, woId: p.woId, actorId: p.actorId } });
   return asset;
@@ -139,6 +177,8 @@ inventoryRoutes.post('/assets/register', stockRoles, async (req, res) => {
       status: z.enum(['IN_STOCK', 'IN_USE']).optional(),
       nextMaintenanceAt: z.coerce.date().optional(),
       notes: z.string().optional(),
+      brandId: z.string().optional(),
+      modelId: z.string().optional(),
     })
     .parse(req.body);
   const u = req.user!;
@@ -148,15 +188,34 @@ inventoryRoutes.post('/assets/register', stockRoles, async (req, res) => {
     const serials: (string | undefined)[] = b.serials.length ? b.serials : item.category === 'GA' ? Array.from({ length: b.count }, () => undefined) : [];
     if (!serials.length) throw new AppError(400, 'Isi minimal 1 serial number');
     const out = [];
-    for (const s of serials) out.push(await createAsset(fx.tx, { itemId: b.itemId, serial: s, warehouseId: b.warehouseId, status: b.status, actorId: u.id, reason: 'Registrasi aset', nextMaintenanceAt: b.nextMaintenanceAt, notes: b.notes }));
+    for (const s of serials) out.push(await createAsset(fx.tx, { itemId: b.itemId, serial: s, warehouseId: b.warehouseId, status: b.status, actorId: u.id, reason: 'Registrasi aset', nextMaintenanceAt: b.nextMaintenanceAt, notes: b.notes, brandId: b.brandId, modelId: b.modelId }));
     return out;
   });
   res.status(201).json(created);
 });
 
 inventoryRoutes.patch('/assets/:id', stockRoles, async (req, res) => {
-  const b = z.object({ nextMaintenanceAt: z.coerce.date().nullable(), lastMaintenanceAt: z.coerce.date().nullable(), notes: z.string(), status: z.enum(['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP']), warehouseId: z.string() }).partial().parse(req.body);
-  res.json(await prisma.asset.update({ where: { id: String(req.params.id) }, data: b }));
+  const id = String(req.params.id);
+  const b = z
+    .object({ serialNumber: z.string().min(2).transform(normSn), assetCode: z.string().min(2).nullable(), nextMaintenanceAt: z.coerce.date().nullable(), lastMaintenanceAt: z.coerce.date().nullable(), notes: z.string().nullable(), condition: z.string().nullable(), status: z.enum(['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP']), warehouseId: z.string(), brandId: z.string().nullable(), modelId: z.string().nullable() })
+    .partial()
+    .parse(req.body);
+  const cur = await prisma.asset.findUnique({ where: { id } });
+  if (!cur) throw new AppError(404, 'Aset tidak ditemukan');
+  if (b.modelId) {
+    const m = await prisma.assetModel.findUnique({ where: { id: b.modelId } });
+    if (!m) throw new AppError(400, 'Tipe tidak valid');
+    b.brandId = m.brandId;
+  } else if (b.modelId === null && b.brandId === undefined) b.brandId = cur.brandId;
+  res.json(await auditedUpdate(whoOf(req), 'aset', id, cur.serialNumber, changes(cur, b), (fx) => fx.tx.asset.update({ where: { id }, data: b })));
+});
+inventoryRoutes.delete('/assets/:id', stockRoles, async (req, res) => {
+  const id = String(req.params.id);
+  const a = await prisma.asset.findUnique({ where: { id }, include: { item: true } });
+  if (!a) throw new AppError(404, 'Aset tidak ditemukan');
+  if (a.status === 'INSTALLED') throw new AppError(409, 'Aset sedang terpasang di pelanggan — tarik dulu lewat WO Terminate');
+  await auditedDelete(whoOf(req), 'aset', id, `${a.serialNumber} (${a.item.name})`, a as any, (fx) => fx.tx.asset.delete({ where: { id } }));
+  res.json({ ok: true });
 });
 
 inventoryRoutes.post('/assets/qc', stockRoles, async (req, res) => {
@@ -179,7 +238,7 @@ inventoryRoutes.get('/purchase-orders/:id', async (req, res) => {
 
 // Penerimaan barang: QC lolos saja yang dimasukkan; item ber-SN wajib input SN → label QR
 inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res) => {
-  const b = z.object({ lines: z.array(z.object({ lineId: z.string(), qty: z.coerce.number().int().min(0), serials: z.array(z.string()).default([]) })) }).parse(req.body);
+  const b = z.object({ lines: z.array(z.object({ lineId: z.string(), qty: z.coerce.number().int().min(0), serials: z.array(z.string()).default([]), brandId: z.string().optional(), modelId: z.string().optional() })) }).parse(req.body);
   const u = req.user!;
   const result = await transact(async (fx) => {
     const po = await fx.tx.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } } } });
@@ -195,7 +254,7 @@ inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res
         const needSerial = line.item.category !== 'GA';
         if (needSerial && r.serials.length !== r.qty) throw new AppError(400, `${line.item.name}: isi ${r.qty} serial number`);
         for (let k = 0; k < r.qty; k++)
-          assets.push(await createAsset(fx.tx, { itemId: line.itemId, serial: r.serials[k], warehouseId: po.toWarehouseId, actorId: u.id, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, status: line.item.category === 'GA' ? 'IN_USE' : 'IN_STOCK' }));
+          assets.push(await createAsset(fx.tx, { itemId: line.itemId, serial: r.serials[k], warehouseId: po.toWarehouseId, actorId: u.id, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, status: line.item.category === 'GA' ? 'IN_USE' : 'IN_STOCK', brandId: r.brandId, modelId: r.modelId }));
       } else {
         await moveStock(fx.tx, { itemId: line.itemId, qty: r.qty, to: po.toWarehouseId, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, actorId: u.id });
       }
@@ -208,4 +267,25 @@ inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res
     return { complete, assets };
   });
   res.json(result);
+});
+
+inventoryRoutes.patch('/purchase-orders/:id', stockRoles, async (req, res) => {
+  const id = String(req.params.id);
+  const b = z.object({ vendor: z.string().min(2), note: z.string().nullable() }).partial().parse(req.body);
+  const cur = await prisma.purchaseOrder.findUnique({ where: { id } });
+  if (!cur) throw new AppError(404, 'PO tidak ditemukan');
+  if (cur.status !== 'ISSUED') throw new AppError(409, 'PO yang sudah diterima (sebagian/penuh) tidak dapat diubah');
+  res.json(await auditedUpdate(whoOf(req), 'PO', id, cur.number, changes(cur, b), (fx) => fx.tx.purchaseOrder.update({ where: { id }, data: b })));
+});
+inventoryRoutes.delete('/purchase-orders/:id', stockRoles, async (req, res) => {
+  const id = String(req.params.id);
+  const po = await prisma.purchaseOrder.findUnique({ where: { id }, include: { lines: true } });
+  if (!po) throw new AppError(404, 'PO tidak ditemukan');
+  if (po.status !== 'ISSUED' || po.lines.some((l) => l.receivedQty > 0)) throw new AppError(409, 'PO yang sudah ada penerimaannya tidak dapat dihapus');
+  if (po.woId) {
+    const wo = await prisma.workOrder.findUnique({ where: { id: po.woId } });
+    if (wo && !wo.closedAt) throw new AppError(409, `PO terkait WO ${wo.number} yang masih berjalan — batalkan WO-nya dulu`);
+  }
+  await auditedDelete(whoOf(req), 'PO', id, `${po.number} (${po.vendor})`, { id, number: po.number, vendor: po.vendor }, (fx) => fx.tx.purchaseOrder.delete({ where: { id } }));
+  res.json({ ok: true });
 });

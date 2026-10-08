@@ -58,6 +58,8 @@ export async function getSmtp(): Promise<SmtpCfg> {
 }
 
 /* ── Telegram ── */
+// peran PROC sudah digabung ke GA: chat grup lama PROC dipakai bila GA belum diisi
+const mergeLegacyRoles = (r: Record<string, string>) => { const { PROC, ...rest } = r; return PROC && !rest.GA ? { ...rest, GA: PROC } : rest; };
 export interface TelegramCfg { token: string; webhookSecret: string; roleChats: Record<string, string>; botUsername: string; source: 'db' | 'env' | 'none' }
 export async function getTelegram(): Promise<TelegramCfg> {
   const s = await getSetting<any>('telegram');
@@ -66,7 +68,7 @@ export async function getTelegram(): Promise<TelegramCfg> {
   return {
     token,
     webhookSecret: s?.webhookSecret || envSecret,
-    roleChats: { ...config.telegram.roleChats, ...(s?.roleChats ?? {}) },
+    roleChats: mergeLegacyRoles({ ...config.telegram.roleChats, ...(s?.roleChats ?? {}) }),
     botUsername: s?.botUsername ?? '',
     source: decryptSecret(s?.token) ? 'db' : config.telegram.token ? 'env' : 'none',
   };

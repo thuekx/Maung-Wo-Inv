@@ -50,14 +50,12 @@ Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC
 ## Melanjutkan pekerjaan
 Buka folder repo di editor/asisten pengembangan Anda, lalu minta: *"Baca HANDOFF.md dan README.md, jalankan typecheck, lalu kerjakan butir 1 dan 2."* Kedua file itu cukup sebagai konteks.
 
-## Roadmap fitur (disepakati, belum dikerjakan)
-1. Admin ubah password user (satuan/massal) + notifikasi.
-2. Cetak massal QR dalam lembar A4.
-3. Fitur edit untuk setiap data.
-4. GA dan Procurement digabung menjadi satu peran (memegang aset dan pengadaan).
-5. Pilihan merk dan tipe saat registrasi aset.
-6. Menu export Excel pelanggan (sementara; nanti API MSRadius). Export API CSV sudah tersedia sebagai jembatan.
-7. Dashboard WO belum tertangani > 7 hari (panel dan KPI dasar sudah ada di dashboard).
-8. Pelanggan boleh diketik manual tanpa menarik data.
-9. Master nama paket/jasa (tambah/kurangi).
-10. Hapus data per peran dengan notifikasi ke admin via Telegram.
+## Fitur tambahan (selesai)
+Sepuluh fitur tambahan sudah dikerjakan — lihat `docs/FITUR.md`: reset password satuan/massal, cetak QR massal A4, edit semua data master, GA+Procurement satu peran (migrasi `PROC`→`GA`), merk & tipe aset, impor/ekspor Excel pelanggan, dashboard WO > 7 hari, pelanggan manual, master paket/jasa, hapus per peran + notifikasi Admin + log audit.
+Penambahan berikutnya akan diinfokan oleh pemilik proyek; jangan menambah fitur di luar daftar tanpa konfirmasi.
+
+## Catatan teknis fitur tambahan
+- Jejak audit: `src/audit.ts` (`auditedUpdate`, `auditedDelete`, `writeAudit`), tabel `AuditLog`; hapus oleh non-Admin → notify ADMIN.
+- `routes/masters.ts`: pelanggan (manual/impor/ekspor, exceljs), paket, merk/tipe, reset password, hapus user, audit.
+- Peran `PROC` dihapus dari enum (migrasi `20261009000000_roles_masters_audit`); owner status workflow memakai `GA`.
+- Cetak QR: `web/src/app/qr-print/page.tsx` (di luar layout aplikasi; ukuran dalam mm).

@@ -1,6 +1,6 @@
 # Maung-Wo-Inv — L1V WO & Inventory
 
-Aplikasi Work Order + Inventori multi-gudang untuk ISP (MKT · NOC · FOC · PROC/GA · FIN), terintegrasi dua arah dengan aplikasi Billing/Finance eksisting. Semua perpindahan tahap dikirim ke **email dan Telegram**.
+Aplikasi Work Order + Inventori multi-gudang untuk ISP (MKT · NOC · FOC · GA/Procurement · FIN), terintegrasi dua arah dengan aplikasi Billing/Finance eksisting. Semua perpindahan tahap dikirim ke **email dan Telegram**.
 
 ## 1. Stack yang dipilih (dan alasannya)
 
@@ -202,6 +202,9 @@ GET  /api/integrations/billing/customers/:code     # status layanan
 
 ### Foto lapangan (GPS + logo PT)
 Foto teknisi (FOC) diambil lewat kamera, lalu browser mengambil lokasi GPS dan menempelkan **banner logo PT, nama PT, nomor WO, koordinat (±akurasi), dan waktu** langsung pada piksel foto. Server menolak foto teknisi tanpa GPS (kebijakan dapat dimatikan Admin untuk uji tanpa HTTPS) dan menyimpan koordinat per foto; galeri **Foto lapangan** di WO menampilkan tautan peta. Teknisi juga dapat mengirim **Update progres lapangan** (foto bertanda GPS + catatan) tanpa mengubah tahap, dan NOC/pembuat WO diberi tahu. Logo PT diunggah sebagai master di *Admin → Pengaturan*. GPS browser hanya bekerja di **HTTPS** (atau localhost) — gunakan mode Caddy.
+
+### Master data, edit/hapus, impor Excel, QR massal
+Reset password (satuan/massal) dengan notifikasi, cetak QR massal A4, edit & hapus per peran (notifikasi hapus ke Admin + log audit), merk/tipe aset, impor/ekspor pelanggan Excel, master paket/jasa, input pelanggan manual, dan dashboard WO > 7 hari: **[docs/FITUR.md](docs/FITUR.md)**. Peran GA dan Procurement sudah digabung menjadi satu (**GA**).
 
 ### Data demo
 `docker compose exec api node dist/prisma/seed-demo.js` (atau `DEMO=1 bash scripts/deploy.sh`) membuat data contoh untuk semua alur di setiap tahap beserta skenario uji per akun: **[docs/DEMO.md](docs/DEMO.md)**.

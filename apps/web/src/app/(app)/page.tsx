@@ -51,7 +51,7 @@ export default function Dashboard() {
         {Object.keys(TYPE_LABEL).map((t) => (
           <Kpi key={t} href={`/work-orders?type=${t}`} value={data.byType[t] ?? 0} label={TYPE_LABEL[t]} color={TYPE_COLOR[t]} hint="terbuka" />
         ))}
-        <Kpi value={data.overdue.total} label="WO > 7 hari" color={data.overdue.total ? C.out : C.ok} hint="belum tertangani" />
+        <Kpi href="/work-orders?overdue=7" value={data.overdue.total} label="WO > 7 hari" color={data.overdue.total ? C.out : C.ok} hint="belum tertangani" />
         <Kpi href="/inventory" value={data.stockSummary.out + data.stockSummary.low} label="Stok kritis" color={data.stockSummary.out ? C.out : data.stockSummary.low ? C.low : C.ok} hint={`${data.stockSummary.out} habis · ${data.stockSummary.low} menipis`} />
       </div>
 
@@ -97,7 +97,12 @@ export default function Dashboard() {
           )}
         </Panel>
 
-        <Panel title="WO belum tertangani > 7 hari" right={<Badge tone={data.overdue.total ? 'red' : 'green'}>{data.overdue.total}</Badge>}>
+        <Panel title="WO belum tertangani > 7 hari" right={<Link href="/work-orders?overdue=7" className="text-xs text-brand-700 hover:underline">Lihat semua ({data.overdue.total}) →</Link>}>
+          {data.overdue.total > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {Object.entries(data.overdue.byOwner ?? {}).map(([r, n]) => <Badge key={r} tone="red">{ROLE_LABEL[r] ?? r}: {n as number}</Badge>)}
+            </div>
+          )}
           {data.overdue.items.length === 0 ? <p className="text-sm text-emerald-600">✔ Tidak ada yang tertunda</p> : (
             <ul className="space-y-2 text-sm">
               {data.overdue.items.map((w: any) => (

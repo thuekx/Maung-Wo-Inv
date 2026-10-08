@@ -77,3 +77,18 @@ export function DataView({ value, depth = 0 }: { value: any; depth?: number }) {
 
 export const custTone = (s: string): 'green' | 'amber' | 'red' | 'blue' | 'slate' =>
   s === 'ACTIVE' ? 'green' : s === 'SUSPENDED' ? 'amber' : s === 'TERMINATED' || s === 'TERMINATING' ? 'red' : s === 'INSTALLING' ? 'blue' : 'slate';
+
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" onClick={onClose}>
+      <div className={`card my-8 w-full ${wide ? 'max-w-3xl' : 'max-w-lg'}`} onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">{title}</h2><button className="text-slate-400 hover:text-slate-700" onClick={onClose} aria-label="Tutup">✕</button></div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export const LinkBtn = ({ onClick, children, danger }: { onClick: () => void; children: React.ReactNode; danger?: boolean }) => (
+  <button type="button" onClick={onClick} className={`text-sm hover:underline ${danger ? 'text-red-600' : 'text-brand-700'}`}>{children}</button>
+);

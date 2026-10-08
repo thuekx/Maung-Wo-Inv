@@ -27,7 +27,7 @@ Base URL: `https://<API_DOMAIN>` (atau `http://<ip>:4000`).
 | `GET /api/export/items` | Master barang: SKU, kategori, satuan, `tracked`, `minStock` | – |
 | `GET /api/export/warehouses` | Gudang (pusat/cabang/mobile) | – |
 | `GET /api/export/stock` | Stok kuantitas per gudang per barang (`qty`, `minStock`) | – |
-| `GET /api/export/assets` | Aset ber-SN: status, lokasi, pelanggan, jadwal maintenance | `createdAt` |
+| `GET /api/export/assets` | Aset ber-SN: merk, tipe, status, lokasi, pelanggan, jadwal maintenance | `createdAt` |
 | `GET /api/export/movements` | Riwayat mutasi stok/aset | `createdAt` |
 | `GET /api/export/purchase-orders` | PO + baris barang | `createdAt` |
 

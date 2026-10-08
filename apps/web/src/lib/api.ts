@@ -41,7 +41,7 @@ export function useFetch<T = any>(path: string | null) {
 }
 
 export const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Admin', MKT: 'Marketing', NOC: 'NOC', FOC: 'FOC (Teknisi)', PROC: 'Procurement', GA: 'General Affair', FIN: 'Finance',
+  ADMIN: 'Admin', MKT: 'Marketing', NOC: 'NOC', FOC: 'FOC (Teknisi)', GA: 'GA / Procurement', FIN: 'Finance',
 };
 
 export const TYPE_LABEL: Record<string, string> = {
@@ -49,3 +49,19 @@ export const TYPE_LABEL: Record<string, string> = {
 };
 
 export const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-');
+
+/** Hapus data (konfirmasi + notifikasi ke Admin di server). Mengembalikan true bila berhasil. */
+export async function doDelete(path: string, label: string): Promise<boolean> {
+  if (!window.confirm(`Hapus ${label}?\nTindakan ini tidak dapat dibatalkan dan akan dicatat serta diberitahukan ke Admin.`)) return false;
+  try { await api(path, { method: 'DELETE' }); return true; } catch (e) { window.alert((e as Error).message); return false; }
+}
+
+/** Unduh file dari API (butuh header Authorization, jadi lewat fetch → blob). */
+export async function download(path: string, filename: string) {
+  const res = await fetch(`${API}/api${path}`, { headers: { authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Gagal mengunduh (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}

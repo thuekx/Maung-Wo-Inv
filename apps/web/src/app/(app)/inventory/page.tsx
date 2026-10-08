@@ -2,10 +2,10 @@
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, fmtDate, useFetch } from '@/lib/api';
+import { api, doDelete, fmtDate, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
-import { Badge, ErrorMsg, PageHeader, Table, Tabs } from '@/components/ui';
+import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 
 const CAT: Record<string, string> = { CONSUMABLE: 'Material Konsumsi ISP', NETWORK: 'Perangkat Jaringan', GA: 'Aset General (GA)' };
 const ST_TONE: Record<string, any> = { IN_STOCK: 'green', REFURBISHED: 'green', INSTALLED: 'blue', IN_USE: 'blue', RETURNED_PENDING_QC: 'amber', DAMAGED: 'red', SCRAP: 'red', QTY: 'slate' };
@@ -62,24 +62,39 @@ function AssetsTab({ canManage }: { canManage: boolean }) {
   const [category, setCategory] = useState('');
   const [qr, setQr] = useState<any>(null);
   const [showReg, setShowReg] = useState(false);
-  const p = new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(category ? { category } : {}) });
+  const [edit, setEdit] = useState<any>(null);
+  const [sel, setSel] = useState<string[]>([]);
+  const p = new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(category ? { category } : {}), limit: '500' });
   const { data, error, reload } = useFetch<any[]>(`/assets?${p}`);
   const { data: items } = useFetch<any[]>(canManage ? '/items' : null);
   const [regItem, setRegItem] = useState('');
-  const sel = items?.find((i) => i.id === regItem);
+  const sel1 = items?.find((i) => i.id === regItem);
+  const toggle = (id: string) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+  const allOn = !!data?.length && data.every((a) => sel.includes(a.id));
+  const printSel = (ids: string[]) => { try { sessionStorage.setItem('qr_print_ids', JSON.stringify(ids)); } catch { /* ignore */ } window.open('/qr-print', '_blank'); };
 
   const regFields: Field[] = [
     { name: 'warehouseId', label: 'Gudang', type: 'warehouse', required: true },
-    ...(sel?.category === 'GA'
+    { name: 'brandmodel', label: 'Merk & tipe', type: 'brandmodel' },
+    ...(sel1?.category === 'GA'
       ? [{ name: 'count', label: 'Jumlah unit (kode aset dibuat otomatis)', type: 'number' }, { name: 'nextMaintenanceAt', label: 'Jadwal maintenance berikutnya', type: 'datetime' }, { name: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'IN_USE'] }]
       : [{ name: 'serials', label: 'Serial number (scan / ketik, bisa banyak)', type: 'serials', required: true }]),
+    { name: 'notes', label: 'Catatan', type: 'textarea' },
+  ];
+  const editFields: Field[] = [
+    { name: 'serialNumber', label: 'Serial number', type: 'text', required: true },
+    { name: 'brandmodel', label: 'Merk & tipe', type: 'brandmodel' },
+    { name: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP'], help: 'Status INSTALLED/QC diatur otomatis oleh WO' },
+    { name: 'warehouseId', label: 'Gudang', type: 'warehouse' },
+    { name: 'nextMaintenanceAt', label: 'Maintenance berikutnya', type: 'datetime' },
+    { name: 'condition', label: 'Kondisi', type: 'text' },
     { name: 'notes', label: 'Catatan', type: 'textarea' },
   ];
 
   return (
     <>
       <div className="mb-3 flex flex-wrap gap-2">
-        <input className="input w-64" placeholder="Cari SN / kode aset / item…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input w-64" placeholder="Cari SN / kode aset / item / merk…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option>
         </select>
@@ -88,6 +103,7 @@ function AssetsTab({ canManage }: { canManage: boolean }) {
           {['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}
         </select>
         {canManage && <button className="btn" onClick={() => setShowReg(!showReg)}>+ Registrasi aset</button>}
+        <button className="btn-ghost" disabled={!sel.length} onClick={() => printSel(sel)}>🖨 Cetak QR terpilih ({sel.length}) — A4</button>
       </div>
 
       {showReg && (
@@ -98,25 +114,45 @@ function AssetsTab({ canManage }: { canManage: boolean }) {
           </select>
           {regItem && (
             <DynamicForm key={regItem} fields={regFields} submitLabel="Simpan & buat QR"
-              onSubmit={async (v) => { await api('/assets/register', { body: { itemId: regItem, ...v } }); setShowReg(false); await reload(); }} />
+              onSubmit={async (v) => { const r = await api<any[]>('/assets/register', { body: { itemId: regItem, ...v } }); setShowReg(false); await reload(); if (window.confirm(`${r.length} aset terdaftar. Cetak label QR sekarang (lembar A4)?`)) printSel(r.map((a) => a.id)); }} />
           )}
         </div>
       )}
 
       <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['Serial / Kode', 'Item', 'Status', 'Lokasi', 'Maintenance', '']}>
+      <Table head={['', 'Serial / Kode', 'Item', 'Merk / tipe', 'Status', 'Lokasi', 'Maintenance', '']}>
         {data?.map((a) => (
           <tr key={a.id}>
+            <td className="td"><input type="checkbox" checked={sel.includes(a.id)} onChange={() => toggle(a.id)} aria-label={`pilih ${a.serialNumber}`} /></td>
             <td className="td font-mono">{a.serialNumber}{a.assetCode && a.assetCode !== a.serialNumber && <div className="text-xs text-slate-500">{a.assetCode}</div>}</td>
             <td className="td">{a.item.name}</td>
+            <td className="td text-sm">{[a.brand?.name, a.model?.name].filter(Boolean).join(' · ') || <span className="text-slate-400">-</span>}</td>
             <td className="td"><Badge tone={ST_TONE[a.status]}>{a.status}</Badge></td>
             <td className="td">{a.customer ? `Pelanggan: ${a.customer.name}` : a.warehouse?.name ?? '-'}</td>
             <td className="td">{a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : '-'}</td>
-            <td className="td"><button className="text-brand-700 hover:underline" onClick={() => setQr(a)}>QR</button></td>
+            <td className="td whitespace-nowrap"><LinkBtn onClick={() => setQr(a)}>QR</LinkBtn>{canManage && <> · <LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/assets/${a.id}`, `aset ${a.serialNumber}`)) reload(); }}>Hapus</LinkBtn></>}</td>
           </tr>
         ))}
       </Table>
+      {!!data?.length && (
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-1"><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? [] : data.map((a) => a.id))} /> Pilih semua yang tampil ({data.length})</label>
+          {sel.length > 0 && <button className="text-slate-500 hover:underline" onClick={() => setSel([])}>Kosongkan pilihan</button>}
+          <span className="text-xs text-slate-400">Cetak massal memuat ukuran label A4 yang bisa dipilih (24/21/40/65/8 per lembar).</span>
+        </div>
+      )}
       {qr && <QrModal asset={qr} onClose={() => setQr(null)} />}
+      {edit && (
+        <Modal title={`Edit aset ${edit.serialNumber}`} onClose={() => setEdit(null)}>
+          <DynamicForm fields={editFields} initial={{ ...edit, brandmodel: undefined }} sendEmpty submitLabel="Simpan perubahan"
+            onSubmit={async (v) => {
+              const { brandId, modelId, ...rest } = v;
+              for (const k of ['status', 'warehouseId', 'serialNumber']) if (!rest[k]) delete rest[k]; // tidak boleh kosong; status otomatis WO dibiarkan
+              await api(`/assets/${edit.id}`, { method: 'PATCH', body: { ...rest, brandId: brandId ?? null, modelId: modelId ?? null } });
+              setEdit(null); await reload();
+            }} />
+        </Modal>
+      )}
     </>
   );
 }
@@ -141,23 +177,29 @@ function QcTab({ canManage }: { canManage: boolean }) {
 /* ───── Gudang ───── */
 function WarehousesTab({ canManage }: { canManage: boolean }) {
   const { data, reload } = useFetch<any[]>('/warehouses?all=1');
-  const [show, setShow] = useState(false);
+  const [edit, setEdit] = useState<any>(null); // {} = baru
   const fields: Field[] = [
     { name: 'code', label: 'Kode', type: 'text', required: true },
     { name: 'name', label: 'Nama gudang', type: 'text', required: true },
-    { name: 'kind', label: 'Jenis', type: 'select', options: ['MAIN', 'BRANCH', 'TRANSIT', 'MOBILE'], required: true },
+    { name: 'kind', label: 'Jenis', type: 'select', options: edit?.id ? ['MAIN', 'BRANCH', 'TRANSIT'] : ['MAIN', 'BRANCH', 'TRANSIT', 'MOBILE'], required: true },
     { name: 'address', label: 'Alamat', type: 'textarea' },
   ];
   return (
     <>
-      {canManage && <button className="btn mb-3" onClick={() => setShow(!show)}>+ Tambah gudang</button>}
-      {show && <div className="card mb-4 max-w-lg"><DynamicForm fields={fields} onSubmit={async (v) => { await api('/warehouses', { body: v }); setShow(false); await reload(); }} /></div>}
-      <Table head={['Kode', 'Nama', 'Jenis', 'Pemilik', 'Aktif']}>
+      {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah gudang</button>}
+      <Table head={['Kode', 'Nama', 'Jenis', 'Pemilik', 'Aktif', '']}>
         {data?.map((w) => (
           <tr key={w.id}><td className="td font-mono">{w.code}</td><td className="td">{w.name}</td><td className="td"><Badge>{w.kind}</Badge></td><td className="td">{w.owner?.name ?? '-'}</td>
-            <td className="td">{canManage ? <button className="text-brand-700 hover:underline" onClick={async () => { await api(`/warehouses/${w.id}`, { method: 'PATCH', body: { active: !w.active } }); reload(); }}>{w.active ? 'Aktif' : 'Nonaktif'}</button> : w.active ? 'Ya' : 'Tidak'}</td></tr>
+            <td className="td">{canManage ? <button className="text-brand-700 hover:underline" onClick={async () => { await api(`/warehouses/${w.id}`, { method: 'PATCH', body: { active: !w.active } }); reload(); }}>{w.active ? 'Aktif' : 'Nonaktif'}</button> : w.active ? 'Ya' : 'Tidak'}</td>
+            <td className="td whitespace-nowrap">{canManage && <>{w.kind !== 'MOBILE' && <LinkBtn onClick={() => setEdit(w)}>Edit</LinkBtn>}{w.kind !== 'MOBILE' && ' · '}<LinkBtn danger onClick={async () => { if (await doDelete(`/warehouses/${w.id}`, `gudang ${w.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
         ))}
       </Table>
+      {edit && (
+        <Modal title={edit.id ? `Edit gudang ${edit.code}` : 'Tambah gudang'} onClose={() => setEdit(null)}>
+          <DynamicForm fields={fields} initial={edit.id ? edit : undefined} sendEmpty={!!edit.id} submitLabel="Simpan"
+            onSubmit={async (v) => { if (edit.id) await api(`/warehouses/${edit.id}`, { method: 'PATCH', body: v }); else await api('/warehouses', { body: v }); setEdit(null); await reload(); }} />
+        </Modal>
+      )}
     </>
   );
 }
@@ -165,24 +207,30 @@ function WarehousesTab({ canManage }: { canManage: boolean }) {
 /* ───── Item ───── */
 function ItemsTab({ canManage }: { canManage: boolean }) {
   const { data, reload } = useFetch<any[]>('/items');
-  const [show, setShow] = useState(false);
+  const [edit, setEdit] = useState<any>(null); // {} = baru
   const fields: Field[] = [
     { name: 'sku', label: 'SKU', type: 'text', required: true },
     { name: 'name', label: 'Nama item', type: 'text', required: true },
-    { name: 'category', label: 'Kategori', type: 'select', options: ['CONSUMABLE', 'NETWORK', 'GA'], required: true, help: 'CONSUMABLE = qty/meter · NETWORK = wajib serial number · GA = kode aset + maintenance' },
+    ...(edit?.id ? [] : [{ name: 'category', label: 'Kategori', type: 'select', options: ['CONSUMABLE', 'NETWORK', 'GA'], required: true, help: 'CONSUMABLE = qty/meter · NETWORK = wajib serial number · GA = kode aset + maintenance' }]),
     { name: 'unit', label: 'Satuan', type: 'text', help: 'pcs / meter / unit' },
     { name: 'installDefaultQty', label: 'Kebutuhan standar per pasang baru (untuk cek stok otomatis)', type: 'number' },
     { name: 'minStock', label: 'Stok minimum (alert dashboard)', type: 'number' },
   ];
   return (
     <>
-      {canManage && <button className="btn mb-3" onClick={() => setShow(!show)}>+ Tambah item</button>}
-      {show && <div className="card mb-4 max-w-lg"><DynamicForm fields={fields} onSubmit={async (v) => { await api('/items', { body: v }); setShow(false); await reload(); }} /></div>}
-      <Table head={['SKU', 'Nama', 'Kategori', 'Satuan', 'Std. pasang baru', 'Min. stok']}>
+      {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah item</button>}
+      <Table head={['SKU', 'Nama', 'Kategori', 'Satuan', 'Std. pasang baru', 'Min. stok', '']}>
         {data?.map((i) => (
-          <tr key={i.id}><td className="td font-mono">{i.sku}</td><td className="td">{i.name}</td><td className="td text-xs">{CAT[i.category]}</td><td className="td">{i.unit}</td><td className="td">{i.installDefaultQty ?? '-'}</td><td className="td">{i.minStock || '-'}</td></tr>
+          <tr key={i.id}><td className="td font-mono">{i.sku}</td><td className="td">{i.name}</td><td className="td text-xs">{CAT[i.category]}</td><td className="td">{i.unit}</td><td className="td">{i.installDefaultQty ?? '-'}</td><td className="td">{i.minStock || '-'}</td>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(i)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/items/${i.id}`, `item ${i.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
         ))}
       </Table>
+      {edit && (
+        <Modal title={edit.id ? `Edit item ${edit.sku}` : 'Tambah item'} onClose={() => setEdit(null)}>
+          <DynamicForm fields={fields} initial={edit.id ? edit : undefined} sendEmpty={!!edit.id} submitLabel="Simpan"
+            onSubmit={async (v) => { if (edit.id) await api(`/items/${edit.id}`, { method: 'PATCH', body: v }); else await api('/items', { body: v }); setEdit(null); await reload(); }} />
+        </Modal>
+      )}
     </>
   );
 }
@@ -233,7 +281,7 @@ function Inventory() {
   const { user } = useAuth();
   const sp = useSearchParams();
   const [tab, setTab] = useState(sp.get('tab') ?? 'stock');
-  const canManage = ['ADMIN', 'PROC', 'GA'].includes(user?.role ?? '');
+  const canManage = ['ADMIN', 'GA'].includes(user?.role ?? '');
   void fmtDate;
   return (
     <>

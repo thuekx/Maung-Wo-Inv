@@ -158,7 +158,7 @@ async function main() {
     console.log('Data demo sudah pernah dibuat (penanda demoSeed). Tidak ada yang diubah.');
     return;
   }
-  for (const [k, email] of Object.entries({ mkt: 'mkt@l1v.local', noc: 'noc@l1v.local', budi: 'budi@l1v.local', andi: 'andi@l1v.local', proc: 'proc@l1v.local', ga: 'ga@l1v.local', fin: 'fin@l1v.local' })) {
+  for (const [k, email] of Object.entries({ mkt: 'mkt@l1v.local', noc: 'noc@l1v.local', budi: 'budi@l1v.local', andi: 'andi@l1v.local', ga: 'ga@l1v.local', fin: 'fin@l1v.local' })) {
     const u = await prisma.user.findUnique({ where: { email } });
     if (!u) throw new Error(`User ${email} belum ada — jalankan seed dasar dulu (node dist/prisma/seed.js)`);
     A[k] = { id: u.id, name: u.name, role: u.role };
@@ -219,11 +219,11 @@ async function main() {
   const lines = (...l: [string, number][]) => l.map(([sku, qty]) => ({ itemId: ID[sku], qty }));
   const sr1 = await create('STOCK_REQUEST', 'budi', { toWarehouseId: WH['WH-CAB-A'], lines: lines(['DROPCORE', 500], ['FASTCONN', 50]), reason: 'Stok mobile menipis, butuh restock untuk cabang A' }); aged.push(sr1.id);
   const sr2 = await create('STOCK_REQUEST', 'noc', { toWarehouseId: WH['WH-PUSAT'], lines: lines(['PIGTAIL', 100]), reason: 'Pigtail habis untuk splicing ODP baru' });
-  await act(sr2.id, 'create_po', 'proc', { vendor: 'PT Fiber Nusantara', note: 'Termin 14 hari' });
+  await act(sr2.id, 'create_po', 'ga', { vendor: 'PT Fiber Nusantara', note: 'Termin 14 hari' });
   const sr3 = await create('STOCK_REQUEST', 'ga', { toWarehouseId: WH['WH-CAB-A'], lines: lines(['SLEEVE', 40]), reason: 'Kebutuhan sleeve cabang A' });
-  await act(sr3.id, 'transfer', 'proc', { fromWarehouseId: WH['WH-PUSAT'] });
+  await act(sr3.id, 'transfer', 'ga', { fromWarehouseId: WH['WH-PUSAT'] });
   const sr4 = await create('STOCK_REQUEST', 'ga', { toWarehouseId: WH['WH-CAB-A'], lines: lines(['FASTCONN', 30]), reason: 'Restock fast connector' });
-  await act(sr4.id, 'transfer', 'proc', { fromWarehouseId: WH['WH-PUSAT'] });
+  await act(sr4.id, 'transfer', 'ga', { fromWarehouseId: WH['WH-PUSAT'] });
   await act(sr4.id, 'receive', 'ga', { note: 'Diterima lengkap' }); closedWos.push(sr4.id);
 
   console.log('• Aset GA & kondisi stok');

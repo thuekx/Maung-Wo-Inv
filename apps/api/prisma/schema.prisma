@@ -15,8 +15,7 @@ enum Role {
   MKT
   NOC
   FOC
-  PROC
-  GA
+  GA // General Affair + Procurement (satu peran)
   FIN
 }
 
@@ -74,6 +73,7 @@ model User {
   role           Role
   telegramChatId String?
   active         Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
   createdAt      DateTime @default(now())
 
   created   WorkOrder[] @relation("creator")
@@ -228,10 +228,14 @@ model Asset {
   nextMaintenanceAt  DateTime?
   lastMaintenanceAt  DateTime?
   createdAt          DateTime    @default(now())
+  brandId            String?
+  modelId            String?
 
-  item      Item       @relation(fields: [itemId], references: [id])
-  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
-  customer  Customer?  @relation(fields: [customerId], references: [id])
+  item      Item        @relation(fields: [itemId], references: [id])
+  warehouse Warehouse?  @relation(fields: [warehouseId], references: [id])
+  customer  Customer?   @relation(fields: [customerId], references: [id])
+  brand     AssetBrand? @relation(fields: [brandId], references: [id])
+  model     AssetModel? @relation(fields: [modelId], references: [id])
 
   @@index([status])
   @@index([warehouseId])
@@ -316,6 +320,52 @@ model Setting {
   value     Json
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+// Master merk & tipe perangkat (pilihan saat registrasi aset)
+model AssetBrand {
+  id     String       @id @default(cuid())
+  name   String       @unique
+  models AssetModel[]
+  assets Asset[]
+}
+
+model AssetModel {
+  id      String     @id @default(cuid())
+  brandId String
+  name    String
+  brand   AssetBrand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  assets  Asset[]
+
+  @@unique([brandId, name])
+}
+
+// Master nama paket / jasa langganan
+model Package {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// Jejak audit: ubah/hapus/reset password/impor
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String
+  role      String
+  action    String // CREATE | UPDATE | DELETE | PASSWORD_RESET | IMPORT
+  entity    String
+  entityId  String?
+  summary   String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
 }
 
 model Counter {

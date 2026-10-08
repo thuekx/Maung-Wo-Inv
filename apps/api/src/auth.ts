@@ -38,4 +38,4 @@ export const requireRole =
     next();
   };
 
-export const publicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, role: u.role, telegramLinked: !!u.telegramChatId });
+export const publicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, role: u.role, telegramLinked: !!u.telegramChatId, mustChangePassword: u.mustChangePassword });
