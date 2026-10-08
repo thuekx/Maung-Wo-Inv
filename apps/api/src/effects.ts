@@ -1,7 +1,7 @@
 import { Role, Prisma } from './orm';
 import { prisma, Tx } from './db';
-import { config } from './config';
 import { enqueue, QueuedJob } from './queue';
+import { getTelegram } from './settings';
 
 export interface NotifyOpts {
   roles?: Role[];
@@ -43,7 +43,8 @@ export class Effects {
       add('EMAIL', u.email, u.id);
       add('TELEGRAM', u.telegramChatId, u.id);
     }
-    for (const r of roles) add('TELEGRAM', config.telegram.roleChats[r]);
+    const roleChats = (await getTelegram()).roleChats;
+    for (const r of roles) add('TELEGRAM', roleChats[r]);
     for (const e of o.emails ?? []) add('EMAIL', e);
 
     for (const row of rows) {

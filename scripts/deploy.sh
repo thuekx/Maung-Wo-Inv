@@ -3,6 +3,7 @@
 # Pakai:  bash scripts/deploy.sh                       # akses via http://<ip-server>:3000
 #         bash scripts/deploy.sh --host wo.contoh.co.id # akses via domain (tetap http, port 3000/4000)
 #         bash scripts/deploy.sh --caddy wo.contoh.co.id api-wo.contoh.co.id   # HTTPS otomatis (Caddy)
+#         DEMO=1 bash scripts/deploy.sh                         # + data demo untuk uji (docs/DEMO.md)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -64,6 +65,10 @@ if [ "$API_OK" != 1 ]; then
 fi
 echo "==> Seed data awal (aman diulang)"
 docker compose "${FILES[@]}" exec -T api node dist/prisma/seed.js
+if [ "${DEMO:-0}" = 1 ]; then
+  echo "==> Data demo semua proses (lihat docs/DEMO.md)"
+  docker compose "${FILES[@]}" exec -T api node dist/prisma/seed-demo.js
+fi
 
 echo
 echo "SELESAI."

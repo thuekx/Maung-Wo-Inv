@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/api';
 import { ThemeSwitch } from '@/lib/theme';
+import { useBranding } from '@/lib/photo';
+import { fileUrl } from '@/lib/api';
 
 const NAV = [
   { href: '/', label: 'Dashboard', icon: '▦' },
@@ -20,6 +22,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const brand = useBranding();
 
   useEffect(() => { if (ready && !user) router.replace('/login'); }, [ready, user, router]);
   useEffect(() => setOpen(false), [path]);
@@ -36,7 +39,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </header>
       <aside className={`${open ? 'block' : 'hidden'} w-full shrink-0 border-r bg-white md:sticky md:top-0 md:block md:h-screen md:w-60 md:overflow-y-auto`}>
         <div className="hidden p-4 md:block">
-          <div className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-lg font-extrabold text-transparent">L1V WO</div>
+          {brand.logoUrl && <img src={fileUrl(brand.logoUrl)} alt="" className="mb-1 h-10 w-auto object-contain" />}
+          <div className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-lg font-extrabold text-transparent">{brand.companyName}</div>
           <div className="text-xs text-slate-500">Work Order &amp; Inventory</div>
         </div>
         <nav className="space-y-1 px-2 pb-2">

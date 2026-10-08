@@ -8,6 +8,17 @@ import type { Actor, Ctx, WoFull } from './wf-types';
 
 const CANCELLED = 'CANCELLED';
 
+/** Foto laporan: kaitkan ke WO; untuk teknisi (FOC) semua foto wajib bertanda GPS (bila kebijakan aktif). */
+export async function bindPhotos(tx: Tx, woId: string, actor: Actor, urls: unknown, kind: 'REPORT' | 'PROGRESS', note?: string) {
+  if (!Array.isArray(urls) || !urls.length) return;
+  const list = [...new Set(urls.filter((u): u is string => typeof u === 'string'))];
+  const rows = await tx.attachment.findMany({ where: { url: { in: list } } });
+  const policy = ((await tx.setting.findUnique({ where: { key: 'app' } }))?.value as { requireGps?: boolean } | null)?.requireGps !== false;
+  if (actor.role === 'FOC' && policy && list.some((u) => { const r = rows.find((x) => x.url === u); return !r || r.lat == null || r.lng == null; }))
+    throw new AppError(400, 'Semua foto teknisi harus bertanda GPS — ambil foto langsung lewat aplikasi dengan izin lokasi aktif');
+  await tx.attachment.updateMany({ where: { url: { in: list } }, data: { woId, kind, ...(note ? { note } : {}) } });
+}
+
 export async function systemActor(tx: Tx): Promise<Actor> {
   const u = await tx.user.findUnique({ where: { email: 'system@l1v.local' } });
   if (!u) throw new AppError(500, 'User sistem belum ada (jalankan seed)');
@@ -165,6 +176,7 @@ export async function applyAction(fx: Effects, woId: string, key: string, actor:
     if (action.assigneeOnly && actor.role !== 'ADMIN' && wo.assigneeId !== actor.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan yang dapat melakukan ini');
   }
 
+  await bindPhotos(fx.tx, woId, actor, input.photos, 'REPORT');
   const override = action.run ? await action.run(ctx, input) : undefined;
   await enterStatus(fx, woId, actor, override ?? action.to, {
     action: key,

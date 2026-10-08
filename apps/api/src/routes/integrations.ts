@@ -7,6 +7,7 @@ import { connection } from '../queue';
 import { transact } from '../effects';
 import { createWorkOrder, systemActor } from '../engine';
 import { sendTelegram } from '../senders';
+import { getBranding, getTelegram } from '../settings';
 
 export const integrationRoutes = Router();
 
@@ -58,8 +59,12 @@ integrationRoutes.get('/integrations/billing/customers/:code', async (req, res) 
 });
 
 /** Webhook bot Telegram: user mengirim "/link KODE" (kode dibuat dari halaman Profil). */
+/** Info publik untuk halaman login & watermark foto (nama PT, logo, kebijakan GPS). */
+integrationRoutes.get('/branding', async (_req, res) => res.json(await getBranding()));
+
 integrationRoutes.post('/telegram/webhook/:secret', async (req, res) => {
-  if (!safeEq(String(req.params.secret), config.telegram.webhookSecret)) throw new AppError(404, 'Not found');
+  const { webhookSecret, botUsername } = await getTelegram();
+  if (!webhookSecret || !safeEq(String(req.params.secret), webhookSecret)) throw new AppError(404, 'Not found');
   const msg = req.body?.message;
   const text: string = msg?.text ?? '';
   const chatId = msg?.chat?.id ? String(msg.chat.id) : undefined;
@@ -73,8 +78,11 @@ integrationRoutes.post('/telegram/webhook/:secret', async (req, res) => {
     } else {
       await sendTelegram(chatId, '❌ Kode tidak valid / kedaluwarsa. Buat kode baru di halaman Profil.').catch(() => {});
     }
+  } else if (chatId && text.startsWith('/id')) {
+    // berguna untuk grup divisi: kirim /id di grup, salin angkanya ke Admin → Pengaturan → Telegram
+    await sendTelegram(chatId, `Chat ID: ${chatId}`).catch(() => {});
   } else if (chatId && text.startsWith('/start')) {
-    await sendTelegram(chatId, `Selamat datang di L1V WO Bot.\nHubungkan akun: buka halaman Profil di aplikasi, buat kode, lalu kirim: /link KODE\n(chat id ini: ${chatId})`).catch(() => {});
+    await sendTelegram(chatId, `Selamat datang di L1V WO Bot${botUsername ? ` (@${botUsername})` : ''}.\nHubungkan akun: buka halaman Profil di aplikasi, buat kode, lalu kirim: /link KODE\nPerintah lain: /id (tampilkan chat id)\n(chat id ini: ${chatId})`).catch(() => {});
   }
   res.json({ ok: true });
 });

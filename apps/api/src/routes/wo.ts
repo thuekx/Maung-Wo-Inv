@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { authenticate } from '../auth';
 import { transact } from '../effects';
-import { allowedActions, applyAction, createWorkOrder } from '../engine';
+import { allowedActions, applyAction, bindPhotos, createWorkOrder } from '../engine';
+import { config } from '../config';
 import { workflowMeta, workflows } from '../workflows';
 
 export const woRoutes = Router();
@@ -55,13 +56,19 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
       children: { select: { id: true, number: true, title: true, type: true, status: true } },
       events: { orderBy: { createdAt: 'asc' } },
       purchase: { include: { lines: { include: { item: true } } } },
+      attachments: { orderBy: { createdAt: 'asc' } },
     },
   });
   if (!wo) throw new AppError(404, 'WO tidak ditemukan');
   const u = req.user!;
   const st = workflows[wo.type].statuses[wo.status];
+  const uploaders = await prisma.user.findMany({ where: { id: { in: [...new Set(wo.attachments.map((a) => a.uploadedBy))] } }, select: { id: true, name: true } });
+  const attachments = wo.attachments.map((a) => ({ ...a, uploaderName: uploaders.find((x) => x.id === a.uploadedBy)?.name ?? '-' }));
+  const canProgress = !st?.final && wo.status !== 'CANCELLED' && st?.owner === 'FOC' && !!wo.assigneeId && (u.role === 'ADMIN' || wo.assigneeId === u.id);
   res.json({
     ...wo,
+    attachments,
+    canProgress,
     statusLabel: st?.label ?? (wo.status === 'CANCELLED' ? 'Dibatalkan' : wo.status),
     owner: st?.owner ?? null,
     final: wo.status === 'CANCELLED' || !!st?.final,
@@ -78,4 +85,27 @@ woRoutes.post('/work-orders/:id/actions/:key', async (req, res) => {
 // aset yang menunggu QC dari WO ini (form QC di WO Terminate)
 woRoutes.get('/work-orders/:id/qc-assets', async (req, res) => {
   res.json(await prisma.asset.findMany({ where: { woId: String(req.params.id), status: 'RETURNED_PENDING_QC' }, include: { item: true } }));
+});
+
+/** Update progres lapangan oleh teknisi yang ditugaskan: foto bertanda GPS + catatan, tanpa pindah tahap. */
+woRoutes.post('/work-orders/:id/progress', async (req, res) => {
+  const b = z.object({ note: z.string().trim().max(500).optional(), photos: z.array(z.string().min(1)).min(1, 'Minimal 1 foto progres').max(10) }).parse(req.body);
+  const u = req.user!;
+  await transact(async (fx) => {
+    const wo = await fx.tx.workOrder.findUnique({ where: { id: String(req.params.id) }, include: { customer: true } });
+    if (!wo) throw new AppError(404, 'WO tidak ditemukan');
+    const st = workflows[wo.type].statuses[wo.status];
+    if (wo.closedAt || st?.owner !== 'FOC' || !wo.assigneeId) throw new AppError(409, 'Progres lapangan hanya untuk WO yang sedang dikerjakan teknisi');
+    if (u.role !== 'ADMIN' && wo.assigneeId !== u.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan');
+    await bindPhotos(fx.tx, wo.id, { id: u.id, name: u.name, role: u.role }, b.photos, 'PROGRESS', b.note);
+    await fx.tx.woEvent.create({ data: { woId: wo.id, action: 'progress', fromStatus: wo.status, toStatus: wo.status, actorId: u.id, actorName: u.name, note: b.note, payload: { photos: b.photos } } });
+    await fx.notify({
+      roles: ['NOC'],
+      userIds: [wo.createdById],
+      woId: wo.id,
+      subject: `[${wo.number}] Update progres lapangan`,
+      body: `${u.name} mengirim ${b.photos.length} foto progres (GPS) untuk ${wo.title}.${b.note ? `\nCatatan: ${b.note}` : ''}\n${config.webUrl}/work-orders/${wo.id}`,
+    });
+  });
+  res.json({ ok: true });
 });

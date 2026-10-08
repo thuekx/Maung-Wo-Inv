@@ -196,8 +196,15 @@ GET  /api/integrations/billing/customers/:code     # status layanan
 ## 7. Notifikasi
 
 - **Email**: ke semua user aktif pada divisi pemilik status berikutnya (+ teknisi yang ditugaskan, + pembuat WO saat selesai, + email pelanggan untuk BA).
-- **Telegram**: ke chat pribadi user (tautkan di *Profil* → kirim `/link KODE` ke bot) dan/atau grup per divisi (`TELEGRAM_ROLE_CHATS`). Set webhook bot sekali: `https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://API_DOMAIN/api/telegram/webhook/<TELEGRAM_WEBHOOK_SECRET>`.
+- **Telegram**: ke chat pribadi user (tautkan di *Profil* → kirim `/link KODE` ke bot) dan/atau grup per divisi.
+- **Dikelola Admin dari aplikasi** (*Admin → Pengaturan*): SMTP (dengan tombol tes email), token bot Telegram (cek bot, pasang webhook, tes kirim), chat ID grup per divisi, logo/nama PT, dan kewajiban GPS foto. Rahasia disimpan terenkripsi. **Panduan langkah demi langkah: [docs/NOTIFIKASI.md](docs/NOTIFIKASI.md).**
 - Tanpa kredensial SMTP/Telegram aplikasi tetap jalan (dry-run, tercatat di log Admin).
+
+### Foto lapangan (GPS + logo PT)
+Foto teknisi (FOC) diambil lewat kamera, lalu browser mengambil lokasi GPS dan menempelkan **banner logo PT, nama PT, nomor WO, koordinat (±akurasi), dan waktu** langsung pada piksel foto. Server menolak foto teknisi tanpa GPS (kebijakan dapat dimatikan Admin untuk uji tanpa HTTPS) dan menyimpan koordinat per foto; galeri **Foto lapangan** di WO menampilkan tautan peta. Teknisi juga dapat mengirim **Update progres lapangan** (foto bertanda GPS + catatan) tanpa mengubah tahap, dan NOC/pembuat WO diberi tahu. Logo PT diunggah sebagai master di *Admin → Pengaturan*. GPS browser hanya bekerja di **HTTPS** (atau localhost) — gunakan mode Caddy.
+
+### Data demo
+`docker compose exec api node dist/prisma/seed-demo.js` (atau `DEMO=1 bash scripts/deploy.sh`) membuat data contoh untuk semua alur di setiap tahap beserta skenario uji per akun: **[docs/DEMO.md](docs/DEMO.md)**.
 
 ## 8. Struktur
 
@@ -215,7 +222,7 @@ apps/web/src/app/(app)/*        dashboard, WO, pelanggan, inventori, PO, admin
 ## 9. Batasan saat ini / langkah berikutnya
 
 - Belum ada test otomatis; kode ditulis tanpa dijalankan di lingkungan pembuatnya — jalankan `npm run typecheck` di `apps/api` dan `apps/web` serta uji satu alur penuh (Pasang Baru) sebelum dipakai.
-- Foto disimpan lokal dan URL-nya tidak bertanda (acak, sulit ditebak) — pindahkan ke S3 dengan signed URL untuk produksi.
+- Watermark/GPS foto dibuat di browser dan koordinat divalidasi hanya keberadaannya di server (bukan keasliannya); untuk audit lebih ketat tambahkan penandaan sisi server. Foto disimpan lokal dan URL-nya tidak bertanda (acak, sulit ditebak) — pindahkan ke S3 dengan signed URL untuk produksi.
 - Token login disimpan di `localStorage` (12 jam); untuk kebutuhan lebih ketat pindah ke cookie `httpOnly` + CSRF.
 - Reservasi stok belum ada: dua pasang baru bersamaan bisa sama-sama melihat stok "aman" yang sama.
 - Laporan SLA/MTTR, integrasi OLT/Mikrotik/MSRadius otomatis, dan peta teknisi dapat ditambahkan di atas model yang ada.

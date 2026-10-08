@@ -156,12 +156,18 @@ model WoEvent {
 }
 
 model Attachment {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   woId       String?
   url        String
   mime       String
   uploadedBy String
-  createdAt  DateTime @default(now())
+  kind       String    @default("REPORT") // REPORT | PROGRESS | LOGO
+  lat        Float? // GPS saat foto diambil
+  lng        Float?
+  accuracy   Float? // meter
+  takenAt    DateTime?
+  note       String?
+  createdAt  DateTime  @default(now())
 
   wo WorkOrder? @relation(fields: [woId], references: [id])
 }
@@ -302,6 +308,14 @@ model OutboundEvent {
   sentAt    DateTime?
 
   @@index([status, createdAt])
+}
+
+// Pengaturan yang dikelola Admin dari UI (smtp, telegram, branding, app). Rahasia disimpan terenkripsi.
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
 }
 
 model Counter {

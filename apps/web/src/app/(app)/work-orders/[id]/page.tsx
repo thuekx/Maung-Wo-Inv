@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { api, fmtDate, ROLE_LABEL, TYPE_LABEL, useFetch } from '@/lib/api';
 import { DynamicForm } from '@/components/DynamicForm';
 import { Badge, DataView, ErrorMsg, PageHeader, statusTone } from '@/components/ui';
+import { fileUrl } from '@/lib/api';
 
 export default function WoDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -22,7 +23,8 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
   ];
   const current = available.find((a) => a.key === active);
   const c = wo.customer;
-  const { events, customer, createdBy, assignee, parent, children, purchase, data, ...rest } = wo;
+  const { events, customer, createdBy, assignee, parent, children, purchase, data, attachments, ...rest } = wo;
+  const photos: any[] = (attachments ?? []).filter((a: any) => a.kind !== 'LOGO');
   void rest;
 
   return (
@@ -55,12 +57,40 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
                   </div>
                   {current && (
                     <div className="rounded-lg border bg-slate-50 p-3">
-                      <DynamicForm key={current.key} fields={current.fields} woId={wo.id} danger={current.danger} submitLabel={current.label}
+                      <DynamicForm key={current.key} fields={current.fields} woId={wo.id} woNumber={wo.number} danger={current.danger} submitLabel={current.label}
                         onSubmit={async (input) => { await api(`/work-orders/${wo.id}/actions/${current.key}`, { body: input }); setActive(null); await reload(); }} />
                     </div>
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {wo.canProgress && (
+            <div className="card">
+              <h2 className="mb-1 font-semibold">Update progres lapangan</h2>
+              <p className="mb-2 text-sm text-slate-500">Kirim foto progres (GPS + logo otomatis) tanpa mengubah tahap WO. NOC dan pembuat WO diberi tahu.</p>
+              <DynamicForm key={`progress-${events.length}`} woId={wo.id} woNumber={wo.number} photoKind="PROGRESS" submitLabel="Kirim progres"
+                fields={[{ name: 'photos', label: 'Foto progres', type: 'photos', required: true }, { name: 'note', label: 'Catatan progres', type: 'textarea' }]}
+                onSubmit={async (v) => { await api(`/work-orders/${wo.id}/progress`, { body: v }); await reload(); }} />
+            </div>
+          )}
+
+          {photos.length > 0 && (
+            <div className="card">
+              <h2 className="mb-2 font-semibold">Foto lapangan ({photos.length})</h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {photos.map((a: any) => (
+                  <figure key={a.id} className="overflow-hidden rounded-lg border text-xs">
+                    <a href={fileUrl(a.url)} target="_blank" rel="noreferrer"><img src={fileUrl(a.url)} alt="" className="aspect-[4/3] w-full object-cover" /></a>
+                    <figcaption className="space-y-0.5 p-2">
+                      <div className="flex items-center justify-between"><Badge tone={a.kind === 'PROGRESS' ? 'violet' : 'blue'}>{a.kind === 'PROGRESS' ? 'Progres' : 'Laporan'}</Badge><span className="text-slate-500">{fmtDate(a.takenAt ?? a.createdAt)}</span></div>
+                      <div className="text-slate-600">{a.uploaderName}{a.note ? ` — ${a.note}` : ''}</div>
+                      {a.lat != null ? <a className="text-brand-700 hover:underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${a.lat},${a.lng}`}>📍 {a.lat.toFixed(5)}, {a.lng.toFixed(5)}{a.accuracy ? ` (±${Math.round(a.accuracy)} m)` : ''}</a> : <span className="text-amber-600">Tanpa GPS</span>}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
             </div>
           )}
 
@@ -92,7 +122,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
               <div className="mt-1 space-y-0.5 text-slate-600">
                 <div>{c.phone}{c.email && ` · ${c.email}`}</div>
                 <div>{c.address}</div>
-                {c.lat != null && <a className="text-brand-700 hover:underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}>📍 Buka peta ({c.lat}, {c.lng})</a>}
+                {c.lat != null && <a className="text-brand-700 hover:underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}>📍 Buka peta ({Number(c.lat).toFixed(5)}, {Number(c.lng).toFixed(5)})</a>}
                 <div>Paket: {c.packageName}</div>
                 <div>Status: <Badge>{c.status}</Badge></div>
                 {c.odp && <div>ODP/Port: {c.odp} / {c.port} · VLAN {c.vlan} · IP {c.ip}</div>}

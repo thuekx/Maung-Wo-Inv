@@ -11,6 +11,7 @@ import { authenticate, publicUser, requireRole, signToken } from '../auth';
 import { config } from '../config';
 import { connection } from '../queue';
 import { workflows } from '../workflows';
+import { getBranding, getTelegram } from '../settings';
 
 export const core = Router();
 
@@ -33,7 +34,8 @@ core.get('/auth/me', (req, res) => res.json(publicUser(req.user!)));
 core.post('/auth/telegram-code', async (req, res) => {
   const code = crypto.randomBytes(4).toString('hex').toUpperCase();
   await connection.setex(`tg:${code}`, 600, req.user!.id);
-  res.json({ code, expiresInSec: 600, command: `/link ${code}` });
+  const { botUsername } = await getTelegram();
+  res.json({ code, expiresInSec: 600, command: `/link ${code}`, botUsername });
 });
 
 core.post('/auth/change-password', async (req, res) => {
@@ -120,11 +122,22 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
 });
+// angka opsional dari multipart: string kosong dianggap tidak ada
+const optNum = (min: number, max: number) => z.preprocess((v) => (v === '' || v == null ? undefined : v), z.coerce.number().min(min).max(max).optional());
+const uploadMeta = z.object({ lat: optNum(-90, 90), lng: optNum(-180, 180), accuracy: optNum(0, 100000), woId: z.string().optional(), kind: z.enum(['REPORT', 'PROGRESS']).default('REPORT') });
+
 core.post('/uploads', upload.single('file'), async (req, res) => {
   if (!req.file) throw new AppError(400, 'File harus JPG/PNG/WEBP ≤ 8MB');
+  const m = uploadMeta.parse(req.body ?? {});
+  const u = req.user!;
+  // foto teknisi wajib bertanda GPS (kebijakan dapat dimatikan Admin, mis. staging tanpa HTTPS)
+  if (u.role === 'FOC' && (m.lat == null || m.lng == null) && (await getBranding()).requireGps) {
+    fs.unlink(req.file.path, () => {});
+    throw new AppError(400, 'Foto teknisi wajib memiliki lokasi GPS — aktifkan izin lokasi di browser (butuh HTTPS)');
+  }
   const url = `/uploads/${req.file.filename}`;
-  await prisma.attachment.create({ data: { url, mime: req.file.mimetype, uploadedBy: req.user!.id } });
-  res.status(201).json({ url });
+  await prisma.attachment.create({ data: { url, mime: req.file.mimetype, uploadedBy: u.id, woId: m.woId, kind: m.kind, lat: m.lat, lng: m.lng, accuracy: m.accuracy, takenAt: new Date() } });
+  res.status(201).json({ url, lat: m.lat ?? null, lng: m.lng ?? null });
 });
 
 /* ── dashboard ── */

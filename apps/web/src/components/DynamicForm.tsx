@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { api, fileUrl, uploadPhoto, useFetch } from '@/lib/api';
+import { api, fileUrl, useFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { uploadPhoto, useBranding } from '@/lib/photo';
 import { ErrorMsg } from './ui';
 
 export interface Field {
@@ -98,22 +100,26 @@ export function MaterialsInput({ value, onChange, category }: { value: { itemId:
   );
 }
 
-export function PhotosInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const [busy, setBusy] = useState(false);
+export function PhotosInput({ value, onChange, woId, label, kind = 'REPORT' }: { value: string[]; onChange: (v: string[]) => void; woId?: string; label?: string; kind?: 'REPORT' | 'PROGRESS' }) {
+  const { user } = useAuth();
+  const branding = useBranding();
+  const [step, setStep] = useState('');
   const [err, setErr] = useState('');
+  const strict = user?.role === 'FOC';
   async function pick(files: FileList | null) {
     if (!files) return;
-    setBusy(true); setErr('');
+    setErr('');
     try {
       const urls: string[] = [];
-      for (const f of Array.from(files)) urls.push(await uploadPhoto(f));
+      for (const f of Array.from(files)) urls.push(await uploadPhoto(f, { woId, label, kind, strict, onStep: setStep }));
       onChange([...value, ...urls]);
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr((e as Error).message); } finally { setStep(''); }
   }
   return (
     <div className="space-y-2">
-      <input type="file" accept="image/*" capture="environment" multiple disabled={busy} onChange={(e) => pick(e.target.files)} className="text-sm" />
-      {busy && <p className="text-xs text-slate-500">Mengunggah…</p>}
+      <input type="file" accept="image/*" capture="environment" multiple disabled={!!step} onChange={(e) => { pick(e.target.files); e.target.value = ''; }} className="text-sm" />
+      <p className="text-xs text-slate-500">📍 Lokasi GPS, waktu{branding.logoUrl ? ', dan logo' : ''} {branding.companyName} otomatis ditempel pada foto{strict && branding.requireGps ? ' (wajib untuk teknisi)' : ''}.</p>
+      {step && <p className="text-xs text-brand-700">{step}</p>}
       <ErrorMsg>{err}</ErrorMsg>
       <div className="flex flex-wrap gap-2">
         {value.map((u) => (
@@ -181,8 +187,8 @@ function CustomerSelect({ value, onChange, statuses }: { value: string; onChange
 
 /* ───────── form dinamis ───────── */
 
-export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, woId, busy }: {
-  fields: Field[]; onSubmit: (values: Record<string, any>) => void | Promise<void>; submitLabel?: string; danger?: boolean; woId?: string; busy?: boolean;
+export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, woId, woNumber, photoKind, busy }: {
+  fields: Field[]; onSubmit: (values: Record<string, any>) => void | Promise<void>; submitLabel?: string; danger?: boolean; woId?: string; woNumber?: string; photoKind?: 'REPORT' | 'PROGRESS'; busy?: boolean;
 }) {
   const [v, setV] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
@@ -239,7 +245,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
             : f.type === 'customer' ? <CustomerSelect value={v[f.name]} onChange={(x) => set(f.name, x)} statuses={f.customerStatus} />
             : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} />
-            : f.type === 'photos' ? <PhotosInput value={v[f.name]} onChange={(x) => set(f.name, x)} />
+            : f.type === 'photos' ? <PhotosInput value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
             : f.type === 'qc' ? <QcInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
           {f.help && <p className="mt-0.5 text-xs text-slate-500">{f.help}</p>}

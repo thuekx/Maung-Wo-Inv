@@ -22,6 +22,8 @@ Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC
 - Stok kuantitas lewat `moveStock` (atomik, tidak boleh negatif); aset ber-SN lewat `moveAsset`. Setiap teknisi punya gudang `MOBILE`.
 - Cek stok pasang baru otomatis berdasar `Item.installDefaultQty` di gudang pelanggan; kurang → WO anak `STOCK_REQUEST`, induk lanjut sendiri saat anak selesai.
 - Finance hanya **pengingat** (Telegram + email) saat NOC aktivasi dan saat Marketing kirim BA; tidak ada event ke billing. Data keluar lewat Export API (`routes/export.ts`, `docs/API.md`).
+- Pengaturan Admin (SMTP, Telegram, logo PT, kebijakan GPS) disimpan di tabel `Setting` (rahasia AES-GCM, kunci dari `JWT_SECRET`), dibaca lewat `src/settings.ts` dengan cache 10 dtk; `.env` hanya fallback. Foto lapangan: watermark di browser (`web/src/lib/photo.ts`), metadata GPS di `Attachment`; progres lapangan `POST /work-orders/:id/progress`.
+- Data demo: `prisma/seed-demo.ts` (menjalankan engine asli; notifikasi demo di-set SKIPPED).
 - Tema terang/gelap/ikuti-sistem: `apps/web/src/lib/theme.tsx` (kelas `dark`, override di `globals.css`); grafik SVG tanpa library di `components/charts.tsx`.
 
 ## Peta file

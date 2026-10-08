@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { ThemeSwitch } from '@/lib/theme';
+import { useBranding } from '@/lib/photo';
+import { fileUrl } from '@/lib/api';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -11,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const brand = useBranding();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,7 +26,8 @@ export default function LoginPage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <form onSubmit={submit} className="card w-full max-w-sm space-y-4">
         <div>
-          <h1 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-extrabold text-transparent">L1V WO &amp; Inventory</h1>
+          {brand.logoUrl && <img src={fileUrl(brand.logoUrl)} alt={brand.companyName} className="mb-2 h-12 w-auto object-contain" />}
+          <h1 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-extrabold text-transparent">{brand.companyName} · WO &amp; Inventory</h1>
           <p className="text-sm text-slate-500">Masuk dengan akun divisi Anda</p>
         </div>
         <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />

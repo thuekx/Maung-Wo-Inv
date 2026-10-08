@@ -25,15 +25,6 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return json as T;
 }
 
-export async function uploadPhoto(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append('file', file);
-  const res = await fetch(`${API}/api/uploads`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error ?? 'Upload gagal');
-  return json.url as string;
-}
-
 export const fileUrl = (u: string) => (u.startsWith('http') ? u : `${API}${u}`);
 
 export function useFetch<T = any>(path: string | null) {
