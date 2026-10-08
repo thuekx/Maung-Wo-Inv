@@ -28,6 +28,8 @@ Yang **bukan** dari template: palet navy/emas, Playfair Display + Inter, tombol 
 ## Brand yang dapat diatur Admin (Admin → Pengaturan → Tampilan & brand)
 Logo horizontal (latar gelap), ikon ringkas (top bar), logo tegak, gambar latar login, nama brand, tagline, sub-judul, teks login, warna utama/aksen, dan enam warna grafik; lengkap dengan pratinjau dan tombol "Kembalikan ke bawaan MAUNG". Perubahan berlaku langsung (warna diturunkan menjadi skala Tailwind lewat CSS variable; tersimpan di browser agar tidak berkedip saat muat). Logo horizontal juga dipakai sebagai banner pada foto lapangan teknisi.
 
+Penyimpanan logo: saat logo diganti atau dihapus, file lama dan catatan attachment-nya ikut dihapus otomatis (termasuk sisa file brand dari versi sebelumnya yang tidak lagi dipakai). Foto lapangan yang sudah dibubuhi logo tidak terpengaruh karena logo tertanam di piksel foto.
+
 Tips logo: unggah logo horizontal **tanpa tagline** (tagline tampil terpisah dan bisa diganti) dan ikon ringkas tanpa teks; contoh ikon yang dipotong dari logo Anda ada di `docs/branding/logo-mark.png`.
 
 ## Login dengan username

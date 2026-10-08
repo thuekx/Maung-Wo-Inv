@@ -127,6 +127,22 @@ const brandUpload = multer({
   limits: { fileSize: 6 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
 });
+/**
+ * Hapus file brand yang tidak lagi dipakai: semua Attachment berjenis LOGO yang URL-nya bukan salah satu logo/latar aktif,
+ * beserta file di storage. Dipanggil setelah unggah/ganti/hapus, jadi sisa file lama (juga dari versi sebelumnya) ikut terbereskan.
+ */
+async function sweepBrandFiles() {
+  const b = (await getSetting<any>('branding')) ?? {};
+  const live = new Set([b.logoUrl, b.logoStackedUrl, b.logoMarkUrl, b.loginBgUrl].filter(Boolean) as string[]);
+  const stale = await prisma.attachment.findMany({ where: { kind: 'LOGO', url: { notIn: [...live] } }, select: { id: true, url: true } });
+  for (const a of stale) {
+    const file = path.join(config.uploadDir, path.basename(a.url)); // basename: cegah path traversal
+    await fs.promises.unlink(file).catch((e) => { if (e?.code !== 'ENOENT') console.error('hapus file brand gagal:', file, e); });
+  }
+  if (stale.length) await prisma.attachment.deleteMany({ where: { id: { in: stale.map((a) => a.id) } } });
+  return stale.length;
+}
+
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Warna harus berformat #RRGGBB');
 
 adminRoutes.put('/admin/settings/branding', async (req, res) => {
@@ -161,6 +177,7 @@ adminRoutes.post('/admin/settings/branding/logo', brandUpload.single('file'), as
   const old = (await getSetting<any>('branding')) ?? {};
   await putSetting('branding', { ...old, [v.key]: url }, req.user!.id);
   await prisma.attachment.create({ data: { url, mime: req.file.mimetype, uploadedBy: req.user!.id, kind: 'LOGO' } });
+  await sweepBrandFiles(); // file lama varian yang sama ikut dihapus
   res.status(201).json(await overview());
 });
 
@@ -168,6 +185,7 @@ adminRoutes.delete('/admin/settings/branding/logo', async (req, res) => {
   const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg']).default('horizontal').parse(req.query.variant);
   const old = (await getSetting<any>('branding')) ?? {};
   await putSetting('branding', { ...old, [VARIANTS[variant].key]: null }, req.user!.id);
+  await sweepBrandFiles();
   res.json(await overview());
 });
 
