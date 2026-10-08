@@ -23,6 +23,8 @@ export const config = {
     // chat/grup per divisi, contoh: {"NOC":"-1001234","FOC":"-1005678"}
     roleChats: JSON.parse(env.TELEGRAM_ROLE_CHATS || '{}') as Record<string, string>,
   },
+  // API baca-saja /api/export/* (kosong = nonaktif)
+  exportApiKey: env.EXPORT_API_KEY || '',
   billing: {
     apiKey: env.BILLING_API_KEY ?? 'dev-billing-key', // dipakai billing saat memanggil WO App
     webhookUrl: env.BILLING_WEBHOOK_URL, // tujuan event keluar dari WO App

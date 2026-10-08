@@ -280,12 +280,12 @@ const newInstall: Workflow = {
             const c = ctx.wo.customer!;
             await setCustomer(ctx, { status: 'ACTIVE', activatedAt: new Date() });
             ctx.data.activation = { ...i, at: new Date() };
-            await ctx.fx.emit('service.activated', { customerCode: c.code, customerName: c.name, package: c.packageName, ip: c.ip, vlan: c.vlan, woNumber: ctx.wo.number, activatedAt: new Date() });
+            // Finance tidak terhubung langsung ke billing: hanya pengingat (Telegram + email) agar invoice segera disiapkan.
             await ctx.fx.notify({
               roles: ['FIN'],
               woId: ctx.wo.id,
-              subject: `[${ctx.wo.number}] Layanan aktif – siapkan invoice ${c.name}`,
-              body: `NOC menyelesaikan aktivasi ${c.code} (${c.name}), paket ${c.packageName}. BA Digital segera dikirim Marketing — mohon siapkan pencatatan/invoice di sistem billing.\n${link(ctx)}`,
+              subject: `🔔 [${ctx.wo.number}] Pelanggan sudah AKTIF – segera siapkan invoice`,
+              body: `Pelanggan ${c.name} (${c.code}) telah selesai diaktivasi NOC.\nPaket: ${c.packageName}\nTanggal aktif: ${new Date().toLocaleDateString('id-ID')}\n\nMohon segera siapkan invoice di sistem billing.\n${link(ctx)}`,
             });
           },
         },
@@ -314,12 +314,11 @@ const newInstall: Workflow = {
                 body: `Yth. ${c.name},\n\nLayanan internet Anda telah aktif.\nNo. BA: ${baNumber}\nPaket: ${c.packageName}\nAlamat: ${c.address}\n\nTerima kasih telah berlangganan.`,
               });
             ctx.data.ba = { number: baNumber, sentTo: to ?? null, at: new Date() };
-            await ctx.fx.emit('invoice.prepare', { customerCode: c.code, customerName: c.name, package: c.packageName, baNumber, woNumber: ctx.wo.number, activatedAt: c.activatedAt });
             await ctx.fx.notify({
               roles: ['FIN'],
               woId: ctx.wo.id,
-              subject: `[${ctx.wo.number}] BA terkirim – mulai cycle penagihan ${c.name}`,
-              body: `BA ${baNumber} sudah dikirim ke pelanggan. Sinyal "invoice.prepare" telah dikirim ke aplikasi billing.\n${link(ctx)}`,
+              subject: `🔔 [${ctx.wo.number}] BA terkirim – pastikan invoice ${c.name} sudah disiapkan`,
+              body: `BA ${baNumber} sudah dikirim ke pelanggan ${c.name} (${c.code}), paket ${c.packageName}.\nPengingat: mulai cycle penagihan dan pastikan invoice pertama sudah disiapkan di sistem billing.\n${link(ctx)}`,
             });
           },
         },
@@ -469,7 +468,6 @@ const suspend: Workflow = {
           run: async (ctx, input) => {
             ctx.data.isolation = z.object({ profile: z.string().min(1), note: optNote }).parse(input);
             await setCustomer(ctx, { status: 'SUSPENDED' });
-            await ctx.fx.emit('service.suspended', { customerCode: ctx.wo.customer!.code, woNumber: ctx.wo.number });
             await ctx.fx.notify({ roles: ['MKT', 'FIN'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] ${cname(ctx)} ter-isolir`, body: `Layanan pelanggan telah diisolir NOC.\n${link(ctx)}` });
           },
         },
@@ -508,7 +506,6 @@ const unsuspend: Workflow = {
           run: async (ctx, input) => {
             ctx.data.restore = z.object({ profile: z.string().min(1), note: optNote }).parse(input);
             await setCustomer(ctx, { status: 'ACTIVE' });
-            await ctx.fx.emit('service.restored', { customerCode: ctx.wo.customer!.code, woNumber: ctx.wo.number });
             await ctx.fx.notify({ roles: ['MKT', 'FIN'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] ${cname(ctx)} aktif kembali`, body: `Akses pelanggan telah dipulihkan.\n${link(ctx)}` });
           },
         },
@@ -560,7 +557,6 @@ const terminate: Workflow = {
             const c = ctx.wo.customer!;
             ctx.data.released = { ip: c.ip, vlan: c.vlan, odp: c.odp, port: c.port };
             await setCustomer(ctx, { ip: null, vlan: null, port: null });
-            await ctx.fx.emit('service.deactivated', { customerCode: c.code, woNumber: ctx.wo.number });
           },
         },
       ],
@@ -639,7 +635,6 @@ const terminate: Workflow = {
           fields: [note()],
           run: async (ctx) => {
             await setCustomer(ctx, { status: 'TERMINATED' });
-            await ctx.fx.emit('account.closed', { customerCode: ctx.wo.customer!.code, woNumber: ctx.wo.number });
             await ctx.fx.notify({ roles: ['MKT'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] Akun ${cname(ctx)} resmi ditutup`, body: link(ctx) });
           },
         },

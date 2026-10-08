@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { ThemeSwitch } from '@/lib/theme';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -19,10 +20,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
       <form onSubmit={submit} className="card w-full max-w-sm space-y-4">
         <div>
-          <h1 className="text-xl font-bold text-brand-700">L1V WO &amp; Inventory</h1>
+          <h1 className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-xl font-extrabold text-transparent">L1V WO &amp; Inventory</h1>
           <p className="text-sm text-slate-500">Masuk dengan akun divisi Anda</p>
         </div>
         <input className="input" type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
@@ -30,6 +31,7 @@ export default function LoginPage() {
         {err && <p className="text-sm text-red-600">{err}</p>}
         <button className="btn w-full" disabled={busy}>{busy ? 'Masuk…' : 'Masuk'}</button>
       </form>
+      <ThemeSwitch />
     </main>
   );
 }

@@ -9,6 +9,7 @@ import { core } from './routes/core';
 import { woRoutes } from './routes/wo';
 import { inventoryRoutes } from './routes/inventory';
 import { integrationRoutes } from './routes/integrations';
+import { exportRoutes } from './routes/export';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -21,6 +22,7 @@ app.use('/uploads', express.static(config.uploadDir, { maxAge: '7d', index: fals
 
 const api = express.Router();
 api.use(integrationRoutes); // tanpa JWT (pakai API key / secret)
+api.use(exportRoutes); // tanpa JWT (pakai EXPORT_API_KEY)
 api.use(core);
 api.use(woRoutes);
 api.use(inventoryRoutes);

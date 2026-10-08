@@ -141,14 +141,46 @@ core.get('/dashboard', async (req, res) => {
   const byType: Record<string, number> = {};
   for (const w of open) byType[w.type] = (byType[w.type] ?? 0) + 1;
 
-  const items = await prisma.item.findMany({ where: { minStock: { gt: 0 } } });
-  const lowStock = [];
+  // stok: HABIS (0), MENIPIS (< minimum), AMAN — gudang non-mobile
+  const items = await prisma.item.findMany({ where: { minStock: { gt: 0 } }, orderBy: { name: 'asc' } });
+  const stock = [];
   for (const it of items) {
     const total = it.tracked
       ? await prisma.asset.count({ where: { itemId: it.id, status: { in: ['IN_STOCK', 'REFURBISHED'] }, warehouse: { kind: { not: 'MOBILE' } } } })
       : ((await prisma.stockLevel.aggregate({ _sum: { qty: true }, where: { itemId: it.id, warehouse: { kind: { not: 'MOBILE' } } } }))._sum.qty ?? 0);
-    if (total < it.minStock) lowStock.push({ id: it.id, name: it.name, unit: it.unit, total, minStock: it.minStock });
+    stock.push({ id: it.id, name: it.name, unit: it.unit, total, minStock: it.minStock, level: total <= 0 ? 'OUT' : total < it.minStock ? 'LOW' : 'OK' });
   }
+  const lowStock = stock.filter((s) => s.level !== 'OK').sort((a, b) => a.total / a.minStock - b.total / b.minStock);
+  const stockSummary = { out: stock.filter((s) => s.level === 'OUT').length, low: stock.filter((s) => s.level === 'LOW').length, ok: stock.filter((s) => s.level === 'OK').length };
+
+  // progres WO 30 hari terakhir: selesai (closed non-batal) vs belum
+  const DAY = 86400_000;
+  const since = new Date(Date.now() - 30 * DAY);
+  const recent = await prisma.workOrder.findMany({
+    where: { OR: [{ createdAt: { gte: since } }, { closedAt: { gte: since } }] },
+    select: { type: true, status: true, createdAt: true, closedAt: true },
+  });
+  const isDone = (w: { status: string; closedAt: Date | null }) => !!w.closedAt && w.status !== 'CANCELLED' && w.status !== 'REJECTED';
+  const created30 = recent.filter((w) => w.createdAt >= since);
+  const progress = {
+    created: created30.length,
+    done: created30.filter(isDone).length,
+    cancelled: created30.filter((w) => !!w.closedAt && !isDone(w)).length,
+    open: created30.filter((w) => !w.closedAt).length,
+    pct: created30.length ? Math.round((created30.filter(isDone).length / created30.length) * 100) : 0,
+  };
+  const byTypeProgress: Record<string, { open: number; done: number }> = {};
+  for (const t of Object.keys(workflows)) byTypeProgress[t] = { open: 0, done: 0 };
+  for (const w of created30) byTypeProgress[w.type][w.closedAt ? 'done' : 'open']++;
+  for (const w of open.filter((x) => x.createdAt < since)) byTypeProgress[w.type].open++;
+  const dayKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+  const trend = Array.from({ length: 14 }, (_, i) => {
+    const day = dayKey(new Date(Date.now() - (13 - i) * DAY));
+    return { day, created: recent.filter((w) => dayKey(w.createdAt) === day).length, done: recent.filter((w) => w.closedAt && isDone(w) && dayKey(w.closedAt) === day).length };
+  });
+  const overdue7 = withMeta.filter((w) => Date.now() - w.createdAt.getTime() > 7 * DAY);
+  const overdue = { total: overdue7.length, items: overdue7.slice(0, 8).map((w) => ({ id: w.id, number: w.number, type: w.type, title: w.title, statusLabel: w.statusLabel, owner: w.owner, ageDays: Math.floor((Date.now() - w.createdAt.getTime()) / DAY) })) };
+
   const maintenanceDue = await prisma.asset.findMany({
     where: { item: { category: 'GA' }, nextMaintenanceAt: { lte: new Date(Date.now() + 14 * 86400_000) } },
     include: { item: true },
@@ -157,7 +189,7 @@ core.get('/dashboard', async (req, res) => {
   });
   const pendingQc = await prisma.asset.count({ where: { status: 'RETURNED_PENDING_QC' } });
   const customers = await prisma.customer.groupBy({ by: ['status'], _count: true });
-  res.json({ mine: mine.slice(0, 50), mineTotal: mine.length, openTotal: open.length, byType, lowStock, maintenanceDue, pendingQc, customers });
+  res.json({ mine: mine.slice(0, 50), mineTotal: mine.length, openTotal: open.length, byType, byTypeProgress, progress, trend, overdue, lowStock, stockSummary, maintenanceDue, pendingQc, customers });
 });
 
 /* ── log (admin) ── */

@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { ROLE_LABEL } from '@/lib/api';
+import { ThemeSwitch } from '@/lib/theme';
 
 const NAV = [
   { href: '/', label: 'Dashboard', icon: '▦' },
@@ -29,18 +30,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen md:flex">
-      <header className="flex items-center justify-between border-b bg-white px-4 py-3 md:hidden">
-        <b className="text-brand-700">L1V WO</b>
+      <header className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-violet-600 px-4 py-3 text-white md:hidden">
+        <b>L1V WO</b>
         <button className="btn-ghost" onClick={() => setOpen(!open)}>☰</button>
       </header>
-      <aside className={`${open ? 'block' : 'hidden'} w-full shrink-0 border-r bg-white md:block md:w-60`}>
+      <aside className={`${open ? 'block' : 'hidden'} w-full shrink-0 border-r bg-white md:sticky md:top-0 md:block md:h-screen md:w-60 md:overflow-y-auto`}>
         <div className="hidden p-4 md:block">
-          <div className="text-lg font-bold text-brand-700">L1V WO</div>
+          <div className="bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-lg font-extrabold text-transparent">L1V WO</div>
           <div className="text-xs text-slate-500">Work Order &amp; Inventory</div>
         </div>
         <nav className="space-y-1 px-2 pb-2">
           {nav.map((n) => (
-            <Link key={n.href} href={n.href} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active(n.href) ? 'bg-brand-50 font-semibold text-brand-700' : 'text-slate-600 hover:bg-slate-100'}`}>
+            <Link key={n.href} href={n.href} className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${active(n.href) ? 'bg-gradient-to-r from-blue-600 to-violet-600 font-semibold text-white shadow' : 'text-slate-600 hover:bg-slate-100'}`}>
               <span className="w-5 text-center">{n.icon}</span>{n.label}
             </Link>
           ))}
@@ -48,6 +49,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="border-t p-3 text-sm">
           <Link href="/profile" className="block font-medium hover:underline">{user.name}</Link>
           <div className="text-xs text-slate-500">{ROLE_LABEL[user.role] ?? user.role}</div>
+          <ThemeSwitch className="mt-2" />
+          <br />
           <button onClick={logout} className="mt-2 text-xs text-red-600 hover:underline">Keluar</button>
         </div>
       </aside>

@@ -21,7 +21,8 @@ Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC
 - Efek samping (notifikasi email/Telegram, event ke billing) ditulis ke DB dalam transaksi yang sama (outbox), dikirim worker BullMQ setelah commit.
 - Stok kuantitas lewat `moveStock` (atomik, tidak boleh negatif); aset ber-SN lewat `moveAsset`. Setiap teknisi punya gudang `MOBILE`.
 - Cek stok pasang baru otomatis berdasar `Item.installDefaultQty` di gudang pelanggan; kurang → WO anak `STOCK_REQUEST`, induk lanjut sendiri saat anak selesai.
-- Trigger Finance: `service.activated` + notifikasi saat NOC aktivasi; `invoice.prepare` + notifikasi saat Marketing kirim BA.
+- Finance hanya **pengingat** (Telegram + email) saat NOC aktivasi dan saat Marketing kirim BA; tidak ada event ke billing. Data keluar lewat Export API (`routes/export.ts`, `docs/API.md`).
+- Tema terang/gelap/ikuti-sistem: `apps/web/src/lib/theme.tsx` (kelas `dark`, override di `globals.css`); grafik SVG tanpa library di `components/charts.tsx`.
 
 ## Peta file
 | Area | File |
@@ -46,3 +47,15 @@ Uji alur wajib: **Pasang Baru** (mkt → noc → otomatis cek stok → budi (FOC
 
 ## Melanjutkan pekerjaan
 Buka folder repo di editor/asisten pengembangan Anda, lalu minta: *"Baca HANDOFF.md dan README.md, jalankan typecheck, lalu kerjakan butir 1 dan 2."* Kedua file itu cukup sebagai konteks.
+
+## Roadmap fitur (disepakati, belum dikerjakan)
+1. Admin ubah password user (satuan/massal) + notifikasi.
+2. Cetak massal QR dalam lembar A4.
+3. Fitur edit untuk setiap data.
+4. GA dan Procurement digabung menjadi satu peran (memegang aset dan pengadaan).
+5. Pilihan merk dan tipe saat registrasi aset.
+6. Menu export Excel pelanggan (sementara; nanti API MSRadius). Export API CSV sudah tersedia sebagai jembatan.
+7. Dashboard WO belum tertangani > 7 hari (panel dan KPI dasar sudah ada di dashboard).
+8. Pelanggan boleh diketik manual tanpa menarik data.
+9. Master nama paket/jasa (tambah/kurangi).
+10. Hapus data per peran dengan notifikasi ke admin via Telegram.

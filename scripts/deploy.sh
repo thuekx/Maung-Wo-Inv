@@ -28,6 +28,7 @@ if [ ! -f .env ]; then
   setenv POSTGRES_PASSWORD "$(rand 16)"
   setenv JWT_SECRET "$(rand 32)"
   setenv TELEGRAM_WEBHOOK_SECRET "$(rand 16)"
+  setenv EXPORT_API_KEY "$(rand 24)"
   setenv BILLING_API_KEY "$(rand 24)"
   setenv BILLING_WEBHOOK_SECRET "$(rand 24)"
   setenv SEED_PASSWORD "$(rand 6)Aa1!"

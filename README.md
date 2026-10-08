@@ -10,7 +10,7 @@ Aplikasi Work Order + Inventori multi-gudang untuk ISP (MKT · NOC · FOC · PRO
 | Backend | **Node.js 24 LTS + Express 5 + TypeScript 5.9** | Satu bahasa dengan frontend. Alur WO ditulis sebagai *state machine* berbasis data (`workflows.ts`). |
 | ORM | **Prisma 7** (driver adapter `pg`) | Skema bertipe, migrasi, transaksi interaktif (stok & status WO harus atomik). Klien di-generate ke `apps/api/src/generated` (tidak di-commit). |
 | Database | **PostgreSQL 16** | Transaksi ACID untuk stok, JSONB untuk laporan lapangan. |
-| Redis | **Redis 7 + BullMQ** | Antrian notifikasi & event billing (retry/backoff), job terjadwal, kode tautan Telegram. |
+| Redis | **Redis 7 + BullMQ** | Antrian notifikasi (retry/backoff), job terjadwal, kode tautan Telegram. |
 | Alternatif backend | Laravel / NestJS | Bisa; yang dipindahkan hanya lapisan API. Aturan bisnis ada di `workflows.ts` + `inventory.ts`. |
 
 **Mengapa bukan Python/Laravel?** Tidak ada yang salah dengan keduanya. Node dipilih karena tim hanya perlu satu bahasa (TS) untuk web + API + worker, dan BullMQ matang untuk pola *outbox → queue*.
@@ -175,22 +175,23 @@ Aturan yang sudah ditegakkan sistem:
 - **3 kategori barang**: `CONSUMABLE` (qty/meter), `NETWORK` (wajib SN + QR), `GA` (kode aset otomatis `GA-0001`, jadwal maintenance, pengingat harian 08:00 WIB ke GA).
 - **Stock opname** untuk material, dengan selisih tercatat sebagai mutasi.
 
-### Trigger Finance (sesuai catatan tambahan)
-1. NOC menekan *Service Active* → event `service.activated` ke billing **+** notifikasi ke Finance: "siapkan invoice".
-2. Marketing mengirim BA Digital (email ke pelanggan) → event `invoice.prepare` ke billing **+** notifikasi Finance.
-3. Terminate selesai → `account.closed`; suspend/unsuspend → `service.suspended` / `service.restored`.
+### Finance: hanya pengingat (tidak terhubung ke aplikasi billing)
+Finance **tidak** dihubungkan langsung ke aplikasi billing; sistem hanya mengingatkan lewat **Telegram dan email** (ke user divisi FIN dan grup `TELEGRAM_ROLE_CHATS.FIN`):
+1. NOC menekan *Service Active* → pengingat `🔔 Pelanggan sudah AKTIF – segera siapkan invoice` (nama, kode, paket, tanggal aktif, tautan WO).
+2. Marketing mengirim BA Digital → pengingat kedua: BA terkirim, pastikan invoice pertama sudah disiapkan.
+3. Penyiapan invoice dilakukan manual Finance di sistem billing. Tidak ada event keluar ke billing yang dikirim.
 
-## 6. Integrasi Billing eksisting
+## 6. Integrasi data
 
-**Billing → WO App** (`x-api-key: $BILLING_API_KEY`), idempoten (WO terbuka yang sama dijawab `duplicate:true`):
+- **Menarik data keluar:** Export API baca-saja (`/api/export/*`, JSON/CSV, paginasi, filter `since`) — lihat **[docs/API.md](docs/API.md)**. Aktif bila `EXPORT_API_KEY` diisi.
+- **Billing → WO App (opsional, tidak wajib):** endpoint masuk tetap tersedia bila suatu saat billing ingin membuat WO suspend/unsuspend/terminate otomatis. Header `x-api-key: $BILLING_API_KEY`, idempoten (`duplicate:true` bila WO terbuka sudah ada):
 ```http
 POST /api/integrations/billing/events
 { "event": "suspend" | "unsuspend" | "terminate", "customerCode": "CUST-20261007-0001", "reason": "...", "invoiceRef": "INV-123" }
 GET  /api/integrations/billing/customers/:code     # status layanan
 ```
-**WO App → Billing**: `POST $BILLING_WEBHOOK_URL` dengan header `x-signature` (HMAC-SHA256 dari body memakai `BILLING_WEBHOOK_SECRET`), `x-event`, `idempotency-key`. Body: `{ id, event, occurredAt, data }`. Retry eksponensial 6x; riwayat terlihat di Admin → *Event ke Billing*.
-
-`customerCode` WO App (`CUST-…`) perlu dipetakan ke ID pelanggan di billing — saat ini disimpan di sisi WO App; sesuaikan bila billing punya ID sendiri (tambahkan kolom `externalId` di `Customer`).
+- **WO App → Billing:** dinonaktifkan (tidak ada `emit` di alur). Mesin outbox (`OutboundEvent`, `BILLING_WEBHOOK_URL`) tetap ada di kode untuk integrasi mendatang.
+- **MSRadius:** rencana ke depan; Export API di atas dapat dipakai sebagai jembatan awal.
 
 ## 7. Notifikasi
 
@@ -217,4 +218,5 @@ apps/web/src/app/(app)/*        dashboard, WO, pelanggan, inventori, PO, admin
 - Foto disimpan lokal dan URL-nya tidak bertanda (acak, sulit ditebak) — pindahkan ke S3 dengan signed URL untuk produksi.
 - Token login disimpan di `localStorage` (12 jam); untuk kebutuhan lebih ketat pindah ke cookie `httpOnly` + CSRF.
 - Reservasi stok belum ada: dua pasang baru bersamaan bisa sama-sama melihat stok "aman" yang sama.
-- Laporan/ekspor (SLA, MTTR, stok), integrasi OLT/Mikrotik otomatis, dan peta teknisi dapat ditambahkan di atas model yang ada.
+- Laporan SLA/MTTR, integrasi OLT/Mikrotik/MSRadius otomatis, dan peta teknisi dapat ditambahkan di atas model yang ada.
+- Fitur yang direncanakan (belum dikerjakan) tercantum di `HANDOFF.md` bagian *Roadmap fitur*.
