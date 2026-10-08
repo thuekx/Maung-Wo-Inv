@@ -65,3 +65,6 @@ Lihat `docs/SCALE.md`. Kontrak list API: `?page&pageSize&sort&dir&q` → `{rows,
 
 ## Tahap 1 (tampilan) — selesai
 Lihat `docs/UI-DESIGN.md`. Token warna: `lib/brandColors.ts` + variabel CSS `--brand-*`/`--accent-*` (default di `globals.css`, ditimpa `lib/brand.ts` dari `/api/branding`). Layout: `(app)/layout.tsx`; komponen: `components/ui.tsx`, `icons.tsx`, `SearchBox.tsx`, `DataTable.tsx`. Kunci browser kini `maung_*` (nilai lama `l1v_*` dimigrasi otomatis). Pencarian global: `GET /api/search`.
+
+## Migrasi
+Aturan penamaan/perubahan migrasi: `docs/MIGRATIONS.md` (stempel waktu asli via `scripts/new-migration.sh`; migrasi yang sudah di-push tidak diubah; pengecualian satu kali ditangani `reconcile-migrations.ts`). `Inbox.userId` kini punya FK + cascade ke `User`.

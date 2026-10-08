@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "prisma/seed.ts", "prisma/seed-demo.ts"]
+  "include": ["src", "prisma/seed.ts", "prisma/seed-demo.ts", "prisma/reconcile-migrations.ts"]
 }

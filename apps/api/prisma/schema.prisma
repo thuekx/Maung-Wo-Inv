@@ -79,6 +79,7 @@ model User {
   created   WorkOrder[] @relation("creator")
   assigned  WorkOrder[] @relation("assignee")
   warehouse Warehouse[]
+  inbox     Inbox[]
 }
 
 model Customer {
@@ -391,6 +392,9 @@ model Inbox {
   woId      String?
   readAt    DateTime?
   createdAt DateTime  @default(now())
+
+  // hapus user → kotak masuknya ikut terhapus
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, readAt])

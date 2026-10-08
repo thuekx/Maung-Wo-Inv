@@ -57,7 +57,7 @@ services:
   migrate:
     <<: *app
     restart: "no"
-    command: ["npx", "prisma", "migrate", "deploy"]
+    command: ["sh", "-c", "node dist/prisma/reconcile-migrations.js && npx prisma migrate deploy"]
     depends_on:
       postgres: { condition: service_healthy }
 
