@@ -1,14 +1,17 @@
 'use client';
+import Link from 'next/link';
 import { fileUrl } from '@/lib/api';
+import { Icon } from './icons';
 
-export function PageHeader({ title, sub, children }: { title: string; sub?: string; children?: React.ReactNode }) {
+export function PageHeader({ title, sub, pretitle, children }: { title: string; sub?: string; pretitle?: string; children?: React.ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-      <div>
-        <h1 className="text-xl font-bold">{title}</h1>
-        {sub && <p className="text-sm text-slate-500">{sub}</p>}
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        {pretitle && <div className="subheader mb-1 text-accent-600">{pretitle}</div>}
+        <h1 className="font-display text-2xl font-bold leading-tight text-brand-900">{title}</h1>
+        {sub && <p className="mt-1 text-sm text-slate-500">{sub}</p>}
       </div>
-      <div className="flex gap-2">{children}</div>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
 }
@@ -17,9 +20,53 @@ const TONES: Record<string, string> = {
   slate: 'bg-slate-100 text-slate-700', blue: 'bg-blue-100 text-blue-700', green: 'bg-green-100 text-green-700',
   amber: 'bg-amber-100 text-amber-800', red: 'bg-red-100 text-red-700', violet: 'bg-violet-100 text-violet-700',
 };
+const DOT: Record<string, string> = { slate: 'bg-slate-400', blue: 'bg-blue-500', green: 'bg-green-500', amber: 'bg-amber-500', red: 'bg-red-500', violet: 'bg-violet-500' };
+/** Lencana lembut dengan titik status (gaya Tabler `status-dot`). */
 export const Badge = ({ children, tone = 'slate' }: { children: React.ReactNode; tone?: keyof typeof TONES }) => (
-  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}>{children}</span>
+  <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}><i className={`inline-block h-1.5 w-1.5 rounded-full ${DOT[tone]}`} />{children}</span>
 );
+
+export function Avatar({ name, size = 32, className = '' }: { name: string; size?: number; className?: string }) {
+  const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+  return <span className={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent-100 font-semibold text-brand-900 ${className}`} style={{ width: size, height: size, fontSize: size * 0.38 }} aria-hidden="true">{ini}</span>;
+}
+
+/** Daftar label–nilai rapat (gaya Tabler `datagrid`) untuk halaman detail. */
+export function DataGrid({ items }: { items: { label: string; value: React.ReactNode }[] }) {
+  return (
+    <dl className="grid gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
+      {items.map((i) => (
+        <div key={i.label} className="min-w-0"><dt className="subheader mb-0.5">{i.label}</dt><dd className="break-words text-slate-800">{i.value ?? '-'}</dd></div>
+      ))}
+    </dl>
+  );
+}
+
+export function EmptyState({ icon, title, children }: { icon?: import('./icons').IconName; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+      <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400"><Icon name={icon ?? 'inbox'} size={24} /></span>
+      <p className="font-medium text-slate-700">{title}</p>
+      {children && <p className="mt-1 max-w-sm text-sm text-slate-500">{children}</p>}
+    </div>
+  );
+}
+
+/** Kartu metrik (gaya TailAdmin): ikon dalam kotak lembut, angka besar, label, dan tren opsional. */
+export function MetricCard({ icon, color, label, value, hint, delta, href }: { icon: import('./icons').IconName; color: string; label: string; value: number | string; hint?: string; delta?: { text: string; tone: 'good' | 'bad' | 'neutral' }; href?: string }) {
+  const body = (
+    <div className="card h-full transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: `${color}1f`, color }}><Icon name={icon} size={22} /></span>
+        {delta && <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${delta.tone === 'good' ? 'bg-green-100 text-green-700' : delta.tone === 'bad' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{delta.text}</span>}
+      </div>
+      <div className="mt-4 text-[28px] font-bold leading-none text-brand-900">{value}</div>
+      <div className="mt-1.5 text-sm text-slate-500">{label}</div>
+      {hint && <div className="mt-0.5 text-xs text-slate-400">{hint}</div>}
+    </div>
+  );
+  return href ? <Link href={href} className="block">{body}</Link> : body;
+}
 
 export const statusTone = (final: boolean, status: string) => (status === 'CANCELLED' || status === 'REJECTED' ? 'red' : final ? 'green' : 'blue');
 
@@ -30,7 +77,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { key:
   return (
     <div className="mb-4 flex flex-wrap gap-1 border-b">
       {tabs.map((t) => (
-        <button key={t.key} onClick={() => onChange(t.key)} className={`-mb-px border-b-2 px-3 py-2 text-sm ${value === t.key ? 'border-brand-600 font-semibold text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+        <button key={t.key} onClick={() => onChange(t.key)} className={`-mb-px border-b-2 px-3.5 py-2.5 text-sm transition ${value === t.key ? 'border-accent-500 font-semibold text-brand-900' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
           {t.label}
         </button>
       ))}

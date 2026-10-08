@@ -118,34 +118,56 @@ adminRoutes.post('/admin/settings/telegram/test', async (req, res) => {
 
 /* ── Branding / logo ── */
 fs.mkdirSync(config.uploadDir, { recursive: true });
-const logoUpload = multer({
+const VARIANTS = { horizontal: { key: 'logoUrl', max: 2 }, stacked: { key: 'logoStackedUrl', max: 2 }, mark: { key: 'logoMarkUrl', max: 1 }, loginbg: { key: 'loginBgUrl', max: 6 } } as const;
+const brandUpload = multer({
   storage: multer.diskStorage({
     destination: config.uploadDir,
-    filename: (_req, file, cb) => cb(null, `logo-${Date.now()}${path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '')}`),
+    filename: (req, file, cb) => cb(null, `brand-${String(req.query.variant ?? 'horizontal')}-${Date.now()}${path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '')}`),
   }),
-  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 6 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
 });
+const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Warna harus berformat #RRGGBB');
 
 adminRoutes.put('/admin/settings/branding', async (req, res) => {
-  const { companyName } = z.object({ companyName: z.string().trim().min(2).max(80) }).parse(req.body);
+  const b = z
+    .object({
+      companyName: z.string().trim().min(2).max(80),
+      tagline: z.string().trim().max(120),
+      subtitle: z.string().trim().max(160),
+      loginText: z.string().max(400),
+      colors: z.object({ primary: hex, accent: hex, charts: z.array(hex).length(6) }),
+    })
+    .partial()
+    .parse(req.body);
   const old = (await getSetting<any>('branding')) ?? {};
-  await putSetting('branding', { ...old, companyName }, req.user!.id);
+  await putSetting('branding', { ...old, ...b }, req.user!.id);
   res.json(await overview());
 });
 
-adminRoutes.post('/admin/settings/branding/logo', logoUpload.single('file'), async (req, res) => {
-  if (!req.file) throw new AppError(400, 'Logo harus PNG/JPG/WEBP ≤ 2MB');
+/** Kembalikan semua teks & warna ke bawaan panduan brand (logo tidak dihapus). */
+adminRoutes.post('/admin/settings/branding/reset', async (req, res) => {
+  const old = (await getSetting<any>('branding')) ?? {};
+  await putSetting('branding', { logoUrl: old.logoUrl, logoStackedUrl: old.logoStackedUrl, logoMarkUrl: old.logoMarkUrl, loginBgUrl: old.loginBgUrl }, req.user!.id);
+  res.json(await overview());
+});
+
+adminRoutes.post('/admin/settings/branding/logo', brandUpload.single('file'), async (req, res) => {
+  const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg']).default('horizontal').parse(req.query.variant);
+  const v = VARIANTS[variant];
+  if (!req.file) throw new AppError(400, 'File harus PNG/JPG/WEBP');
+  if (req.file.size > v.max * 1024 * 1024) { fs.unlink(req.file.path, () => {}); throw new AppError(400, `Maksimal ${v.max} MB`); }
   const url = `/uploads/${req.file.filename}`;
   const old = (await getSetting<any>('branding')) ?? {};
-  await putSetting('branding', { ...old, logoUrl: url }, req.user!.id);
+  await putSetting('branding', { ...old, [v.key]: url }, req.user!.id);
   await prisma.attachment.create({ data: { url, mime: req.file.mimetype, uploadedBy: req.user!.id, kind: 'LOGO' } });
   res.status(201).json(await overview());
 });
 
 adminRoutes.delete('/admin/settings/branding/logo', async (req, res) => {
+  const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg']).default('horizontal').parse(req.query.variant);
   const old = (await getSetting<any>('branding')) ?? {};
-  await putSetting('branding', { ...old, logoUrl: null }, req.user!.id);
+  await putSetting('branding', { ...old, [VARIANTS[variant].key]: null }, req.user!.id);
   res.json(await overview());
 });
 

@@ -1,29 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
 import { API, api, fileUrl, getToken } from './api';
 
-/* ── branding publik (nama PT, logo, kebijakan GPS) ── */
-export interface Branding { companyName: string; logoUrl: string | null; requireGps: boolean }
-let brandingP: Promise<Branding> | null = null;
-let brandingAt = 0;
-export const loadBranding = (force = false) => {
-  if (force || !brandingP || Date.now() - brandingAt > 60_000) {
-    brandingAt = Date.now();
-    brandingP = api<Branding>('/branding').catch(() => ({ companyName: 'PT L1V', logoUrl: null, requireGps: true }));
-    if (force) brandingP.then((b) => window.dispatchEvent(new CustomEvent('branding-changed', { detail: b })));
-  }
-  return brandingP;
-};
-export function useBranding() {
-  const [b, setB] = useState<Branding>({ companyName: 'PT L1V', logoUrl: null, requireGps: true });
-  useEffect(() => {
-    loadBranding().then(setB);
-    const on = (e: Event) => setB((e as CustomEvent<Branding>).detail);
-    window.addEventListener('branding-changed', on);
-    return () => window.removeEventListener('branding-changed', on);
-  }, []);
-  return b;
-}
+/* ── branding publik: lihat lib/brand.ts ── */
+export { useBranding, loadBranding } from './brand';
+import { loadBranding } from './brand';
 
 /* ── GPS ── */
 export interface Fix { lat: number; lng: number; accuracy: number }
@@ -68,9 +48,7 @@ export async function stampPhoto(file: File, o: { company: string; logoUrl?: str
       const logo = await toBitmap(blob);
       const lw = 'naturalWidth' in logo ? logo.naturalWidth : logo.width, lh = 'naturalHeight' in logo ? logo.naturalHeight : logo.height;
       const s = Math.min((bh - pad * 2) / lh, (bh * 1.6) / lw);
-      g.fillStyle = 'rgba(255,255,255,.92)';
-      g.fillRect(x - 4, H - bh + pad - 4, lw * s + 8, lh * s + 8);
-      g.drawImage(logo, x, H - bh + pad, lw * s, lh * s);
+      g.drawImage(logo, x, H - bh + pad, lw * s, lh * s); // logo horizontal berteks putih → langsung di banner gelap
       x += lw * s + pad + 8;
     } catch { /* logo gagal dimuat → lanjut tanpa logo */ }
   }

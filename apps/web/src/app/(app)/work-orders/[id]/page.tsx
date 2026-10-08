@@ -43,7 +43,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
       {wf && (
         <ol className="flex flex-wrap gap-1 text-xs">
           {Object.entries<any>(wf.statuses).filter(([k]) => !['REJECTED'].includes(k)).map(([k, s]) => (
-            <li key={k} className={`rounded-full px-2 py-1 ${k === wo.status ? 'bg-brand-600 font-semibold text-white' : 'bg-slate-100 text-slate-500'}`}>{s.label}</li>
+            <li key={k} className={`rounded-full px-2 py-1 ${k === wo.status ? 'bg-brand-900 font-semibold text-white dark:bg-accent-500 dark:text-brand-900' : 'bg-slate-100 text-slate-500'}`}>{s.label}</li>
           ))}
         </ol>
       )}
@@ -111,7 +111,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
             <ol className="space-y-3 border-l-2 border-slate-200 pl-4">
               {events.map((e: any) => (
                 <li key={e.id} className="relative">
-                  <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-brand-500" />
+                  <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent-500" />
                   <div className="text-sm"><b>{e.actorName ?? 'Sistem'}</b> · {e.action} → <span className="text-brand-700">{wf.statuses[e.toStatus]?.label ?? e.toStatus}</span></div>
                   {e.note && <div className="text-sm text-slate-600">{e.note}</div>}
                   <div className="text-xs text-slate-400">{fmtDate(e.createdAt)}</div>

@@ -17,7 +17,7 @@ export default function PurchaseOrders() {
   ];
   return (
     <>
-      <PageHeader title="Purchase Order" sub="PO diterbitkan GA/Procurement dari WO Permintaan Barang" />
+      <PageHeader pretitle="Pengadaan" title="Purchase Order" sub="PO diterbitkan GA/Procurement dari WO Permintaan Barang" />
       <DataTable<any> path="/purchase-orders" columns={cols} params={{ status }} defaultSort="createdAt" searchPlaceholder="Cari no. PO / vendor…"
         filters={<select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['ISSUED', 'PARTIAL', 'RECEIVED'].map((x) => <option key={x}>{x}</option>)}</select>} />
     </>

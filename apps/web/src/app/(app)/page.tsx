@@ -2,24 +2,15 @@
 import Link from 'next/link';
 import { fmtDate, ROLE_LABEL, TYPE_LABEL, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Badge, ErrorMsg, Table } from '@/components/ui';
+import { Badge, ErrorMsg, MetricCard, Table } from '@/components/ui';
+import { useBranding } from '@/lib/brand';
+import type { IconName } from '@/components/icons';
 import { Donut, Legend, ProgressBar, StackedBars, TrendChart } from '@/components/charts';
 
-const TYPE_COLOR: Record<string, string> = {
-  NEW_INSTALL: '#2563eb', TROUBLE: '#e11d48', SUSPEND: '#d97706', UNSUSPEND: '#059669', TERMINATE: '#7c3aed', STOCK_REQUEST: '#0891b2',
-};
-const C = { done: '#10b981', open: '#3b82f6', cancel: '#94a3b8', out: '#ef4444', low: '#f59e0b', ok: '#10b981', warn: '#f97316' };
-
-function Kpi({ href, value, label, color, hint }: { href?: string; value: number | string; label: string; color: string; hint?: string }) {
-  const body = (
-    <div className="kpi h-full" style={{ ['--accent' as string]: color, background: `${color}14`, borderColor: `${color}44`, borderLeft: `4px solid ${color}` }}>
-      <div className="text-3xl font-bold" style={{ color }}>{value}</div>
-      <div className="text-xs font-medium text-slate-600">{label}</div>
-      {hint && <div className="mt-0.5 text-[11px] text-slate-500">{hint}</div>}
-    </div>
-  );
-  return href ? <Link href={href} className="block">{body}</Link> : body;
-}
+const TYPE_KEYS = ['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST'];
+const TYPE_ICON: Record<string, IconName> = { NEW_INSTALL: 'users', TROUBLE: 'alert', SUSPEND: 'clock', UNSUSPEND: 'check', TERMINATE: 'logout', STOCK_REQUEST: 'box' };
+// warna status tetap (semantik); warna jenis WO mengikuti palet grafik brand dari Admin
+const C = { done: '#10b981', cancel: '#94a3b8', out: '#ef4444', low: '#f59e0b', ok: '#10b981', warn: '#f97316' };
 
 const Panel = ({ title, right, children, className = '' }: { title: string; right?: React.ReactNode; children: React.ReactNode; className?: string }) => (
   <section className={`card ${className}`}>
@@ -30,6 +21,9 @@ const Panel = ({ title, right, children, className = '' }: { title: string; righ
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const brand = useBranding();
+  const TYPE_COLOR: Record<string, string> = Object.fromEntries(TYPE_KEYS.map((t, i) => [t, brand.colors.charts[i % brand.colors.charts.length]]));
+  const OPEN = brand.colors.charts[0];
   const { data, error } = useFetch<any>('/dashboard');
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!data) return <p className="text-slate-500">Memuat…</p>;
@@ -39,20 +33,25 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-5 text-white shadow-md">
-        <div>
-          <h1 className="text-xl font-bold">Halo, {user?.name} 👋</h1>
-          <p className="text-sm text-blue-100">{ROLE_LABEL[user?.role ?? ''] ?? ''} · {data.openTotal} WO terbuka · {data.mineTotal} menunggu tindakan Anda</p>
+      <div className="relative isolate overflow-hidden rounded-2xl bg-brand-900 p-5 text-white shadow-card dark:border dark:border-white/10 sm:p-6">
+        <div className="contour absolute inset-0 -z-10 opacity-70" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="subheader !text-accent-400">Dashboard</div>
+            <h1 className="mt-1 font-display text-2xl font-bold sm:text-3xl">Halo, {user?.name}</h1>
+            <p className="mt-1 text-sm text-slate-300">{ROLE_LABEL[user?.role ?? ''] ?? ''} · {data.openTotal} WO terbuka · {data.mineTotal} menunggu tindakan Anda</p>
+            {brand.tagline && <p className="mt-3 font-display text-lg italic text-accent-400">{brand.tagline}</p>}
+          </div>
+          <Link href="/work-orders/new" className="btn !px-5">+ Buat WO</Link>
         </div>
-        <Link href="/work-orders/new" className="rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold backdrop-blur hover:bg-white/25">+ Buat WO</Link>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        {Object.keys(TYPE_LABEL).map((t) => (
-          <Kpi key={t} href={`/work-orders?type=${t}`} value={data.byType[t] ?? 0} label={TYPE_LABEL[t]} color={TYPE_COLOR[t]} hint="terbuka" />
+        {TYPE_KEYS.map((t) => (
+          <MetricCard key={t} href={`/work-orders?type=${t}`} icon={TYPE_ICON[t]} color={TYPE_COLOR[t]} value={data.byType[t] ?? 0} label={TYPE_LABEL[t]} hint="terbuka" />
         ))}
-        <Kpi href="/work-orders?overdue=7" value={data.overdue.total} label="WO > 7 hari" color={data.overdue.total ? C.out : C.ok} hint="belum tertangani" />
-        <Kpi href="/inventory" value={data.stockSummary.out + data.stockSummary.low} label="Stok kritis" color={data.stockSummary.out ? C.out : data.stockSummary.low ? C.low : C.ok} hint={`${data.stockSummary.out} habis · ${data.stockSummary.low} menipis`} />
+        <MetricCard href="/work-orders?overdue=7" icon="clock" color={data.overdue.total ? C.out : C.ok} value={data.overdue.total} label="WO > 7 hari" hint="belum tertangani" />
+        <MetricCard href="/inventory" icon="inbox" color={data.stockSummary.out ? C.out : data.stockSummary.low ? C.low : C.ok} value={data.stockSummary.out + data.stockSummary.low} label="Stok kritis" hint={`${data.stockSummary.out} habis · ${data.stockSummary.low} menipis`} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -61,7 +60,7 @@ export default function Dashboard() {
             <Donut pct={p.pct} sub="selesai" />
             <div className="space-y-1.5 text-sm">
               <div className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C.done }} /> Selesai <b>{p.done}</b></div>
-              <div className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C.open }} /> Belum selesai <b>{p.open}</b></div>
+              <div className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: OPEN }} /> Belum selesai <b>{p.open}</b></div>
               <div className="flex items-center gap-2"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C.cancel }} /> Batal/ditolak <b>{p.cancelled}</b></div>
               <div className="text-xs text-slate-500">dari {p.created} WO dibuat</div>
             </div>
@@ -69,13 +68,13 @@ export default function Dashboard() {
         </Panel>
 
         <Panel title="Tren 14 hari" className="lg:col-span-2">
-          <TrendChart data={data.trend} series={[{ key: 'created', color: C.open, name: 'Dibuat' }, { key: 'done', color: C.done, name: 'Selesai' }]} />
+          <TrendChart data={data.trend} series={[{ key: 'created', color: OPEN, name: 'Dibuat' }, { key: 'done', color: C.done, name: 'Selesai' }]} />
         </Panel>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel title="Selesai vs belum per jenis" right={<Legend items={[{ name: 'Selesai', color: C.done }, { name: 'Belum', color: C.open }]} />}>
-          <StackedBars rows={Object.keys(TYPE_LABEL).map((t) => ({ label: TYPE_LABEL[t], segments: [{ name: 'Selesai', value: data.byTypeProgress[t]?.done ?? 0, color: C.done }, { name: 'Belum', value: data.byTypeProgress[t]?.open ?? 0, color: C.open }] }))} />
+        <Panel title="Selesai vs belum per jenis" right={<Legend items={[{ name: 'Selesai', color: C.done }, { name: 'Belum', color: OPEN }]} />}>
+          <StackedBars rows={Object.keys(TYPE_LABEL).map((t) => ({ label: TYPE_LABEL[t], segments: [{ name: 'Selesai', value: data.byTypeProgress[t]?.done ?? 0, color: C.done }, { name: 'Belum', value: data.byTypeProgress[t]?.open ?? 0, color: OPEN }] }))} />
         </Panel>
 
         <Panel title="Stok menipis / habis" right={<span className="text-xs text-slate-500">{stockTotal} item dipantau</span>}>
@@ -97,7 +96,7 @@ export default function Dashboard() {
           )}
         </Panel>
 
-        <Panel title="WO belum tertangani > 7 hari" right={<Link href="/work-orders?overdue=7" className="text-xs text-brand-700 hover:underline">Lihat semua ({data.overdue.total}) →</Link>}>
+        <Panel title="WO tertunda > 7 hari" right={<Link href="/work-orders?overdue=7" className="text-xs text-brand-700 hover:underline">Lihat semua ({data.overdue.total}) →</Link>}>
           {data.overdue.total > 0 && (
             <div className="mb-3 flex flex-wrap gap-1.5">
               {Object.entries(data.overdue.byOwner ?? {}).map(([r, n]) => <Badge key={r} tone="red">{ROLE_LABEL[r] ?? r}: {n as number}</Badge>)}

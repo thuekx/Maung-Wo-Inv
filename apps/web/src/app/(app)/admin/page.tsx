@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, useFetch } from '@/lib/api';
-import { loadBranding } from '@/lib/photo';
+import { loadBranding } from '@/lib/brand';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
@@ -160,33 +160,97 @@ function useAction() {
 }
 const Msg = ({ m }: { m: { ok: boolean; text: string } | null }) => m && <p className={`rounded-lg px-3 py-2 text-sm ${m.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{m.text}</p>;
 
-function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
-  const [name, setName] = useState(d.branding.companyName);
+const COLOR_LABELS = ['Grafik 1', 'Grafik 2', 'Grafik 3', 'Grafik 4', 'Grafik 5', 'Grafik 6'];
+const HEXRE = /^#[0-9a-fA-F]{6}$/;
+
+function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-slate-500">
+      <input type="color" value={HEXRE.test(value) ? value : '#000000'} onChange={(e) => onChange(e.target.value.toUpperCase())} className="h-9 w-10 cursor-pointer rounded border border-slate-300 bg-white p-0.5" aria-label={label} />
+      <span className="min-w-0"><span className="block">{label}</span><input className="input !w-24 !py-0.5 font-mono !text-xs" value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} maxLength={7} /></span>
+    </label>
+  );
+}
+
+function UploadBox({ title, hint, url, dark, variant, onDone }: { title: string; hint: string; url: string | null; dark?: boolean; variant: string; onDone: () => void }) {
   const a = useAction();
-  const upload = async (f: File | undefined) => {
+  const upload = (f: File | undefined) => {
     if (!f) return;
-    await a.run(async () => {
+    a.run(async () => {
       const fd = new FormData(); fd.append('file', f);
-      const res = await fetch(`${API}/api/admin/settings/branding/logo`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
+      const res = await fetch(`${API}/api/admin/settings/branding/logo?variant=${variant}`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
       const j = await res.json().catch(() => ({})); if (!res.ok) throw new Error(j.error ?? 'Upload gagal');
-      await loadBranding(true); reload();
-    }, 'Logo disimpan');
+      await loadBranding(true); onDone();
+    }, 'Tersimpan');
   };
   return (
-    <div className="card space-y-3">
-      <h2 className="font-semibold">Logo & identitas PT</h2>
-      <p className="text-sm text-slate-500">Dipakai pada halaman login, menu samping, dan ditempel di setiap foto lapangan teknisi bersama koordinat GPS.</p>
-      <div className="flex items-center gap-4">
-        <div className="flex h-20 w-32 items-center justify-center rounded-lg border bg-slate-50">{d.branding.logoUrl ? <img src={fileUrl(d.branding.logoUrl)} alt="logo" className="max-h-16 max-w-28 object-contain" /> : <span className="text-xs text-slate-400">Belum ada logo</span>}</div>
-        <div className="space-y-2">
-          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e.target.files?.[0])} className="text-sm" />
-          <p className="text-xs text-slate-500">PNG/JPG/WEBP ≤ 2 MB. Disarankan PNG latar transparan/putih, rasio mendatar.</p>
-          {d.branding.logoUrl && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api('/admin/settings/branding/logo', { method: 'DELETE' }); await loadBranding(true); reload(); }, 'Logo dihapus')}>Hapus logo</button>}
+    <div className="space-y-2">
+      <div className="text-sm font-medium">{title}</div>
+      <div className={`flex h-24 items-center justify-center rounded-lg border ${dark ? 'bg-brand-900' : 'bg-white'}`}>{url ? <img src={fileUrl(url)} alt={title} className="max-h-20 max-w-[85%] object-contain" /> : <span className="text-xs text-slate-400">Belum ada</span>}</div>
+      <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e.target.files?.[0])} className="w-full text-xs" />
+      <p className="text-xs text-slate-500">{hint}</p>
+      {url && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); await loadBranding(true); onDone(); }, 'Dihapus')}>Hapus</button>}
+      <Msg m={a.msg} />
+    </div>
+  );
+}
+
+function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
+  const b = d.branding;
+  const [f, setF] = useState({ companyName: b.companyName, tagline: b.tagline, subtitle: b.subtitle, loginText: b.loginText, primary: b.colors.primary, accent: b.colors.accent, charts: [...b.colors.charts] as string[] });
+  const a = useAction();
+  const set = (k: string, v: any) => setF((p) => ({ ...p, [k]: v }));
+  const valid = HEXRE.test(f.primary) && HEXRE.test(f.accent) && f.charts.every((c) => HEXRE.test(c));
+  const lines: string[] = String(f.loginText).split('\n').filter(Boolean);
+  const save = () => a.run(async () => {
+    await api('/admin/settings/branding', { method: 'PUT', body: { companyName: f.companyName, tagline: f.tagline, subtitle: f.subtitle, loginText: f.loginText, colors: { primary: f.primary, accent: f.accent, charts: f.charts } } });
+    await loadBranding(true); reload();
+  }, 'Tampilan & brand disimpan — langsung berlaku');
+  const reset = () => { if (!window.confirm('Kembalikan teks dan warna ke bawaan panduan MAUNG by LIV? (Logo tidak dihapus)')) return; a.run(async () => { await api('/admin/settings/branding/reset', { body: {} }); await loadBranding(true); reload(); setTimeout(() => window.location.reload(), 600); }, 'Dikembalikan ke bawaan'); };
+  return (
+    <div className="card space-y-5">
+      <div><h2 className="font-semibold">Tampilan & brand</h2><p className="text-sm text-slate-500">Logo, tagline, teks halaman login, dan warna. Dipakai di halaman login, top bar, dashboard, dan banner foto lapangan.</p></div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <UploadBox title="Logo horizontal (latar gelap)" hint="Teks putih/terang, sebaiknya TANPA tagline (tagline tampil terpisah & bisa diganti). Dipakai di login dan banner foto. PNG/WEBP transparan ≤ 2 MB." url={b.logoUrl} dark variant="horizontal" onDone={reload} />
+        <UploadBox title="Ikon / logo ringkas (top bar)" hint="Hanya lambang tanpa teks, mendekati persegi. Dipakai di top bar bersama nama brand. ≤ 1 MB. Contoh: docs/branding/logo-mark.png" url={b.logoMarkUrl} dark variant="mark" onDone={reload} />
+        <UploadBox title="Logo tegak (latar terang)" hint="Untuk cetakan/dokumen latar putih. ≤ 2 MB." url={b.logoStackedUrl} variant="stacked" onDone={reload} />
+        <UploadBox title="Gambar latar login (opsional)" hint="Foto lanskap/pegunungan. Diberi lapisan navy otomatis. JPG/WEBP ≤ 6 MB." url={b.loginBgUrl} dark variant="loginbg" onDone={reload} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label="Nama brand / perusahaan (juga tertulis di foto)"><input className="input" value={f.companyName} onChange={(e) => set('companyName', e.target.value)} /></Field>
+        <Field label="Tagline" help="Tampil di halaman login, dashboard, dan sidebar. Kosongkan untuk menyembunyikan."><input className="input" value={f.tagline} onChange={(e) => set('tagline', e.target.value)} /></Field>
+        <Field label="Sub-judul (di bawah logo)"><input className="input" value={f.subtitle} onChange={(e) => set('subtitle', e.target.value)} /></Field>
+        <Field label="Teks halaman login" help="Satu baris per paragraf."><textarea className="input" rows={3} value={f.loginText} onChange={(e) => set('loginText', e.target.value)} /></Field>
+      </div>
+
+      <div className="space-y-3">
+        <div className="text-sm font-medium">Warna</div>
+        <div className="flex flex-wrap gap-4"><ColorField label="Utama (navy)" value={f.primary} onChange={(v) => set('primary', v)} /><ColorField label="Aksen (emas)" value={f.accent} onChange={(v) => set('accent', v)} /></div>
+        <div className="flex flex-wrap gap-4">{f.charts.map((c, i) => <ColorField key={i} label={COLOR_LABELS[i]} value={c} onChange={(v) => set('charts', f.charts.map((x, j) => (j === i ? v : x)))} />)}</div>
+        <p className="text-xs text-slate-500">Warna utama dan aksen menurunkan seluruh skala warna aplikasi. Warna grafik dipakai pada dashboard (jenis WO); status (hijau/merah/kuning) tetap. Pilih warna yang serumpun dengan navy dan emas agar tetap selaras.</p>
+      </div>
+
+      <div className="rounded-xl border p-3">
+        <div className="subheader mb-2">Pratinjau panel login</div>
+        <div className="relative isolate overflow-hidden rounded-lg p-5 text-white" style={{ background: f.primary }}>
+          <div className="contour absolute inset-0 -z-10 opacity-60" />
+          {b.logoUrl ? <img src={fileUrl(b.logoUrl)} alt="" className="mb-2 h-12 w-auto object-contain" /> : <div className="mb-2 font-display text-2xl font-extrabold">{f.companyName}</div>}
+          <div className="text-[11px] tracking-[0.16em] text-slate-300">{f.subtitle}</div>
+          <div className="mt-3 font-display text-xl font-semibold" style={{ color: f.accent }}>{f.tagline}</div>
+          <div className="my-2 h-0.5 w-10" style={{ background: f.accent }} />
+          <div className="font-display text-sm text-slate-100">{lines.map((l, i) => <p key={i}>{l}</p>)}</div>
+          <div className="mt-3 flex gap-2"><span className="rounded-md px-3 py-1 text-xs font-semibold" style={{ background: f.accent, color: f.primary }}>Tombol utama</span>{f.charts.map((c, i) => <i key={i} className="h-6 w-6 rounded" style={{ background: c }} />)}</div>
         </div>
       </div>
-      <Field label="Nama PT (tampil di foto & login)"><input className="input max-w-sm" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={d.branding.requireGps} onChange={(e) => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { requireGps: e.target.checked } }); await loadBranding(true); reload(); }, 'Kebijakan GPS disimpan')} /> Wajibkan GPS pada foto teknisi (FOC) <span className="text-xs text-slate-500">— matikan hanya untuk uji coba tanpa HTTPS</span></label>
-      <div className="flex items-center gap-3"><button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/branding', { method: 'PUT', body: { companyName: name } }); await loadBranding(true); reload(); }, 'Identitas disimpan')}>Simpan nama</button></div>
+
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={b.requireGps} onChange={(e) => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { requireGps: e.target.checked } }); await loadBranding(true); reload(); }, 'Kebijakan GPS disimpan')} /> Wajibkan GPS pada foto teknisi (FOC) <span className="text-xs text-slate-500">— matikan hanya untuk uji coba tanpa HTTPS</span></label>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn" disabled={a.busy || !valid} onClick={save}>Simpan tampilan</button>
+        <button className="btn-ghost" disabled={a.busy} onClick={reset}>Kembalikan ke bawaan MAUNG</button>
+        {!valid && <span className="text-xs text-red-600">Format warna harus #RRGGBB</span>}
+      </div>
       <Msg m={a.msg} />
     </div>
   );
@@ -283,7 +347,7 @@ export default function Admin() {
   if (user?.role !== 'ADMIN') return <ErrorMsg>Khusus Admin</ErrorMsg>;
   return (
     <>
-      <PageHeader title="Admin" sub="User, pengaturan (logo PT, SMTP, Telegram), dan log notifikasi" />
+      <PageHeader pretitle="Sistem" title="Admin" sub="User, pengaturan (logo PT, SMTP, Telegram), dan log notifikasi" />
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'users', label: 'User' }, { key: 'settings', label: 'Pengaturan' }, { key: 'notif', label: 'Log notifikasi' }, { key: 'audit', label: 'Log audit' }, { key: 'out', label: 'Event ke Billing' }]} />
       {tab === 'users' && <Users />}
       {tab === 'settings' && <Settings />}

@@ -96,7 +96,7 @@ export default function Customers() {
   const exportQs = new URLSearchParams({ ...(status ? { status } : {}) }).toString();
   return (
     <>
-      <PageHeader title="Pelanggan" sub="Pelanggan baru lewat WO Pasang Baru, atau input manual / impor Excel untuk data yang sudah ada">
+      <PageHeader pretitle="Data" title="Pelanggan" sub="Pelanggan baru lewat WO Pasang Baru, atau input manual / impor Excel untuk data yang sudah ada">
         {canEdit && <button className="btn" onClick={() => setAdd(true)}>+ Tambah pelanggan</button>}
         {canEdit && <button className="btn-ghost" onClick={() => setImp(true)}>⬆ Impor Excel</button>}
         {canExport && <button className="btn-ghost" onClick={() => download(`/customers/export.xlsx${exportQs ? `?${exportQs}` : ''}`, 'pelanggan.xlsx').catch((e) => setErr(e.message))}>⬇ Ekspor Excel</button>}

@@ -62,3 +62,6 @@ Penambahan berikutnya akan diinfokan oleh pemilik proyek; jangan menambah fitur 
 
 ## Tahap 2 (skala data) — selesai
 Lihat `docs/SCALE.md`. Kontrak list API: `?page&pageSize&sort&dir&q` → `{rows,total,page,pageSize,pageCount}` (helper `src/paging.ts`); dashboard `src/dashboard.ts`; komponen web `components/DataTable.tsx`. Berikutnya **Tahap 1 (tampilan)** mengikuti `docs/BRANDING.md` (MAUNG by LIV: navy/emas, Playfair Display + Inter; logo, tagline, dan teks login harus dapat diubah Admin).
+
+## Tahap 1 (tampilan) — selesai
+Lihat `docs/UI-DESIGN.md`. Token warna: `lib/brandColors.ts` + variabel CSS `--brand-*`/`--accent-*` (default di `globals.css`, ditimpa `lib/brand.ts` dari `/api/branding`). Layout: `(app)/layout.tsx`; komponen: `components/ui.tsx`, `icons.tsx`, `SearchBox.tsx`, `DataTable.tsx`. Kunci browser kini `maung_*` (nilai lama `l1v_*` dimigrasi otomatis). Pencarian global: `GET /api/search`.

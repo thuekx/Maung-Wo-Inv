@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
-import { Badge, custTone, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
+import { Badge, custTone, DataGrid, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
 import { customerFields } from '../page';
 
 export default function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -19,25 +19,26 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
   if (!c) return <p className="text-slate-500">Memuat…</p>;
   return (
     <div className="space-y-4">
-      <PageHeader title={`${c.name}`} sub={c.code}>
+      <PageHeader pretitle="Pelanggan" title={`${c.name}`} sub={c.code}>
         <Badge tone={custTone(c.status)}>{c.status}</Badge>
         {['ADMIN', 'MKT', 'NOC'].includes(role) && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}
         {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/customers/${c.id}`, `pelanggan ${c.name}`)) router.replace('/customers'); }}>🗑 Hapus</button>}
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="card space-y-1 text-sm">
-          <div>📞 {c.phone}{c.email && ` · ${c.email}`}</div>
-          <div>📍 {c.address}</div>
-          {c.lat != null && <a className="text-brand-700 hover:underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}>Buka peta</a>}
-          <div>Paket: {c.packageName}</div>
-          <div>Gudang: {c.warehouse?.name ?? '-'}</div>
+        <div className="card">
+          <div className="card-header"><h2 className="font-semibold">Kontak & layanan</h2></div>
+          <DataGrid items={[
+            { label: 'Telepon', value: c.phone }, { label: 'Email', value: c.email },
+            { label: 'Alamat', value: <>{c.address}{c.lat != null && <> · <a className="text-brand-700 hover:underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}>Buka peta</a></>}</> },
+            { label: 'Paket', value: c.packageName }, { label: 'Gudang', value: c.warehouse?.name },
+          ]} />
         </div>
-        <div className="card space-y-1 text-sm">
-          <div className="font-semibold">Jaringan</div>
-          <div>ODP / Port: {c.odp ?? '-'} / {c.port ?? '-'}</div>
-          <div>VLAN: {c.vlan ?? '-'}</div>
-          <div>IP: <span className="font-mono">{c.ip ?? '-'}</span></div>
-          <div>Aktif sejak: {fmtDate(c.activatedAt)}</div>
+        <div className="card">
+          <div className="card-header"><h2 className="font-semibold">Jaringan</h2></div>
+          <DataGrid items={[
+            { label: 'ODP / Port', value: `${c.odp ?? '-'} / ${c.port ?? '-'}` }, { label: 'VLAN', value: c.vlan },
+            { label: 'IP', value: <span className="font-mono">{c.ip ?? '-'}</span> }, { label: 'Aktif sejak', value: fmtDate(c.activatedAt) },
+          ]} />
         </div>
       </div>
       <section>

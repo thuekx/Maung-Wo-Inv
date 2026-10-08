@@ -75,8 +75,34 @@ export async function getTelegram(): Promise<TelegramCfg> {
 }
 
 /* ── Branding & kebijakan aplikasi ── */
+export const BRAND_DEFAULTS = {
+  companyName: 'MAUNG by LIV',
+  tagline: 'Gerak Cepat, Kerja Tepat.',
+  subtitle: 'Marketing • Asset • Unified Network & Governance',
+  loginText: 'Satu Ekosistem.\nDampak Lebih Besar\nuntuk Jawa Barat dan Indonesia.',
+  colors: { primary: '#0B1F3B', accent: '#F59E0B', charts: ['#2F5D9E', '#F59E0B', '#14B8A6', '#8B5CF6', '#F43F5E', '#0EA5E9'] },
+};
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** Nilai kosong/tidak valid jatuh ke bawaan panduan brand MAUNG by LIV. */
 export async function getBranding() {
   const b = (await getSetting<any>('branding')) ?? {};
   const a = (await getSetting<any>('app')) ?? {};
-  return { companyName: (b.companyName as string) || 'PT L1V', logoUrl: (b.logoUrl as string) || null, requireGps: a.requireGps !== false };
+  const c = b.colors ?? {};
+  return {
+    companyName: (b.companyName as string) || BRAND_DEFAULTS.companyName,
+    tagline: typeof b.tagline === 'string' ? b.tagline : BRAND_DEFAULTS.tagline,
+    subtitle: typeof b.subtitle === 'string' ? b.subtitle : BRAND_DEFAULTS.subtitle,
+    loginText: typeof b.loginText === 'string' ? b.loginText : BRAND_DEFAULTS.loginText,
+    logoUrl: (b.logoUrl as string) || null, // horizontal: untuk latar gelap (sidebar, banner foto)
+    logoStackedUrl: (b.logoStackedUrl as string) || null, // tegak: untuk latar terang (kartu login)
+    logoMarkUrl: (b.logoMarkUrl as string) || null, // ikon ringkas (tanpa teks): top bar
+    loginBgUrl: (b.loginBgUrl as string) || null,
+    colors: {
+      primary: HEX.test(c.primary) ? c.primary : BRAND_DEFAULTS.colors.primary,
+      accent: HEX.test(c.accent) ? c.accent : BRAND_DEFAULTS.colors.accent,
+      charts: Array.isArray(c.charts) && c.charts.length === 6 && c.charts.every((x: string) => HEX.test(x)) ? c.charts : BRAND_DEFAULTS.colors.charts,
+    },
+    requireGps: a.requireGps !== false,
+  };
 }

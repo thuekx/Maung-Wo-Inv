@@ -57,7 +57,7 @@ function QrModal({ asset, onClose }: { asset: any; onClose: () => void }) {
   );
 }
 
-function AssetsTab({ canManage }: { canManage: boolean }) {
+function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?: string }) {
   const [status, setStatus] = useState('');
   const [category, setCategory] = useState('');
   const [qr, setQr] = useState<any>(null);
@@ -128,7 +128,7 @@ function AssetsTab({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
-      <DataTable<any> path="/assets" columns={cols} params={{ status, category }} defaultSort="createdAt" refreshKey={rk} searchPlaceholder="Cari SN / kode aset / item / merk…"
+      <DataTable<any> path="/assets" initialQ={initialQ} columns={cols} params={{ status, category }} defaultSort="createdAt" refreshKey={rk} searchPlaceholder="Cari SN / kode aset / item / merk…"
         selectable selected={sel} onSelectedChange={setSel}
         filters={<>
           <select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Kategori"><option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option></select>
@@ -285,13 +285,13 @@ function Inventory() {
   void fmtDate;
   return (
     <>
-      <PageHeader title="Inventori & Aset" sub="Multi-gudang · material · perangkat ber-SN · aset GA" />
+      <PageHeader pretitle="Gudang" title="Inventori & Aset" sub="Multi-gudang · material · perangkat ber-SN · aset GA" />
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: 'stock', label: 'Stok per gudang' }, { key: 'assets', label: 'Aset & SN' }, { key: 'qc', label: 'Menunggu QC' },
         { key: 'warehouses', label: 'Gudang' }, { key: 'items', label: 'Master item' }, ...(canManage ? [{ key: 'opname', label: 'Stock opname' }] : []),
       ]} />
       {tab === 'stock' && <StockTab />}
-      {tab === 'assets' && <AssetsTab canManage={canManage} />}
+      {tab === 'assets' && <AssetsTab canManage={canManage} initialQ={sp.get('q') ?? ''} />}
       {tab === 'qc' && <QcTab canManage={canManage} />}
       {tab === 'warehouses' && <WarehousesTab canManage={canManage} />}
       {tab === 'items' && <ItemsTab canManage={canManage} />}

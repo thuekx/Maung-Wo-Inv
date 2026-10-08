@@ -1,23 +1,61 @@
+@import '@fontsource-variable/inter/wght.css';
+@import '@fontsource-variable/playfair-display/wght.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Token brand: bawaan panduan MAUNG by LIV. Nilai sebenarnya ditimpa dari Admin (lib/brand.ts) ── */
+:root {
+  --brand-50: 243 244 245;
+  --brand-100: 226 228 231;
+  --brand-200: 194 199 206;
+  --brand-300: 153 161 173;
+  --brand-400: 109 121 137;
+  --brand-500: 70 85 106;
+  --brand-600: 40 58 83;
+  --brand-700: 26 44 71;
+  --brand-800: 16 35 63;
+  --brand-900: 11 31 59;
+  --brand-950: 7 20 38;
+  --accent-50: 254 247 235;
+  --accent-100: 253 239 216;
+  --accent-200: 252 222 172;
+  --accent-300: 250 202 121;
+  --accent-400: 247 179 65;
+  --accent-500: 245 158 11;
+  --accent-600: 216 139 10;
+  --accent-700: 176 114 8;
+  --accent-800: 142 92 6;
+  --accent-900: 113 73 5;
+  --accent-950: 78 51 4;
+  --brand-hex: #0B1F3B;
+  --accent-hex: #F59E0B;
+}
+
 @layer base {
-  .dark *, .dark ::before, .dark ::after { border-color: #26324a; }
+  html { font-family: 'Inter Variable', Inter, system-ui, sans-serif; font-feature-settings: 'cv11', 'ss01'; }
+  .dark *, .dark ::before, .dark ::after { border-color: #1e3555; }
+  h1, h2 { letter-spacing: -0.01em; }
 }
 
-body { @apply bg-slate-50 text-slate-800 antialiased; background-image: radial-gradient(1200px 400px at 100% -10%, rgb(37 99 235 / .07), transparent), radial-gradient(900px 400px at -10% 110%, rgb(139 92 246 / .06), transparent); background-attachment: fixed; }
+body { @apply bg-slate-50 text-slate-800 antialiased; }
 
+/* ── Komponen (Tabler: padat & tenang · TailAdmin: kartu membulat, ikon berlatar lembut · Brand: emas = aksi utama) ── */
 @layer components {
-  .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
-  .btn { @apply inline-flex items-center justify-center gap-1 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50; }
-  .btn-ghost { @apply inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50; }
-  .btn-danger { @apply inline-flex items-center justify-center gap-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50; }
-  .card { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-sm; }
-  .th { @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500; }
-  .td { @apply px-3 py-2 text-sm; }
+  .input { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-200; }
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-brand-900 shadow-sm transition hover:bg-accent-400 active:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-secondary { @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-800 disabled:opacity-50; }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50; }
+  .btn-link { @apply inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:underline; }
+  .card { @apply rounded-xl border border-slate-200 bg-white p-4 shadow-card; }
+  .card-header { @apply -mx-4 -mt-4 mb-3 flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3; }
+  .th { @apply whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500; }
+  .td { @apply px-3 py-2 text-[13px]; }
+  .subheader { @apply text-[11px] font-semibold uppercase tracking-wider text-slate-500; }
+  .menu-item { @apply relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-brand-900; }
+  .menu-item-active { @apply bg-accent-50 text-brand-900 hover:bg-accent-50; }
 }
-
 
 @media print {
   body:not(.free-print) * { visibility: hidden; }
@@ -25,28 +63,34 @@ body { @apply bg-slate-50 text-slate-800 antialiased; background-image: radial-g
   body:not(.free-print) .print-area { position: absolute; left: 0; top: 0; }
 }
 
-/* ── Tema gelap: dipetakan dari utilitas terang yang dipakai di seluruh halaman ── */
-.dark body { background-color: #0b1120; color: #e2e8f0; background-image: radial-gradient(1200px 400px at 100% -10%, rgb(59 130 246 / .12), transparent), radial-gradient(900px 400px at -10% 110%, rgb(139 92 246 / .10), transparent); }
-.dark .bg-white, .dark .card, .dark .input, .dark .btn-ghost { background-color: #111a2e; }
-.dark .bg-slate-50, .dark .hover\:bg-slate-50:hover { background-color: #0f1729; }
-.dark .bg-slate-100, .dark .hover\:bg-slate-100:hover { background-color: #1a2540; }
-.dark .text-slate-800, .dark .text-slate-700 { color: #e2e8f0; }
-.dark .text-slate-600 { color: #cbd5e1; }
+/* ── Tema gelap (navy): utilitas terang yang dipakai halaman dipetakan ke permukaan navy ── */
+.dark body { background-color: #08172c; color: #e2e8f0; }
+.dark .bg-white, .dark .card, .dark .input, .dark .btn-ghost { background-color: #0e2340; }
+.dark .bg-slate-50, .dark .hover\:bg-slate-50:hover { background-color: #0b1c35; }
+.dark .bg-slate-100, .dark .hover\:bg-slate-100:hover { background-color: #15294a; }
+.dark .text-slate-800, .dark .text-slate-700 { color: #e6edf7; }
+.dark .text-slate-600 { color: #c3cfe0; }
 .dark .text-slate-500 { color: #94a3b8; }
 .dark .text-slate-400 { color: #7b8aa3; }
-.dark .card, .dark .input, .dark .btn-ghost, .dark .border-slate-200, .dark .border-slate-300 { border-color: #26324a; }
-.dark .btn-ghost { color: #e2e8f0; }
-.dark .input { color: #e2e8f0; }
+.dark .card, .dark .input, .dark .btn-ghost, .dark .border-slate-200, .dark .border-slate-300, .dark .border-slate-100 { border-color: #1e3555; }
+.dark .btn-ghost, .dark .input { color: #e6edf7; }
 .dark .input::placeholder { color: #64748b; }
-.dark .bg-brand-50 { background-color: rgb(37 99 235 / .22); }
-.dark .text-brand-700, .dark .text-brand-600 { color: #8ab4ff; }
+.dark .shadow-card, .dark .shadow-sm { box-shadow: 0 1px 2px rgb(0 0 0 / .45); }
+.dark .menu-item { color: #c3cfe0; } .dark .menu-item:hover { background-color: rgb(255 255 255 / .06); color: #fff; }
+.dark .menu-item-active, .dark .menu-item-active:hover { background-color: rgb(245 158 11 / .14); color: #fff; }
+.dark .text-brand-900, .dark .text-brand-800, .dark .text-brand-700, .dark .text-brand-600 { color: #9db8e6; }
+.dark .btn { color: #0B1F3B; } /* tombol emas tetap teks navy */
+.dark [class*="bg-accent-"].text-brand-900 { color: #0B1F3B; } /* teks navy di atas latar emas (avatar, halaman aktif, tema aktif) */
+.dark .btn-secondary { background-color: #1d3d6b; } .dark .btn-secondary:hover { background-color: #25508c; }
+.dark .bg-brand-50, .dark .hover\:bg-brand-50:hover { background-color: rgb(157 184 230 / .12); }
 .dark .bg-blue-100 { background-color: rgb(59 130 246 / .20); } .dark .text-blue-700 { color: #93c5fd; }
-.dark .bg-green-100 { background-color: rgb(34 197 94 / .18); } .dark .text-green-700 { color: #86efac; }
+.dark .bg-green-100, .dark .bg-green-50 { background-color: rgb(34 197 94 / .18); } .dark .text-green-700 { color: #86efac; }
 .dark .bg-amber-100 { background-color: rgb(245 158 11 / .20); } .dark .text-amber-800 { color: #fcd34d; }
 .dark .bg-red-100, .dark .bg-red-50 { background-color: rgb(239 68 68 / .18); } .dark .text-red-700, .dark .text-red-600 { color: #fca5a5; }
 .dark .bg-violet-100 { background-color: rgb(139 92 246 / .20); } .dark .text-violet-700 { color: #c4b5fd; }
-.dark .shadow-sm { box-shadow: 0 1px 2px rgb(0 0 0 / .4); }
 
-/* kartu KPI berwarna */
-.kpi { @apply relative overflow-hidden rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md; }
-.kpi::after { content: ''; position: absolute; right: -18px; top: -18px; height: 72px; width: 72px; border-radius: 9999px; background: var(--accent, currentColor); opacity: .14; }
+/* kartu KPI */
+.kpi { @apply relative overflow-hidden rounded-xl border p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-md; }
+
+/* halaman login: pola kontur gunung (emas) di atas navy */
+.contour { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='600' viewBox='0 0 900 600' fill='none' stroke='%23F59E0B' stroke-opacity='.35'%3E%3Cpath d='M-20 470C120 400 220 480 360 420S600 330 760 380 900 330 940 300'/%3E%3Cpath d='M-20 490C120 420 220 500 360 440S600 350 760 400 900 350 940 320'/%3E%3Cpath d='M-20 510C120 440 220 520 360 460S600 370 760 420 900 370 940 340'/%3E%3Cpath d='M-20 530C120 460 220 540 360 480S600 390 760 440 900 390 940 360'/%3E%3Cpath d='M-20 550C120 480 220 560 360 500S600 410 760 460 900 410 940 380'/%3E%3Cpath d='M-20 570C120 500 220 580 360 520S600 430 760 480 900 430 940 400'/%3E%3C/svg%3E"); background-size: cover; background-position: bottom; }

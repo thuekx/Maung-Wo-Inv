@@ -3,11 +3,22 @@ import { useCallback, useEffect, useState } from 'react';
 
 export const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+const TOK = 'maung_token';
+const OLD_TOK = 'l1v_token'; // nama lama; dibaca sekali agar pengguna tidak keluar saat pembaruan
+
 export const getToken = () => {
-  try { return localStorage.getItem('l1v_token'); } catch { return null; }
+  try {
+    const t = localStorage.getItem(TOK) ?? sessionStorage.getItem(TOK) ?? localStorage.getItem(OLD_TOK);
+    if (t && !localStorage.getItem(TOK) && !sessionStorage.getItem(TOK)) { localStorage.setItem(TOK, t); localStorage.removeItem(OLD_TOK); }
+    return t;
+  } catch { return null; }
 };
-export const setToken = (t: string | null) => {
-  try { t ? localStorage.setItem('l1v_token', t) : localStorage.removeItem('l1v_token'); } catch { /* ignore */ }
+/** remember=true → bertahan setelah browser ditutup (localStorage); false → hanya sesi ini (sessionStorage). */
+export const setToken = (t: string | null, remember = true) => {
+  try {
+    localStorage.removeItem(TOK); sessionStorage.removeItem(TOK); localStorage.removeItem(OLD_TOK);
+    if (t) (remember ? localStorage : sessionStorage).setItem(TOK, t);
+  } catch { /* ignore */ }
 };
 
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {

@@ -24,14 +24,31 @@ core.post(
   '/auth/login',
   rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }),
   async (req, res) => {
-    const { email, password } = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(req.body);
-    const u = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const { email, password } = z.object({ email: z.string().trim().min(1).max(120), password: z.string().min(1) }).parse(req.body);
+    // masuk dengan email lengkap ATAU username (bagian sebelum @) bila hanya satu akun yang cocok
+    const id = email.toLowerCase();
+    const u = id.includes('@')
+      ? await prisma.user.findUnique({ where: { email: id } })
+      : await (async () => { const m = await prisma.user.findMany({ where: { email: { startsWith: `${id}@` }, active: true }, take: 2 }); return m.length === 1 ? m[0] : null; })();
     if (!u || !u.active || !(await bcrypt.compare(password, u.passwordHash))) throw new AppError(401, 'Email atau password salah');
     res.json({ token: signToken(u), user: publicUser(u) });
   },
 );
 
 core.use(authenticate);
+
+/** Pencarian global (kotak cari di header): pelanggan, WO, aset — masing-masing 5 teratas, memakai indeks trigram. */
+core.get('/search', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  if (q.length < 2) return void res.json({ customers: [], workOrders: [], assets: [] });
+  const like = { contains: q, mode: 'insensitive' as const };
+  const [customers, workOrders, assets] = await Promise.all([
+    prisma.customer.findMany({ where: { OR: [{ name: like }, { code: like }, { phone: { contains: q } }, { ip: { contains: q } }] }, select: { id: true, code: true, name: true, status: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    prisma.workOrder.findMany({ where: { OR: [{ number: like }, { title: like }] }, select: { id: true, number: true, title: true, status: true, type: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    prisma.asset.findMany({ where: { OR: [{ serialNumber: like }, { assetCode: like }] }, select: { id: true, serialNumber: true, assetCode: true, status: true, item: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }),
+  ]);
+  res.json({ customers, workOrders, assets });
+});
 
 core.get('/auth/me', (req, res) => res.json(publicUser(req.user!)));
 

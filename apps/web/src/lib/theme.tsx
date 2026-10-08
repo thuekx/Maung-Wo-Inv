@@ -1,11 +1,13 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { Icon } from '@/components/icons';
 
 export type ThemeChoice = 'light' | 'dark' | 'system';
-const KEY = 'l1v_theme';
+const KEY = 'maung_theme';
+const OLD_KEY = 'l1v_theme';
 
 /** Skrip inline di <head> agar tema terpasang sebelum render (tanpa kedip). */
-export const THEME_INIT_SCRIPT = `(function(){try{var c=localStorage.getItem('${KEY}')||'system';var d=c==='dark'||(c==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light'}catch(e){}})()`;
+export const THEME_INIT_SCRIPT = `(function(){try{var c=localStorage.getItem('${KEY}')||localStorage.getItem('${OLD_KEY}')||'system';var d=c==='dark'||(c==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light'}catch(e){}})()`;
 
 const Ctx = createContext<{ choice: ThemeChoice; resolved: 'light' | 'dark'; setChoice: (c: ThemeChoice) => void }>({ choice: 'system', resolved: 'light', setChoice: () => {} });
 
@@ -24,7 +26,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let c: ThemeChoice = 'system';
-    try { const v = localStorage.getItem(KEY); if (v === 'light' || v === 'dark' || v === 'system') c = v; } catch { /* ignore */ }
+    try { const v = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY); if (v === 'light' || v === 'dark' || v === 'system') c = v; } catch { /* ignore */ }
     setChoiceState(c);
     apply(c);
   }, [apply]);
@@ -59,10 +61,23 @@ export function ThemeSwitch({ className = '' }: { className?: string }) {
     <div role="radiogroup" aria-label="Tema" className={`inline-flex rounded-lg border border-slate-300 bg-white p-0.5 text-xs ${className}`}>
       {opts.map((o) => (
         <button key={o.v} role="radio" aria-checked={choice === o.v} title={o.label} onClick={() => setChoice(o.v)}
-          className={`rounded-md px-2 py-1 ${choice === o.v ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          className={`rounded-md px-2 py-1 ${choice === o.v ? 'bg-accent-500 text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>
           {o.icon} <span className="hidden sm:inline">{o.label}</span>
         </button>
       ))}
     </div>
+  );
+}
+
+/** Tombol ikon untuk top bar: terang → gelap → ikuti sistem. */
+export function ThemeToggle() {
+  const { choice, setChoice } = useTheme();
+  const next = choice === 'light' ? 'dark' : choice === 'dark' ? 'system' : 'light';
+  const label = { light: 'Tema terang', dark: 'Tema gelap', system: 'Ikuti sistem' }[choice];
+  return (
+    <button type="button" onClick={() => setChoice(next)} title={`${label} — klik untuk ganti`} aria-label={`${label}, klik untuk ganti`}
+      className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10">
+      <Icon name={choice === 'light' ? 'sun' : choice === 'dark' ? 'moon' : 'monitor'} />
+    </button>
   );
 }

@@ -75,7 +75,7 @@ export default function Master() {
   if (!['ADMIN', 'MKT', 'NOC', 'GA'].includes(role)) return <ErrorMsg>Akses ditolak</ErrorMsg>;
   return (
     <>
-      <PageHeader title="Master Data" sub="Paket/jasa langganan dan merk & tipe perangkat" />
+      <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan dan merk & tipe perangkat" />
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'brands', label: 'Merk & tipe aset' }]} />
       {tab === 'packages' && <Packages canManage={['ADMIN', 'MKT', 'NOC'].includes(role)} />}
       {tab === 'brands' && <Brands canManage={['ADMIN', 'GA'].includes(role)} />}

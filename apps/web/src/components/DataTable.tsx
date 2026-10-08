@@ -23,13 +23,15 @@ const SIZE_KEY = 'maung_pagesize';
 const OLD_SIZE_KEY = 'l1v_pagesize'; // nama lama; dibaca sekali agar pilihan pengguna tidak hilang
 
 export function DataTable<T extends { id: string }>({
-  path, columns, params, search = true, searchPlaceholder = 'Cari…', defaultSort, defaultDir = 'desc',
+  path, columns, params, initialQ = '', search = true, searchPlaceholder = 'Cari…', defaultSort, defaultDir = 'desc',
   filters, toolbar, empty = 'Tidak ada data', refreshKey = 0, selectable, selected, onSelectedChange, selectionBar, rowKey, onLoaded,
 }: {
   path: string;
   columns: Column<T>[];
   /** parameter tetap (filter) — ubah nilainya untuk memuat ulang dari halaman 1 */
   params?: Record<string, string | undefined>;
+  /** isi awal kotak cari (mis. dari pencarian global di header) */
+  initialQ?: string;
   search?: boolean;
   searchPlaceholder?: string;
   defaultSort?: string;
@@ -46,8 +48,8 @@ export function DataTable<T extends { id: string }>({
   rowKey?: (r: T) => string;
   onLoaded?: (d: Paged<T>) => void;
 }) {
-  const [q, setQ] = useState('');
-  const [dq, setDq] = useState('');
+  const [q, setQ] = useState(initialQ);
+  const [dq, setDq] = useState(initialQ.trim());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState<string | undefined>(defaultSort);
@@ -132,7 +134,7 @@ export function DataTable<T extends { id: string }>({
                 <th key={c.key} className={`th ${c.className ?? ''}`} aria-sort={c.sort && sort === c.sort ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}>
                   {c.sort ? (
                     <button type="button" className="inline-flex items-center gap-1 uppercase hover:text-slate-800" onClick={() => toggleSort(c.sort!)}>
-                      {c.header}<span className={sort === c.sort ? 'text-brand-600' : 'text-slate-300'}>{sort === c.sort ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                      {c.header}<span className={sort === c.sort ? 'text-accent-600' : 'text-slate-300'}>{sort === c.sort ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                     </button>
                   ) : c.header}
                 </th>
@@ -160,7 +162,7 @@ export function DataTable<T extends { id: string }>({
             <button className="btn-ghost !px-2 !py-1" disabled={page <= 1} onClick={() => setPage(1)} aria-label="Halaman pertama">«</button>
             <button className="btn-ghost !px-2 !py-1" disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Sebelumnya">‹</button>
             {window_.map((n, i) => n === '…' ? <span key={`e${i}`} className="px-1">…</span> : (
-              <button key={n} onClick={() => setPage(n)} aria-current={n === page ? 'page' : undefined} className={`rounded-lg border px-2.5 py-1 ${n === page ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 hover:bg-slate-50'}`}>{n}</button>
+              <button key={n} onClick={() => setPage(n)} aria-current={n === page ? 'page' : undefined} className={`rounded-lg border px-2.5 py-1 ${n === page ? 'border-accent-500 bg-accent-500 font-semibold text-brand-900' : 'border-slate-300 hover:bg-slate-50'}`}>{n}</button>
             ))}
             <button className="btn-ghost !px-2 !py-1" disabled={page >= pageCount} onClick={() => setPage(page + 1)} aria-label="Berikutnya">›</button>
             <button className="btn-ghost !px-2 !py-1" disabled={page >= pageCount} onClick={() => setPage(pageCount)} aria-label="Halaman terakhir">»</button>

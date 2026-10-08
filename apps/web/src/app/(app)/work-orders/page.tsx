@@ -21,7 +21,7 @@ function List() {
   ];
   return (
     <>
-      <PageHeader title="Work Order"><Link href="/work-orders/new" className="btn">+ Buat WO</Link></PageHeader>
+      <PageHeader pretitle="Operasional" title="Work Order"><Link href="/work-orders/new" className="btn">+ Buat WO</Link></PageHeader>
       {overdue && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">Menampilkan WO terbuka yang dibuat &gt; {overdue} hari lalu. <Link href="/work-orders" className="underline">Hapus filter</Link></p>}
       <Tabs value={scope} onChange={setScope} tabs={[{ key: 'mine', label: 'Tugas saya' }, { key: 'open', label: 'Semua terbuka' }, { key: 'closed', label: 'Selesai' }, { key: 'all', label: 'Semua' }]} />
       <DataTable<any> path="/work-orders" columns={cols} params={{ scope, type, olderThanDays: overdue ?? undefined }} defaultSort="createdAt" defaultDir={scope === 'mine' || overdue ? 'asc' : 'desc'}
