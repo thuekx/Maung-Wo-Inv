@@ -4,6 +4,7 @@ import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, useFetch } 
 import { loadBranding } from '@/lib/photo';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
+import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 
 function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string }[]; onClose: () => void }) {
@@ -102,43 +103,30 @@ function Users() {
 
 function AuditLog() {
   const [entity, setEntity] = useState('');
-  const { data, error } = useFetch<any[]>(`/admin/audit${entity ? `?entity=${encodeURIComponent(entity)}` : ''}`);
   const tone = (a: string): any => (a === 'DELETE' ? 'red' : a === 'UPDATE' ? 'amber' : a === 'PASSWORD_RESET' ? 'violet' : a === 'IMPORT' ? 'blue' : 'green');
-  return (
-    <>
-      <select className="input mb-3 w-52" value={entity} onChange={(e) => setEntity(e.target.value)}>
-        <option value="">Semua data</option>{['pelanggan', 'user', 'item', 'gudang', 'aset', 'paket', 'merk', 'tipe', 'PO', 'WO'].map((x) => <option key={x}>{x}</option>)}
-      </select>
-      <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['Waktu', 'Aksi', 'Ringkasan', 'Data sebelumnya']} empty="Belum ada catatan">
-        {data?.map((a) => (
-          <tr key={a.id}>
-            <td className="td whitespace-nowrap">{fmtDate(a.createdAt)}</td>
-            <td className="td"><Badge tone={tone(a.action)}>{a.action}</Badge></td>
-            <td className="td">{a.summary}</td>
-            <td className="td max-w-xs truncate font-mono text-xs text-slate-500" title={a.before ? JSON.stringify(a.before) : ''}>{a.before ? JSON.stringify(a.before) : '-'}</td>
-          </tr>
-        ))}
-      </Table>
-    </>
-  );
+  const cols: Column<any>[] = [
+    { key: 'createdAt', header: 'Waktu', sort: 'createdAt', className: 'whitespace-nowrap', render: (a) => fmtDate(a.createdAt) },
+    { key: 'action', header: 'Aksi', sort: 'action', render: (a) => <Badge tone={tone(a.action)}>{a.action}</Badge> },
+    { key: 'summary', header: 'Ringkasan' },
+    { key: 'before', header: 'Data sebelumnya', className: 'max-w-xs truncate font-mono text-xs text-slate-500', render: (a) => <span title={a.before ? JSON.stringify(a.before) : ''}>{a.before ? JSON.stringify(a.before) : '-'}</span> },
+  ];
+  return <DataTable<any> path="/admin/audit" columns={cols} params={{ entity }} defaultSort="createdAt" searchPlaceholder="Cari ringkasan / pengguna…" empty="Belum ada catatan"
+    filters={<select className="input w-52" value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Jenis data"><option value="">Semua data</option>{['pelanggan', 'user', 'item', 'gudang', 'aset', 'paket', 'merk', 'tipe', 'PO', 'WO'].map((x) => <option key={x}>{x}</option>)}</select>} />;
 }
 
 const sTone = (s: string): any => (s === 'SENT' ? 'green' : s === 'FAILED' ? 'red' : s === 'SKIPPED' ? 'slate' : 'amber');
 
 function Notifs() {
-  const { data, error } = useFetch<any[]>('/admin/notifications');
-  return (
-    <>
-      <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['Waktu', 'Kanal', 'Tujuan', 'Subjek', 'Status']}>
-        {data?.map((n) => (
-          <tr key={n.id}><td className="td">{fmtDate(n.createdAt)}</td><td className="td">{n.channel}</td><td className="td text-xs">{n.target}</td><td className="td">{n.subject}</td>
-            <td className="td"><Badge tone={sTone(n.status)}>{n.status}</Badge>{n.error && <div className="text-xs text-red-600">{n.error}</div>}</td></tr>
-        ))}
-      </Table>
-    </>
-  );
+  const [status, setStatus] = useState('');
+  const cols: Column<any>[] = [
+    { key: 'createdAt', header: 'Waktu', sort: 'createdAt', render: (n) => fmtDate(n.createdAt) },
+    { key: 'channel', header: 'Kanal', sort: 'channel' },
+    { key: 'target', header: 'Tujuan', className: 'text-xs' },
+    { key: 'subject', header: 'Subjek' },
+    { key: 'status', header: 'Status', sort: 'status', render: (n) => <><Badge tone={sTone(n.status)}>{n.status}</Badge>{n.error && <div className="text-xs text-red-600">{n.error}</div>}</> },
+  ];
+  return <DataTable<any> path="/admin/notifications" columns={cols} params={{ status }} defaultSort="createdAt" searchPlaceholder="Cari subjek / tujuan…"
+    filters={<select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['PENDING', 'SENT', 'FAILED', 'SKIPPED'].map((x) => <option key={x}>{x}</option>)}</select>} />;
 }
 
 function Outbound() {
@@ -155,7 +143,6 @@ function Outbound() {
     </>
   );
 }
-
 
 /* ───────── Pengaturan: logo PT, SMTP, Telegram ───────── */
 const Field = ({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) => (

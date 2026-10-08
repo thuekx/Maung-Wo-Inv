@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api, doDelete, fmtDate, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
+import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 
 const CAT: Record<string, string> = { CONSUMABLE: 'Material Konsumsi ISP', NETWORK: 'Perangkat Jaringan', GA: 'Aset General (GA)' };
@@ -57,20 +58,36 @@ function QrModal({ asset, onClose }: { asset: any; onClose: () => void }) {
 }
 
 function AssetsTab({ canManage }: { canManage: boolean }) {
-  const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [category, setCategory] = useState('');
   const [qr, setQr] = useState<any>(null);
   const [showReg, setShowReg] = useState(false);
   const [edit, setEdit] = useState<any>(null);
   const [sel, setSel] = useState<string[]>([]);
-  const p = new URLSearchParams({ ...(q ? { q } : {}), ...(status ? { status } : {}), ...(category ? { category } : {}), limit: '500' });
-  const { data, error, reload } = useFetch<any[]>(`/assets?${p}`);
+  const [rk, setRk] = useState(0);
+  const reload = async () => setRk((x) => x + 1);
+  const [busyAll, setBusyAll] = useState(false);
   const { data: items } = useFetch<any[]>(canManage ? '/items' : null);
   const [regItem, setRegItem] = useState('');
   const sel1 = items?.find((i) => i.id === regItem);
-  const toggle = (id: string) => setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
-  const allOn = !!data?.length && data.every((a) => sel.includes(a.id));
+  const selectAllResults = async (q: string) => {
+    setBusyAll(true);
+    try {
+      const p = new URLSearchParams({ idsOnly: '1', ...(q ? { q } : {}), ...(status ? { status } : {}), ...(category ? { category } : {}) });
+      const r = await api<{ ids: string[]; capped: boolean }>(`/assets?${p}`);
+      setSel(r.ids);
+      if (r.capped) window.alert('Dibatasi 5.000 aset pertama. Persempit filter untuk memilih sisanya.');
+    } finally { setBusyAll(false); }
+  };
+  const cols: Column<any>[] = [
+    { key: 'serialNumber', header: 'Serial / Kode', sort: 'serialNumber', className: 'font-mono', render: (a) => <>{a.serialNumber}{a.assetCode && a.assetCode !== a.serialNumber && <div className="text-xs text-slate-500">{a.assetCode}</div>}</> },
+    { key: 'item', header: 'Item', sort: 'item', render: (a) => a.item.name },
+    { key: 'brand', header: 'Merk / tipe', className: 'text-sm', render: (a) => [a.brand?.name, a.model?.name].filter(Boolean).join(' · ') || <span className="text-slate-400">-</span> },
+    { key: 'status', header: 'Status', sort: 'status', render: (a) => <Badge tone={ST_TONE[a.status]}>{a.status}</Badge> },
+    { key: 'loc', header: 'Lokasi', render: (a) => (a.customer ? `Pelanggan: ${a.customer.name}` : a.warehouse?.name ?? '-') },
+    { key: 'maint', header: 'Maintenance', sort: 'nextMaintenanceAt', render: (a) => (a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : '-') },
+    { key: 'act', header: '', className: 'whitespace-nowrap', render: (a) => <><LinkBtn onClick={() => setQr(a)}>QR</LinkBtn>{canManage && <> · <LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/assets/${a.id}`, `aset ${a.serialNumber}`)) { setSel((x) => x.filter((i) => i !== a.id)); reload(); } }}>Hapus</LinkBtn></>}</> },
+  ];
   const printSel = (ids: string[]) => { try { sessionStorage.setItem('qr_print_ids', JSON.stringify(ids)); } catch { /* ignore */ } window.open('/qr-print', '_blank'); };
 
   const regFields: Field[] = [
@@ -94,14 +111,6 @@ function AssetsTab({ canManage }: { canManage: boolean }) {
   return (
     <>
       <div className="mb-3 flex flex-wrap gap-2">
-        <input className="input w-64" placeholder="Cari SN / kode aset / item / merk…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option>
-        </select>
-        <select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Semua status</option>
-          {['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}
-        </select>
         {canManage && <button className="btn" onClick={() => setShowReg(!showReg)}>+ Registrasi aset</button>}
         <button className="btn-ghost" disabled={!sel.length} onClick={() => printSel(sel)}>🖨 Cetak QR terpilih ({sel.length}) — A4</button>
       </div>
@@ -119,28 +128,19 @@ function AssetsTab({ canManage }: { canManage: boolean }) {
         </div>
       )}
 
-      <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['', 'Serial / Kode', 'Item', 'Merk / tipe', 'Status', 'Lokasi', 'Maintenance', '']}>
-        {data?.map((a) => (
-          <tr key={a.id}>
-            <td className="td"><input type="checkbox" checked={sel.includes(a.id)} onChange={() => toggle(a.id)} aria-label={`pilih ${a.serialNumber}`} /></td>
-            <td className="td font-mono">{a.serialNumber}{a.assetCode && a.assetCode !== a.serialNumber && <div className="text-xs text-slate-500">{a.assetCode}</div>}</td>
-            <td className="td">{a.item.name}</td>
-            <td className="td text-sm">{[a.brand?.name, a.model?.name].filter(Boolean).join(' · ') || <span className="text-slate-400">-</span>}</td>
-            <td className="td"><Badge tone={ST_TONE[a.status]}>{a.status}</Badge></td>
-            <td className="td">{a.customer ? `Pelanggan: ${a.customer.name}` : a.warehouse?.name ?? '-'}</td>
-            <td className="td">{a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : '-'}</td>
-            <td className="td whitespace-nowrap"><LinkBtn onClick={() => setQr(a)}>QR</LinkBtn>{canManage && <> · <LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/assets/${a.id}`, `aset ${a.serialNumber}`)) reload(); }}>Hapus</LinkBtn></>}</td>
-          </tr>
-        ))}
-      </Table>
-      {!!data?.length && (
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex items-center gap-1"><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? [] : data.map((a) => a.id))} /> Pilih semua yang tampil ({data.length})</label>
-          {sel.length > 0 && <button className="text-slate-500 hover:underline" onClick={() => setSel([])}>Kosongkan pilihan</button>}
-          <span className="text-xs text-slate-400">Cetak massal memuat ukuran label A4 yang bisa dipilih (24/21/40/65/8 per lembar).</span>
-        </div>
-      )}
+      <DataTable<any> path="/assets" columns={cols} params={{ status, category }} defaultSort="createdAt" refreshKey={rk} searchPlaceholder="Cari SN / kode aset / item / merk…"
+        selectable selected={sel} onSelectedChange={setSel}
+        filters={<>
+          <select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Kategori"><option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option></select>
+          <select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}</select>
+        </>}
+        selectionBar={({ total, q }) => (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <button className="btn-ghost" disabled={busyAll || !total} onClick={() => selectAllResults(q)}>{busyAll ? 'Memuat…' : `Pilih semua ${total.toLocaleString('id-ID')} hasil (lintas halaman)`}</button>
+            {sel.length > 0 && <><span className="text-slate-500">{sel.length.toLocaleString('id-ID')} terpilih</span><button className="text-slate-500 hover:underline" onClick={() => setSel([])}>Kosongkan</button></>}
+            <span className="text-xs text-slate-400">Cetak massal memuat ukuran label A4 yang bisa dipilih.</span>
+          </div>
+        )} />
       {qr && <QrModal asset={qr} onClose={() => setQr(null)} />}
       {edit && (
         <Modal title={`Edit aset ${edit.serialNumber}`} onClose={() => setEdit(null)}>

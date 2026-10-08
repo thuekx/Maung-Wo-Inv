@@ -206,6 +206,9 @@ Foto teknisi (FOC) diambil lewat kamera, lalu browser mengambil lokasi GPS dan m
 ### Master data, edit/hapus, impor Excel, QR massal
 Reset password (satuan/massal) dengan notifikasi, cetak QR massal A4, edit & hapus per peran (notifikasi hapus ke Admin + log audit), merk/tipe aset, impor/ekspor pelanggan Excel, master paket/jasa, input pelanggan manual, dan dashboard WO > 7 hari: **[docs/FITUR.md](docs/FITUR.md)**. Peran GA dan Procurement sudah digabung menjadi satu (**GA**).
 
+### Skala data
+Paginasi/urut/cari di server, dashboard agregasi SQL, indeks trigram, ekspor streaming — dashboard 29 dtk → ±50 ms pada 100 ribu pelanggan/300 ribu WO: **[docs/SCALE.md](docs/SCALE.md)**.
+
 ### Data demo
 `docker compose exec api node dist/prisma/seed-demo.js` (atau `DEMO=1 bash scripts/deploy.sh`) membuat data contoh untuk semua alur di setiap tahap beserta skenario uji per akun: **[docs/DEMO.md](docs/DEMO.md)**.
 

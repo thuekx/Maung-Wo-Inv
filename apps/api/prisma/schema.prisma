@@ -105,6 +105,11 @@ model Customer {
   assets     Asset[]
 
   @@index([status])
+  @@index([createdAt])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_name_trgm")
+  @@index([code(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_code_trgm")
+  @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_phone_trgm")
+  @@index([ip(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_ip_trgm")
 }
 
 model WorkOrder {
@@ -136,6 +141,10 @@ model WorkOrder {
   @@index([type, status])
   @@index([customerId])
   @@index([assigneeId])
+  @@index([createdAt])
+  @@index([closedAt, createdAt])
+  @@index([number(ops: raw("gin_trgm_ops"))], type: Gin, map: "WorkOrder_number_trgm")
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "WorkOrder_title_trgm")
 }
 
 model WoEvent {
@@ -240,6 +249,10 @@ model Asset {
   @@index([status])
   @@index([warehouseId])
   @@index([customerId])
+  @@index([createdAt])
+  @@index([itemId, status])
+  @@index([serialNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "Asset_serial_trgm")
+  @@index([assetCode(ops: raw("gin_trgm_ops"))], type: Gin, map: "Asset_code_trgm")
 }
 
 model StockMovement {
@@ -298,6 +311,7 @@ model Notification {
   sentAt    DateTime?
 
   @@index([status, createdAt])
+  @@index([createdAt])
 }
 
 // Event keluar ke aplikasi billing/finance eksisting (webhook bertanda tangan HMAC)

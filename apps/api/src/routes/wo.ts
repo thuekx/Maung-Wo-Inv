@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { authenticate } from '../auth';
 import { transact } from '../effects';
+import { mineWhere } from '../dashboard';
+import { countIf, pageParams, sendPage } from '../paging';
+import { Prisma } from '../orm';
 import { allowedActions, applyAction, bindPhotos, createWorkOrder } from '../engine';
 import { config } from '../config';
 import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
@@ -18,27 +21,34 @@ woRoutes.get('/work-orders', async (req, res) => {
   const q = z
     .object({ type: z.string().optional(), status: z.string().optional(), scope: z.enum(['open', 'closed', 'all', 'mine']).default('open'), q: z.string().optional(), customerId: z.string().optional(), olderThanDays: z.coerce.number().int().min(1).optional() })
     .parse(req.query);
-  const rows = await prisma.workOrder.findMany({
-    where: {
-      ...(q.type ? { type: q.type as any } : {}),
-      ...(q.status ? { status: q.status } : {}),
-      ...(q.customerId ? { customerId: q.customerId } : {}),
-      ...(q.olderThanDays ? { createdAt: { lt: new Date(Date.now() - q.olderThanDays * 86400_000) } } : {}),
-      ...(q.scope === 'open' || q.scope === 'mine' ? { closedAt: null } : q.scope === 'closed' ? { closedAt: { not: null } } : {}),
-      ...(q.q ? { OR: [{ number: { contains: q.q, mode: 'insensitive' } }, { title: { contains: q.q, mode: 'insensitive' } }, { customer: { name: { contains: q.q, mode: 'insensitive' } } }] } : {}),
-    },
-    include: { customer: { select: { id: true, name: true, code: true } }, assignee: { select: { name: true } } },
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-  });
   const me = req.user!;
-  const out = rows
-    .map((w) => {
-      const st = workflows[w.type].statuses[w.status];
-      return { ...w, statusLabel: st?.label ?? (w.status === 'CANCELLED' ? 'Dibatalkan' : w.status), owner: st?.owner ?? null };
-    })
-    .filter((w) => q.scope !== 'mine' || me.role === 'ADMIN' || w.owner === me.role || w.assigneeId === me.id);
-  res.json(out);
+  const pp = pageParams(req, {
+    sorts: { number: (d) => ({ number: d }), type: (d) => ({ type: d }), status: (d) => ({ status: d }), title: (d) => ({ title: d }), createdAt: (d) => ({ createdAt: d }), updatedAt: (d) => ({ updatedAt: d }), scheduledAt: (d) => ({ scheduledAt: d }) },
+    defaultSort: { key: 'createdAt', dir: 'desc' },
+    legacyLimit: 200,
+  });
+  const term = q.q?.trim();
+  // nama pelanggan dicari lewat indeks trigram pelanggan, lalu customerId IN (...) — bukan join per baris WO
+  const custIds = term ? (await prisma.customer.findMany({ where: { name: { contains: term, mode: 'insensitive' } }, select: { id: true }, take: 500 })).map((c) => c.id) : [];
+  const where: Prisma.WorkOrderWhereInput = {
+    AND: [
+      q.scope === 'mine' ? mineWhere(me) : q.scope === 'open' ? { closedAt: null } : q.scope === 'closed' ? { closedAt: { not: null } } : {},
+      ...(q.type ? [{ type: q.type as any }] : []),
+      ...(q.status ? [{ status: q.status }] : []),
+      ...(q.customerId ? [{ customerId: q.customerId }] : []),
+      ...(q.olderThanDays ? [{ createdAt: { lt: new Date(Date.now() - q.olderThanDays * 86400_000) } }] : []),
+      ...(term ? [{ OR: [{ number: { contains: term, mode: 'insensitive' as const } }, { title: { contains: term, mode: 'insensitive' as const } }, ...(custIds.length ? [{ customerId: { in: custIds } }] : [])] }] : []),
+    ],
+  };
+  const [rows, total] = await Promise.all([
+    prisma.workOrder.findMany({ where, include: { customer: { select: { id: true, name: true, code: true } }, assignee: { select: { name: true } } }, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }),
+    countIf(pp, () => prisma.workOrder.count({ where })),
+  ]);
+  const out = rows.map((w) => {
+    const st = workflows[w.type].statuses[w.status];
+    return { ...w, statusLabel: st?.label ?? (w.status === 'CANCELLED' ? 'Dibatalkan' : w.status), owner: st?.owner ?? null };
+  });
+  sendPage(res, pp, out, total);
 });
 
 woRoutes.post('/work-orders', async (req, res) => {

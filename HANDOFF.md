@@ -59,3 +59,6 @@ Penambahan berikutnya akan diinfokan oleh pemilik proyek; jangan menambah fitur 
 - `routes/masters.ts`: pelanggan (manual/impor/ekspor, exceljs), paket, merk/tipe, reset password, hapus user, audit.
 - Peran `PROC` dihapus dari enum (migrasi `20261009000000_roles_masters_audit`); owner status workflow memakai `GA`.
 - Cetak QR: `web/src/app/qr-print/page.tsx` (di luar layout aplikasi; ukuran dalam mm).
+
+## Tahap 2 (skala data) — selesai
+Lihat `docs/SCALE.md`. Kontrak list API: `?page&pageSize&sort&dir&q` → `{rows,total,page,pageSize,pageCount}` (helper `src/paging.ts`); dashboard `src/dashboard.ts`; komponen web `components/DataTable.tsx`. Berikutnya **Tahap 1 (tampilan)** mengikuti `docs/BRANDING.md` (MAUNG by LIV: navy/emas, Playfair Display + Inter; logo, tagline, dan teks login harus dapat diubah Admin).

@@ -14,6 +14,8 @@ import { workflows } from '../workflows';
 import { getBranding, getTelegram } from '../settings';
 import { auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { transact } from '../effects';
+import { buildDashboard } from '../dashboard';
+import { countIf, pageParams, sendPage } from '../paging';
 
 export const core = Router();
 
@@ -97,17 +99,24 @@ core.patch('/users/:id', requireRole('ADMIN'), async (req, res) => {
 
 /* ── customers ── */
 core.get('/customers', async (req, res) => {
-  const q = req.query.q ? String(req.query.q) : '';
+  const q = req.query.q ? String(req.query.q).trim() : '';
   const status = req.query.status ? String(req.query.status).split(',') : undefined;
-  const rows = await prisma.customer.findMany({
-    where: {
-      ...(status ? { status: { in: status as any } } : {}),
-      ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }, { phone: { contains: q } }, { ip: { contains: q } }] } : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 100,
+  const packageName = req.query.packageName ? String(req.query.packageName) : undefined;
+  const pp = pageParams(req, {
+    sorts: { code: (d) => ({ code: d }), name: (d) => ({ name: d }), phone: (d) => ({ phone: d }), packageName: (d) => ({ packageName: d }), status: (d) => ({ status: d }), ip: (d) => ({ ip: d }), createdAt: (d) => ({ createdAt: d }) },
+    defaultSort: { key: 'createdAt', dir: 'desc' },
+    legacyLimit: 100,
   });
-  res.json(rows);
+  const where = {
+    ...(status ? { status: { in: status as any } } : {}),
+    ...(packageName ? { packageName } : {}),
+    ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { code: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }, { ip: { contains: q } }] } : {}),
+  };
+  const [rows, total] = await Promise.all([
+    prisma.customer.findMany({ where, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }),
+    countIf(pp, () => prisma.customer.count({ where })),
+  ]);
+  sendPage(res, pp, rows, total);
 });
 
 core.get('/customers/:id', async (req, res, next) => {
@@ -154,74 +163,17 @@ core.post('/uploads', upload.single('file'), async (req, res) => {
 
 /* ── dashboard ── */
 core.get('/dashboard', async (req, res) => {
-  const user = req.user!;
-  const open = await prisma.workOrder.findMany({
-    where: { closedAt: null },
-    select: { id: true, number: true, type: true, status: true, title: true, assigneeId: true, createdAt: true, scheduledAt: true },
-    orderBy: { createdAt: 'asc' },
-    take: 1000,
-  });
-  const withMeta = open.map((w) => ({ ...w, statusLabel: workflows[w.type].statuses[w.status]?.label ?? w.status, owner: workflows[w.type].statuses[w.status]?.owner }));
-  const mine = withMeta.filter((w) => (user.role === 'ADMIN' ? true : w.owner === user.role && (w.owner !== 'FOC' || !w.assigneeId || w.assigneeId === user.id)));
-  const byType: Record<string, number> = {};
-  for (const w of open) byType[w.type] = (byType[w.type] ?? 0) + 1;
-
-  // stok: HABIS (0), MENIPIS (< minimum), AMAN — gudang non-mobile
-  const items = await prisma.item.findMany({ where: { minStock: { gt: 0 } }, orderBy: { name: 'asc' } });
-  const stock = [];
-  for (const it of items) {
-    const total = it.tracked
-      ? await prisma.asset.count({ where: { itemId: it.id, status: { in: ['IN_STOCK', 'REFURBISHED'] }, warehouse: { kind: { not: 'MOBILE' } } } })
-      : ((await prisma.stockLevel.aggregate({ _sum: { qty: true }, where: { itemId: it.id, warehouse: { kind: { not: 'MOBILE' } } } }))._sum.qty ?? 0);
-    stock.push({ id: it.id, name: it.name, unit: it.unit, total, minStock: it.minStock, level: total <= 0 ? 'OUT' : total < it.minStock ? 'LOW' : 'OK' });
-  }
-  const lowStock = stock.filter((s) => s.level !== 'OK').sort((a, b) => a.total / a.minStock - b.total / b.minStock);
-  const stockSummary = { out: stock.filter((s) => s.level === 'OUT').length, low: stock.filter((s) => s.level === 'LOW').length, ok: stock.filter((s) => s.level === 'OK').length };
-
-  // progres WO 30 hari terakhir: selesai (closed non-batal) vs belum
-  const DAY = 86400_000;
-  const since = new Date(Date.now() - 30 * DAY);
-  const recent = await prisma.workOrder.findMany({
-    where: { OR: [{ createdAt: { gte: since } }, { closedAt: { gte: since } }] },
-    select: { type: true, status: true, createdAt: true, closedAt: true },
-  });
-  const isDone = (w: { status: string; closedAt: Date | null }) => !!w.closedAt && w.status !== 'CANCELLED' && w.status !== 'REJECTED';
-  const created30 = recent.filter((w) => w.createdAt >= since);
-  const progress = {
-    created: created30.length,
-    done: created30.filter(isDone).length,
-    cancelled: created30.filter((w) => !!w.closedAt && !isDone(w)).length,
-    open: created30.filter((w) => !w.closedAt).length,
-    pct: created30.length ? Math.round((created30.filter(isDone).length / created30.length) * 100) : 0,
-  };
-  const byTypeProgress: Record<string, { open: number; done: number }> = {};
-  for (const t of Object.keys(workflows)) byTypeProgress[t] = { open: 0, done: 0 };
-  for (const w of created30) byTypeProgress[w.type][w.closedAt ? 'done' : 'open']++;
-  for (const w of open.filter((x) => x.createdAt < since)) byTypeProgress[w.type].open++;
-  const dayKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
-  const trend = Array.from({ length: 14 }, (_, i) => {
-    const day = dayKey(new Date(Date.now() - (13 - i) * DAY));
-    return { day, created: recent.filter((w) => dayKey(w.createdAt) === day).length, done: recent.filter((w) => w.closedAt && isDone(w) && dayKey(w.closedAt) === day).length };
-  });
-  const overdue7 = withMeta.filter((w) => Date.now() - w.createdAt.getTime() > 7 * DAY);
-  const byOwner: Record<string, number> = {};
-  for (const w of overdue7) if (w.owner) byOwner[w.owner] = (byOwner[w.owner] ?? 0) + 1;
-  const overdue = { total: overdue7.length, byOwner, items: overdue7.slice(0, 8).map((w) => ({ id: w.id, number: w.number, type: w.type, title: w.title, statusLabel: w.statusLabel, owner: w.owner, ageDays: Math.floor((Date.now() - w.createdAt.getTime()) / DAY) })) };
-
-  const maintenanceDue = await prisma.asset.findMany({
-    where: { item: { category: 'GA' }, nextMaintenanceAt: { lte: new Date(Date.now() + 14 * 86400_000) } },
-    include: { item: true },
-    orderBy: { nextMaintenanceAt: 'asc' },
-    take: 20,
-  });
-  const pendingQc = await prisma.asset.count({ where: { status: 'RETURNED_PENDING_QC' } });
-  const customers = await prisma.customer.groupBy({ by: ['status'], _count: true });
-  res.json({ mine: mine.slice(0, 50), mineTotal: mine.length, openTotal: open.length, byType, byTypeProgress, progress, trend, overdue, lowStock, stockSummary, maintenanceDue, pendingQc, customers });
+  res.json(await buildDashboard(req.user!));
 });
 
 /* ── log (admin) ── */
-core.get('/admin/notifications', requireRole('ADMIN'), async (_req, res) => {
-  res.json(await prisma.notification.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }));
+core.get('/admin/notifications', requireRole('ADMIN'), async (req, res) => {
+  const q = req.query.q ? String(req.query.q).trim() : '';
+  const status = req.query.status ? String(req.query.status) : undefined;
+  const pp = pageParams(req, { sorts: { createdAt: (d) => ({ createdAt: d }), status: (d) => ({ status: d }), channel: (d) => ({ channel: d }) }, defaultSort: { key: 'createdAt', dir: 'desc' }, legacyLimit: 100 });
+  const where = { ...(status ? { status } : {}), ...(q ? { OR: [{ subject: { contains: q, mode: 'insensitive' as const } }, { target: { contains: q, mode: 'insensitive' as const } }] } : {}) };
+  const [rows, total] = await Promise.all([prisma.notification.findMany({ where, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }), countIf(pp, () => prisma.notification.count({ where }))]);
+  sendPage(res, pp, rows, total);
 });
 core.get('/admin/outbound', requireRole('ADMIN'), async (_req, res) => {
   res.json(await prisma.outboundEvent.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }));

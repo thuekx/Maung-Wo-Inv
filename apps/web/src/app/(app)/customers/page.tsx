@@ -2,6 +2,7 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { API, api, download, getToken, useFetch } from '@/lib/api';
+import { Column, DataTable } from '@/components/DataTable';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
 import { Badge, custTone, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
@@ -74,46 +75,45 @@ function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
 
 export default function Customers() {
   const { user } = useAuth();
-  const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
+  const [pkg, setPkg] = useState('');
   const [add, setAdd] = useState(false);
   const [imp, setImp] = useState(false);
   const [err, setErr] = useState('');
-  const { data, error, reload } = useFetch<any[]>(`/customers?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ''}`);
+  const [rk, setRk] = useState(0);
+  const { data: pkgs } = useFetch<any[]>('/packages?all=1');
   const role = user?.role ?? '';
   const canEdit = ['ADMIN', 'MKT', 'NOC'].includes(role);
   const canExport = ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(role);
+  const cols: Column<any>[] = [
+    { key: 'code', header: 'Kode', sort: 'code', render: (c) => <Link className="font-medium text-brand-700 hover:underline" href={`/customers/${c.id}`}>{c.code}</Link> },
+    { key: 'name', header: 'Nama', sort: 'name' },
+    { key: 'phone', header: 'Telepon', sort: 'phone' },
+    { key: 'packageName', header: 'Paket', sort: 'packageName' },
+    { key: 'ip', header: 'IP', sort: 'ip', className: 'font-mono text-xs', render: (c) => c.ip ?? '-' },
+    { key: 'status', header: 'Status', sort: 'status', render: (c) => <Badge tone={custTone(c.status)}>{c.status}</Badge> },
+  ];
+  const exportQs = new URLSearchParams({ ...(status ? { status } : {}) }).toString();
   return (
     <>
       <PageHeader title="Pelanggan" sub="Pelanggan baru lewat WO Pasang Baru, atau input manual / impor Excel untuk data yang sudah ada">
         {canEdit && <button className="btn" onClick={() => setAdd(true)}>+ Tambah pelanggan</button>}
         {canEdit && <button className="btn-ghost" onClick={() => setImp(true)}>⬆ Impor Excel</button>}
-        {canExport && <button className="btn-ghost" onClick={() => download(`/customers/export.xlsx?q=${encodeURIComponent(q)}${status ? `&status=${status}` : ''}`, 'pelanggan.xlsx').catch((e) => setErr(e.message))}>⬇ Ekspor Excel</button>}
+        {canExport && <button className="btn-ghost" onClick={() => download(`/customers/export.xlsx${exportQs ? `?${exportQs}` : ''}`, 'pelanggan.xlsx').catch((e) => setErr(e.message))}>⬇ Ekspor Excel</button>}
       </PageHeader>
-      <div className="mb-3 flex flex-wrap gap-2">
-        <input className="input w-72" placeholder="Cari nama / kode / telepon / IP…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Semua status</option>{CUSTOMER_STATUS.map((s) => <option key={s}>{s}</option>)}</select>
-      </div>
-      <ErrorMsg>{error || err}</ErrorMsg>
-      <Table head={['Kode', 'Nama', 'Telepon', 'Paket', 'IP', 'Status']} empty="Belum ada pelanggan — tambah manual atau impor dari Excel">
-        {data?.map((c) => (
-          <tr key={c.id} className="hover:bg-slate-50">
-            <td className="td"><Link className="font-medium text-brand-700 hover:underline" href={`/customers/${c.id}`}>{c.code}</Link></td>
-            <td className="td">{c.name}</td>
-            <td className="td">{c.phone}</td>
-            <td className="td">{c.packageName}</td>
-            <td className="td font-mono text-xs">{c.ip ?? '-'}</td>
-            <td className="td"><Badge tone={custTone(c.status)}>{c.status}</Badge></td>
-          </tr>
-        ))}
-      </Table>
-      <p className="mt-2 text-xs text-slate-400">Menampilkan maksimal 100 pelanggan terbaru sesuai filter; gunakan pencarian atau Ekspor Excel untuk seluruh data.</p>
+      <ErrorMsg>{err}</ErrorMsg>
+      <DataTable<any> path="/customers" columns={cols} params={{ status, packageName: pkg }} defaultSort="createdAt" refreshKey={rk}
+        searchPlaceholder="Cari nama / kode / telepon / IP…" empty="Belum ada pelanggan — tambah manual atau impor dari Excel"
+        filters={<>
+          <select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{CUSTOMER_STATUS.map((s) => <option key={s}>{s}</option>)}</select>
+          <select className="input w-52" value={pkg} onChange={(e) => setPkg(e.target.value)} aria-label="Paket"><option value="">Semua paket</option>{pkgs?.map((p) => <option key={p.id}>{p.name}</option>)}</select>
+        </>} />
       {add && (
         <Modal title="Tambah pelanggan (input manual)" onClose={() => setAdd(false)}>
-          <DynamicForm fields={customerFields(true)} initial={{ status: 'ACTIVE' }} submitLabel="Simpan pelanggan" onSubmit={async (v) => { await api('/customers', { body: v }); setAdd(false); await reload(); }} />
+          <DynamicForm fields={customerFields(true)} initial={{ status: 'ACTIVE' }} submitLabel="Simpan pelanggan" onSubmit={async (v) => { await api('/customers', { body: v }); setAdd(false); setRk((x) => x + 1); }} />
         </Modal>
       )}
-      {imp && <ImportPanel onDone={reload} onClose={() => setImp(false)} />}
+      {imp && <ImportPanel onDone={() => setRk((x) => x + 1)} onClose={() => setImp(false)} />}
     </>
   );
 }

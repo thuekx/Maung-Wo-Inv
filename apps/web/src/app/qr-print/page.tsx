@@ -34,7 +34,12 @@ export default function QrPrint() {
     let ids: string[] = [];
     try { ids = JSON.parse(sessionStorage.getItem('qr_print_ids') ?? '[]'); } catch { /* kosong */ }
     if (!ids.length) { setAssets([]); return; }
-    api<any[]>(`/assets?ids=${ids.join(',')}&limit=2000`).then((a) => setAssets(ids.map((id) => a.find((x) => x.id === id)).filter(Boolean))).catch((e) => setErr(e.message));
+    // ID dikirim per kelompok 300 (batas panjang URL), lalu diurutkan sesuai pilihan
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 300) chunks.push(ids.slice(i, i + 300));
+    Promise.all(chunks.map((c) => api<any[]>(`/assets?ids=${c.join(',')}&limit=300`)))
+      .then((parts) => { const m = new Map(parts.flat().map((a) => [a.id, a])); setAssets(ids.map((id) => m.get(id)).filter(Boolean)); })
+      .catch((e) => setErr(e.message));
   }, [user]);
 
   const P = PRESETS[preset];

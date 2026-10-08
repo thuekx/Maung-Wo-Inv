@@ -11,6 +11,7 @@ import { Effects, transact } from '../effects';
 import { nextNumber } from '../inventory';
 import { auditedDelete, auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { config } from '../config';
+import { countIf, pageParams, sendPage } from '../paging';
 
 /** Master & data pendukung: pelanggan (manual/impor/ekspor Excel), paket, merk/tipe, reset password, hapus/edit, audit. */
 export const masterRoutes = Router();
@@ -184,24 +185,28 @@ masterRoutes.get('/customers/import-template.xlsx', async (_req, res) => {
   res.send(Buffer.from(await wb.xlsx.writeBuffer()));
 });
 
+/** Ekspor dialirkan per batch (cursor) ke XLSX stream: memori tetap kecil walau jutaan baris. */
 masterRoutes.get('/customers/export.xlsx', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) => {
   const q = z.object({ q: z.string().optional(), status: z.string().optional() }).parse(req.query);
   const status = q.status ? q.status.split(',') : undefined;
-  const rows = await prisma.customer.findMany({
-    where: { ...(status ? { status: { in: status as CustomerStatus[] } } : {}), ...(q.q ? { OR: [{ name: { contains: q.q, mode: 'insensitive' } }, { code: { contains: q.q, mode: 'insensitive' } }, { phone: { contains: q.q } }, { ip: { contains: q.q } }] } : {}) },
-    include: { warehouse: { select: { code: true } } },
-    orderBy: { code: 'asc' },
-  });
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Pelanggan');
-  ws.columns = COLS.map((c) => ({ header: c.label, key: c.key, width: c.width }));
-  for (const c of rows) ws.addRow({ ...c, warehouse: c.warehouse?.code ?? '' });
-  ws.getRow(1).font = { bold: true };
-  ws.views = [{ state: 'frozen', ySplit: 1 }];
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: COLS.length } };
+  const where = { ...(status ? { status: { in: status as CustomerStatus[] } } : {}), ...(q.q ? { OR: [{ name: { contains: q.q, mode: 'insensitive' as const } }, { code: { contains: q.q, mode: 'insensitive' as const } }, { phone: { contains: q.q } }, { ip: { contains: q.q } }] } : {}) };
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="pelanggan-${new Date().toISOString().slice(0, 10)}.xlsx"`);
-  res.send(Buffer.from(await wb.xlsx.writeBuffer()));
+  const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true });
+  const ws = wb.addWorksheet('Pelanggan', { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = COLS.map((c) => ({ header: c.label, key: c.key, width: c.width }));
+  ws.getRow(1).font = { bold: true };
+  ws.getRow(1).commit();
+  let cursor: string | undefined;
+  for (;;) {
+    const batch = await prisma.customer.findMany({ where, include: { warehouse: { select: { code: true } } }, orderBy: { id: 'asc' }, take: 2000, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+    if (!batch.length) break;
+    for (const c of batch) ws.addRow({ ...c, warehouse: c.warehouse?.code ?? '' }).commit();
+    cursor = batch[batch.length - 1].id;
+    if (batch.length < 2000) break;
+  }
+  ws.commit();
+  await wb.commit();
 });
 
 masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single('file'), async (req, res) => {
@@ -458,7 +463,11 @@ masterRoutes.delete('/users/:id', requireRole('ADMIN'), async (req, res) => {
 });
 
 masterRoutes.get('/admin/audit', requireRole('ADMIN'), async (req, res) => {
-  const q = z.object({ entity: z.string().optional(), action: z.string().optional(), limit: z.coerce.number().int().min(1).max(500).default(200) }).parse(req.query);
-  res.json(await prisma.auditLog.findMany({ where: { ...(q.entity ? { entity: q.entity } : {}), ...(q.action ? { action: q.action } : {}) }, orderBy: { createdAt: 'desc' }, take: q.limit }));
+  const q = z.object({ entity: z.string().optional(), action: z.string().optional(), q: z.string().optional() }).parse(req.query);
+  const pp = pageParams(req, { sorts: { createdAt: (d) => ({ createdAt: d }), action: (d) => ({ action: d }), entity: (d) => ({ entity: d }) }, defaultSort: { key: 'createdAt', dir: 'desc' }, legacyLimit: 200 });
+  const term = q.q?.trim();
+  const where = { ...(q.entity ? { entity: q.entity } : {}), ...(q.action ? { action: q.action } : {}), ...(term ? { OR: [{ summary: { contains: term, mode: 'insensitive' as const } }, { userName: { contains: term, mode: 'insensitive' as const } }] } : {}) };
+  const [rows, total] = await Promise.all([prisma.auditLog.findMany({ where, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }), countIf(pp, () => prisma.auditLog.count({ where }))]);
+  sendPage(res, pp, rows, total);
 });
 

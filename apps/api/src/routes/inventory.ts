@@ -7,6 +7,7 @@ import { transact } from '../effects';
 import { applyAction, systemActor } from '../engine';
 import { moveStock, normSn, nextNumber, qcAssets } from '../inventory';
 import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
+import { countIf, pageParams, sendPage } from '../paging';
 
 export const inventoryRoutes = Router();
 inventoryRoutes.use(authenticate);
@@ -118,22 +119,36 @@ inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
 
 /* ── aset (ber-SN & GA) ── */
 inventoryRoutes.get('/assets', async (req, res) => {
-  const q = z.object({ q: z.string().optional(), status: z.string().optional(), warehouseId: z.string().optional(), category: z.string().optional(), customerId: z.string().optional(), ids: z.string().optional(), limit: z.coerce.number().int().min(1).max(2000).default(200) }).parse(req.query);
-  res.json(
-    await prisma.asset.findMany({
-      where: {
-        ...(q.ids ? { id: { in: q.ids.split(',').slice(0, 2000) } } : {}),
-        ...(q.status ? { status: q.status as AssetStatus } : {}),
-        ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}),
-        ...(q.customerId ? { customerId: q.customerId } : {}),
-        ...(q.category ? { item: { category: q.category as any } } : {}),
-        ...(q.q ? { OR: [{ serialNumber: { contains: q.q, mode: 'insensitive' } }, { assetCode: { contains: q.q, mode: 'insensitive' } }, { item: { name: { contains: q.q, mode: 'insensitive' } } }, { brand: { name: { contains: q.q, mode: 'insensitive' } } }, { model: { name: { contains: q.q, mode: 'insensitive' } } }] } : {}),
-      },
-      include: { item: true, warehouse: true, brand: true, model: true, customer: { select: { id: true, name: true, code: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: q.limit,
-    }),
-  );
+  const q = z.object({ q: z.string().optional(), status: z.string().optional(), warehouseId: z.string().optional(), category: z.string().optional(), customerId: z.string().optional(), ids: z.string().optional(), idsOnly: z.string().optional(), limit: z.coerce.number().int().min(1).max(2000).default(200) }).parse(req.query);
+  const term = q.q?.trim();
+  // nama item/merk/tipe dicari di tabel kecil lebih dulu → filter ber-indeks (tanpa join per baris aset)
+  const like = term ? { contains: term, mode: 'insensitive' as const } : undefined;
+  const related = term
+    ? await Promise.all([prisma.item.findMany({ where: { name: like }, select: { id: true }, take: 200 }), prisma.assetBrand.findMany({ where: { name: like }, select: { id: true }, take: 200 }), prisma.assetModel.findMany({ where: { name: like }, select: { id: true }, take: 200 })]).then(([i, b, m]) => ({ itemIds: i.map((x) => x.id), brandIds: b.map((x) => x.id), modelIds: m.map((x) => x.id) }))
+    : { itemIds: [], brandIds: [], modelIds: [] };
+  const where: any = {
+    ...(q.ids ? { id: { in: q.ids.split(',').slice(0, 2000) } } : {}),
+    ...(q.status ? { status: q.status as AssetStatus } : {}),
+    ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}),
+    ...(q.customerId ? { customerId: q.customerId } : {}),
+    ...(q.category ? { item: { category: q.category as any } } : {}),
+    ...(term ? { OR: [{ serialNumber: { contains: term, mode: 'insensitive' } }, { assetCode: { contains: term, mode: 'insensitive' } }, ...(related.itemIds.length ? [{ itemId: { in: related.itemIds } }] : []), ...(related.brandIds.length ? [{ brandId: { in: related.brandIds } }] : []), ...(related.modelIds.length ? [{ modelId: { in: related.modelIds } }] : [])] } : {}),
+  };
+  // semua id yang cocok filter (untuk "pilih semua hasil" lintas halaman, mis. cetak QR massal)
+  if (q.idsOnly === '1') {
+    const rows = await prisma.asset.findMany({ where, select: { id: true }, orderBy: { createdAt: 'desc' }, take: 5000 });
+    return void res.json({ ids: rows.map((r) => r.id), capped: rows.length === 5000 });
+  }
+  const pp = pageParams(req, {
+    sorts: { serialNumber: (d) => ({ serialNumber: d }), status: (d) => ({ status: d }), createdAt: (d) => ({ createdAt: d }), nextMaintenanceAt: (d) => ({ nextMaintenanceAt: d }), item: (d) => ({ item: { name: d } }) },
+    defaultSort: { key: 'createdAt', dir: 'desc' },
+    legacyLimit: q.limit,
+  });
+  const [rows, total] = await Promise.all([
+    prisma.asset.findMany({ where, include: { item: true, warehouse: true, brand: true, model: true, customer: { select: { id: true, name: true, code: true } } }, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }),
+    countIf(pp, () => prisma.asset.count({ where })),
+  ]);
+  sendPage(res, pp, rows, total);
 });
 
 inventoryRoutes.get('/assets/pending-qc', async (_req, res) => {
@@ -226,8 +241,16 @@ inventoryRoutes.post('/assets/qc', stockRoles, async (req, res) => {
 });
 
 /* ── purchase order & penerimaan ── */
-inventoryRoutes.get('/purchase-orders', async (_req, res) => {
-  res.json(await prisma.purchaseOrder.findMany({ include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } }, orderBy: { createdAt: 'desc' }, take: 100 }));
+inventoryRoutes.get('/purchase-orders', async (req, res) => {
+  const term = req.query.q ? String(req.query.q).trim() : '';
+  const status = req.query.status ? String(req.query.status) : undefined;
+  const pp = pageParams(req, { sorts: { number: (d) => ({ number: d }), vendor: (d) => ({ vendor: d }), status: (d) => ({ status: d }), createdAt: (d) => ({ createdAt: d }) }, defaultSort: { key: 'createdAt', dir: 'desc' }, legacyLimit: 100 });
+  const where = { ...(status ? { status } : {}), ...(term ? { OR: [{ number: { contains: term, mode: 'insensitive' as const } }, { vendor: { contains: term, mode: 'insensitive' as const } }] } : {}) };
+  const [rows, total] = await Promise.all([
+    prisma.purchaseOrder.findMany({ where, include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } }, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }),
+    countIf(pp, () => prisma.purchaseOrder.count({ where })),
+  ]);
+  sendPage(res, pp, rows, total);
 });
 inventoryRoutes.get('/purchase-orders/:id', async (req, res) => {
   const po = await prisma.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } } });

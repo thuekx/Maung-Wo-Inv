@@ -1,26 +1,25 @@
 'use client';
 import Link from 'next/link';
-import { fmtDate, useFetch } from '@/lib/api';
-import { Badge, ErrorMsg, PageHeader, Table } from '@/components/ui';
+import { useState } from 'react';
+import { fmtDate } from '@/lib/api';
+import { Column, DataTable } from '@/components/DataTable';
+import { Badge, PageHeader } from '@/components/ui';
 
 export default function PurchaseOrders() {
-  const { data, error } = useFetch<any[]>('/purchase-orders');
+  const [status, setStatus] = useState('');
+  const cols: Column<any>[] = [
+    { key: 'number', header: 'No. PO', sort: 'number', render: (p) => <Link className="font-medium text-brand-700 hover:underline" href={`/purchase-orders/${p.id}`}>{p.number}</Link> },
+    { key: 'vendor', header: 'Vendor', sort: 'vendor' },
+    { key: 'lines', header: 'Barang', className: 'text-xs', render: (p) => p.lines.map((l: any) => `${l.item.name} ${l.receivedQty}/${l.qty}`).join(', ') },
+    { key: 'wo', header: 'WO', render: (p) => (p.wo ? <Link className="text-brand-700 hover:underline" href={`/work-orders/${p.wo.id}`}>{p.wo.number}</Link> : '-') },
+    { key: 'status', header: 'Status', sort: 'status', render: (p) => <Badge tone={p.status === 'RECEIVED' ? 'green' : p.status === 'PARTIAL' ? 'amber' : 'blue'}>{p.status}</Badge> },
+    { key: 'createdAt', header: 'Tanggal', sort: 'createdAt', render: (p) => fmtDate(p.createdAt) },
+  ];
   return (
     <>
-      <PageHeader title="Purchase Order" sub="PO diterbitkan Procurement dari WO Permintaan Barang" />
-      <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['No. PO', 'Vendor', 'Barang', 'WO', 'Status', 'Tanggal']}>
-        {data?.map((p) => (
-          <tr key={p.id}>
-            <td className="td"><Link className="font-medium text-brand-700 hover:underline" href={`/purchase-orders/${p.id}`}>{p.number}</Link></td>
-            <td className="td">{p.vendor}</td>
-            <td className="td text-xs">{p.lines.map((l: any) => `${l.item.name} ${l.receivedQty}/${l.qty}`).join(', ')}</td>
-            <td className="td">{p.wo ? <Link className="text-brand-700 hover:underline" href={`/work-orders/${p.wo.id}`}>{p.wo.number}</Link> : '-'}</td>
-            <td className="td"><Badge tone={p.status === 'RECEIVED' ? 'green' : p.status === 'PARTIAL' ? 'amber' : 'blue'}>{p.status}</Badge></td>
-            <td className="td">{fmtDate(p.createdAt)}</td>
-          </tr>
-        ))}
-      </Table>
+      <PageHeader title="Purchase Order" sub="PO diterbitkan GA/Procurement dari WO Permintaan Barang" />
+      <DataTable<any> path="/purchase-orders" columns={cols} params={{ status }} defaultSort="createdAt" searchPlaceholder="Cari no. PO / vendor…"
+        filters={<select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['ISSUED', 'PARTIAL', 'RECEIVED'].map((x) => <option key={x}>{x}</option>)}</select>} />
     </>
   );
 }
