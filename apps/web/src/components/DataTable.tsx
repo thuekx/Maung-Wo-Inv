@@ -19,7 +19,8 @@ export interface Column<T> {
 interface Paged<T> { rows: T[]; total: number; page: number; pageSize: number; pageCount: number }
 
 const SIZES = [10, 25, 50, 100];
-const SIZE_KEY = 'l1v_pagesize';
+const SIZE_KEY = 'maung_pagesize';
+const OLD_SIZE_KEY = 'l1v_pagesize'; // nama lama; dibaca sekali agar pilihan pengguna tidak hilang
 
 export function DataTable<T extends { id: string }>({
   path, columns, params, search = true, searchPlaceholder = 'Cari…', defaultSort, defaultDir = 'desc',
@@ -57,7 +58,15 @@ export function DataTable<T extends { id: string }>({
   const [jump, setJump] = useState('');
   const seq = useRef(0);
 
-  useEffect(() => { try { const v = Number(localStorage.getItem(SIZE_KEY)); if (SIZES.includes(v)) setPageSize(v); } catch { /* ignore */ } }, []);
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(SIZE_KEY) ?? localStorage.getItem(OLD_SIZE_KEY));
+      if (SIZES.includes(v)) { setPageSize(v); localStorage.setItem(SIZE_KEY, String(v)); }
+      localStorage.removeItem(OLD_SIZE_KEY);
+    } catch { /* ignore */ }
+  }, []);
+  // urutan bawaan berubah (mis. pindah tab "Tugas saya" → "Semua terbuka") → kembali ke urutan bawaan yang baru
+  useEffect(() => { setSort(defaultSort); setDir(defaultDir); }, [defaultSort, defaultDir]);
   useEffect(() => { const t = setTimeout(() => setDq(q.trim()), 300); return () => clearTimeout(t); }, [q]);
 
   const paramsKey = JSON.stringify(params ?? {});
