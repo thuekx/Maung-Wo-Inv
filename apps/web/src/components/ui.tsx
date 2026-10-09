@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { api, fileUrl } from '@/lib/api';
 import { Icon } from './icons';
 
@@ -115,31 +115,43 @@ export function useNames() {
 }
 
 const LABELS: Record<string, string> = {
-  itemId: 'Barang', warehouseId: 'Gudang', qty: 'Jumlah', serial: 'Nomor seri', serialsNew: 'SN terpasang', serialsOld: 'SN dilepas',
-  cableMeters: 'Kabel terpakai (m)', opmDbm: 'Redaman OPM (dBm)', note: 'Catatan', photos: 'Foto', materials: 'Material', result: 'Hasil',
-  odp: 'ODP', odpPort: 'Port ODP', port: 'Port', vlan: 'VLAN', ip: 'IP', lat: 'Lintang', lng: 'Bujur', accuracy: 'Akurasi (m)',
+  itemId: 'Barang', warehouseId: 'Gudang', toWarehouseId: 'Gudang tujuan', sourceWarehouseId: 'Gudang asal', qty: 'Jumlah', serial: 'Nomor seri', serials: 'Perangkat (SN)', serialsNew: 'SN terpasang', serialsOld: 'SN dilepas',
+  cableMeters: 'Kabel terpakai (m)', opmDbm: 'Redaman OPM (dBm)', note: 'Catatan', photos: 'Foto', materials: 'Material', result: 'Hasil', items: 'Barang', lines: 'Rincian barang',
+  odp: 'ODP', odpPort: 'Port ODP', port: 'Port', vlan: 'VLAN', ip: 'IP internal', publicIp: 'IP publik', lat: 'Lintang', lng: 'Bujur', accuracy: 'Akurasi (m)',
+  pr: 'Purchase Request', reason: 'Alasan', techId: 'Teknisi', technicianId: 'Teknisi', pickup: 'Pengambilan material', at: 'Waktu', validation: 'Validasi teknis', packageName: 'Paket',
+  stockRequest: 'Permintaan barang', report: 'Laporan', activation: 'Aktivasi', reconciliation: 'Rekonsiliasi material', picked: 'Diambil', used: 'Terpakai', leftover: 'Sisa', installed: 'Terpasang',
+  pingMs: 'Ping / Latency (ms)', jitterMs: 'Jitter (ms)', downMbps: 'Download (Mbps)', upMbps: 'Upload (Mbps)', profile: 'Profil bandwidth', stable: 'Stabil', ontAuthorized: 'ONT di-authorize',
+  received: 'Diterima', transfer: 'Mutasi', notes: 'Catatan', ba: 'BA Digital', pop: 'POP', mainSplitter: 'Main splitter', signal: 'Signal', attenuation: 'Redaman', team: 'Tim pelaksana', steps: 'Langkah troubleshooting',
 };
 
-/** Render object data WO secara generik (foto otomatis jadi thumbnail). */
+/** id/SN mentah → teks terbaca (dari `refs` yang dikirim server per WO). */
+export const RefsContext = createContext<Record<string, string>>({});
+
+/** Render object data WO secara generik (foto otomatis jadi thumbnail; id diganti nama). Ukuran & warna teks seragam. */
 export function DataView({ value, depth = 0, field }: { value: any; depth?: number; field?: string }) {
   const names = useNames();
+  const refs = useContext(RefsContext);
   if (value === null || value === undefined || value === '') return <span className="text-slate-400">-</span>;
   if (typeof value === 'string' && value.startsWith('/uploads/'))
     return <a href={fileUrl(value)} target="_blank" rel="noreferrer"><img src={fileUrl(value)} alt="" className="h-20 w-20 rounded-lg border object-cover" /></a>;
+  if (typeof value === 'string' && refs[value]) {
+    const t = refs[value];
+    return field === 'pr' ? <a className="text-brand-700 hover:underline" href={`/purchase-requests/${value}`}>{t}</a> : <span>{t}</span>;
+  }
   if (typeof value === 'string' && names && (field === 'itemId' || field === 'warehouseId')) return <span>{(field === 'itemId' ? names.items : names.wh)[value] ?? value}</span>;
   if (typeof value === 'boolean') return <span>{value ? 'Ya' : 'Tidak'}</span>;
   if (typeof value !== 'object') return <span>{/^\d{4}-\d\d-\d\dT/.test(String(value)) ? new Date(String(value)).toLocaleString('id-ID') : String(value)}</span>;
   if (Array.isArray(value)) {
     if (!value.length) return <span className="text-slate-400">-</span>;
-    if (value.every((v) => typeof v !== 'object')) return <div className="flex flex-wrap gap-1.5">{value.map((v, i) => <span key={i} className={typeof v === 'string' && v.startsWith('/uploads/') ? '' : 'rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs'}><DataView value={v} depth={depth + 1} /></span>)}</div>;
-    return <div className="space-y-1">{value.map((v, i) => <div key={i} className="rounded border bg-slate-50 p-2"><DataView value={v} depth={depth + 1} /></div>)}</div>;
+    if (value.every((v) => typeof v !== 'object')) return <ul className="space-y-0.5">{value.map((v, i) => <li key={i}><DataView value={v} depth={depth + 1} /></li>)}</ul>;
+    return <div className="space-y-1.5">{value.map((v, i) => <div key={i} className="rounded-lg border bg-slate-50 p-2.5"><DataView value={v} depth={depth + 1} /></div>)}</div>;
   }
   return (
-    <dl className={`grid gap-x-4 gap-y-1 ${depth ? 'text-sm' : ''}`} style={{ gridTemplateColumns: 'max-content 1fr' }}>
+    <dl className="grid gap-x-4 gap-y-1.5 text-sm" style={{ gridTemplateColumns: 'minmax(7rem,max-content) 1fr' }}>
       {Object.entries(value).map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="text-xs text-slate-500">{LABELS[k] ?? k}</dt>
-          <dd><DataView value={v} depth={depth + 1} field={k} /></dd>
+          <dt className="text-slate-500">{LABELS[k] ?? k}</dt>
+          <dd className="min-w-0 break-words text-slate-900"><DataView value={v} depth={depth + 1} field={k} /></dd>
         </div>
       ))}
     </dl>
@@ -161,5 +173,5 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
 }
 
 export const LinkBtn = ({ onClick, children, danger }: { onClick: () => void; children: React.ReactNode; danger?: boolean }) => (
-  <button type="button" onClick={onClick} className={`text-sm hover:underline ${danger ? 'text-red-600' : 'text-brand-700'}`}>{children}</button>
+  <button type="button" onClick={onClick} className={`btn-ghost mx-0.5 !px-2.5 !py-1 !text-xs ${danger ? '!border-red-300 !text-red-600 hover:!bg-red-50' : '!text-brand-700'}`}>{children}</button>
 );

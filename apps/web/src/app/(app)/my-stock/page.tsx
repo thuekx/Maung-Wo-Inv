@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, PageHeader, Table, statusTone } from '@/components/ui';
+import { Select } from '@/components/Select';
 
 /** Teknisi: Stok Berjalan milik sendiri + riwayat permintaan material & serah-terima sisa. */
 export default function MyStock() {
@@ -42,7 +43,7 @@ export default function MyStock() {
       <h2 className="mb-2 mt-6 font-semibold">Riwayat permintaan material & serah-terima</h2>
       <DataTable<any> path="/work-orders" columns={cols} params={{ scope: 'created', type: type || undefined }} defaultSort="createdAt" empty="Belum ada pengajuan"
         searchPlaceholder="Cari no. WO / keterangan…"
-        filters={<select className="input w-52" value={type} onChange={(e) => setType(e.target.value)} aria-label="Jenis"><option value="">Semua</option><option value="STOCK_REQUEST">Permintaan Barang</option><option value="STOCK_RETURN">Serah-terima Sisa</option></select>} />
+        filters={<Select className="input w-52" value={type} onChange={(e) => setType(e.target.value)} aria-label="Jenis"><option value="">Semua</option><option value="STOCK_REQUEST">Permintaan Barang</option><option value="STOCK_RETURN">Serah-terima Sisa</option></Select>} />
     </>
   );
 }

@@ -6,7 +6,7 @@ import { api, doDelete, fmtDate, ROLE_LABEL, roleText, TYPE_LABEL, useFetch } fr
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
 import { toast } from '@/lib/dialog';
-import { Badge, DataView, ErrorMsg, Modal, PageHeader, statusTone } from '@/components/ui';
+import { Badge, DataView, ErrorMsg, Modal, PageHeader, RefsContext, statusTone } from '@/components/ui';
 import { fileUrl } from '@/lib/api';
 
 export default function WoDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -29,7 +29,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
   ];
   const current = available.find((a) => a.key === active);
   const c = wo.customer;
-  const { events, customer, createdBy, assignee, parent, children, purchase, data, attachments, ...rest } = wo;
+  const { events, customer, createdBy, assignee, parent, children, purchase, data, attachments, refs, ...rest } = wo;
   const photos: any[] = (attachments ?? []).filter((a: any) => a.kind !== 'LOGO');
   void rest;
 
@@ -39,7 +39,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
         <Badge tone={statusTone(wo.final, wo.status)}>{wo.statusLabel}</Badge>
         {wo.type === 'NEW_INSTALL' && data?.activation && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
         {!wo.closedAt && (user?.role === 'ADMIN' || wo.createdById === user?.id) && <button className="btn-ghost" onClick={() => setEditWo(true)}>✎ Edit</button>}
-        {user?.role === 'ADMIN' && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/work-orders/${wo.id}`, `WO ${wo.number}`)) router.replace('/work-orders'); }}>🗑 Hapus</button>}
+        {user?.role === 'ADMIN' && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/work-orders/${wo.id}`, `WO ${wo.number}`)) router.replace('/work-orders'); }}>🗑 Hapus</button>}
       </PageHeader>
 
       {wf && (
@@ -105,7 +105,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
 
           <div className="card">
             <h2 className="mb-2 font-semibold">Detail & laporan</h2>
-            <DataView value={data} />
+            <RefsContext.Provider value={refs ?? {}}><DataView value={data} /></RefsContext.Provider>
           </div>
 
           <div className="card">

@@ -24,10 +24,10 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
         <Badge tone={custTone(c.status)}>{c.status}</Badge>
         {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost" onClick={async () => { try { const r = await api<any>(`/customers/${c.id}/radius-pull`, { body: {} }); toast.success(`Data MSRadius ditarik (${r.updated ? 'diperbarui' : 'sudah sama'}).`); await reload(); } catch (e) { toast.error((e as Error).message); } }}>⟳ Tarik dari MSRadius</button>}
         {['ADMIN', 'MKT', 'NOC'].includes(role) && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}
-        {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/customers/${c.id}`, `pelanggan ${c.name}`)) router.replace('/customers'); }}>🗑 Hapus</button>}
+        {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/customers/${c.id}`, `pelanggan ${c.name}`)) router.replace('/customers'); }}>🗑 Hapus</button>}
       </PageHeader>
-      {c.source === 'RADIUS' && <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">Data pelanggan ini bersumber dari <b>MSRadius</b> (hanya dibaca): nama, telepon, alamat, dan paket diubah di MSRadius lalu ditarik ke sini{c.syncedAt ? ` (terakhir ${fmtDate(c.syncedAt)})` : ''}.{c.missingFromApi ? <b className="text-red-700"> Pelanggan ini sudah tidak ditemukan di MSRadius pada sinkron terakhir.</b> : ''}</p>}
-      {c.source !== 'RADIUS' && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Pelanggan input manual. Setelah akunnya dibuat di MSRadius dengan kode <b>{c.code}</b>, tekan <b>Tarik dari MSRadius</b> agar data tersinkron.</p>}
+      {role === 'ADMIN' && c.source === 'RADIUS' && <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">Data pelanggan ini bersumber dari <b>MSRadius</b> (hanya dibaca): nama, telepon, alamat, dan paket diubah di MSRadius lalu ditarik ke sini{c.syncedAt ? ` (terakhir ${fmtDate(c.syncedAt)})` : ''}.{c.missingFromApi ? <b className="text-red-700"> Pelanggan ini sudah tidak ditemukan di MSRadius pada sinkron terakhir.</b> : ''}</p>}
+      {role === 'ADMIN' && c.source !== 'RADIUS' && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Pelanggan input manual. Setelah akunnya dibuat di MSRadius dengan kode <b>{c.code}</b>, tekan <b>Tarik dari MSRadius</b> agar data tersinkron.</p>}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card">
           <div className="card-header"><h2 className="font-semibold">Kontak & layanan</h2></div>

@@ -11,6 +11,7 @@ import { Avatar } from '@/components/ui';
 import { SearchBox } from '@/components/SearchBox';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Tip } from '@/components/Tip';
+import { Select } from '@/components/Select';
 
 interface Item { href: string; label: string; icon: IconName; roles?: string[]; /** supervisor/manager divisi mana pun juga boleh */ lead?: boolean }
 const GROUPS: { title: string; items: Item[] }[] = [
@@ -76,7 +77,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="mx-auto hidden min-w-0 flex-1 justify-center px-4 md:flex"><SearchBox /></div>
         <div className="ml-auto flex items-center gap-1 md:ml-0">
-          <ThemeToggle />
+          <span className="hidden sm:block"><ThemeToggle /></span>
           <NotificationBell />
           <div ref={menuRef} className="relative">
             <button className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-white/10" onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu}>
@@ -87,6 +88,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {menu && (
               <div role="menu" className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-slate-700 shadow-xl">
                 <div className="border-b border-slate-100 px-4 py-2"><div className="text-sm font-semibold text-slate-800">{user.name}</div><div className="truncate text-xs text-slate-500">{user.email}</div></div>
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 sm:hidden"><span className="text-xs text-slate-500">Tema</span><ThemeToggle /></div>
                 {(user.role === 'ADMIN' || user.realAdmin) && <ActAs acting={user.realAdmin ? { role: user.role, sub: user.subRole } : null} />}
                 <Link href="/profile" role="menuitem" className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-slate-100"><Icon name="user" size={16} /> Profil & Telegram</Link>
                 <button role="menuitem" onClick={logout} className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-slate-100"><Icon name="logout" size={16} /> Keluar</button>
@@ -151,12 +153,12 @@ function ActAs({ acting }: { acting: { role: string; sub: string } | null }) {
     <div className="border-b border-slate-100 px-4 py-2">
       <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bertindak sebagai</div>
       <div className="flex gap-1">
-        <select className="input !py-1 text-xs" value={role} onChange={(e) => setRole(e.target.value)} aria-label="Peran">
+        <Select className="input !py-1 text-xs" value={role} onChange={(e) => setRole(e.target.value)} aria-label="Peran">
           {['MKT', 'NOC', 'FOC', 'GA', 'FIN'].map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-        </select>
-        <select className="input !py-1 text-xs" value={sub} onChange={(e) => setSub(e.target.value)} aria-label="Sub-role">
+        </Select>
+        <Select className="input !py-1 text-xs" value={sub} onChange={(e) => setSub(e.target.value)} aria-label="Sub-role">
           {Object.entries(SUBROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        </Select>
       </div>
       <button className="btn mt-1.5 w-full !py-1 text-xs" onClick={() => { setAct({ role, sub }); window.location.href = '/'; }}>Terapkan</button>
     </div>

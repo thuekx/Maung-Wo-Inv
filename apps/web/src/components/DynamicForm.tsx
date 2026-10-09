@@ -5,6 +5,7 @@ import { promptDialog } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { uploadPhoto, useBranding } from '@/lib/photo';
 import { ErrorMsg } from './ui';
+import { Select } from '@/components/Select';
 
 export interface Field {
   name: string;
@@ -97,10 +98,10 @@ export function MaterialsInput({ value, onChange, category, woId, pickedOnly }: 
         const max = it && pickedOnly ? picked[it.id] - usedBy(it.id, i) : undefined;
         return (
           <div key={i} className="flex gap-2">
-            <select className="input" value={row.itemId} onChange={(e) => set(i, { itemId: e.target.value })}>
+            <Select className="input" value={row.itemId} onChange={(e) => set(i, { itemId: e.target.value })}>
               <option value="">— pilih item —</option>
               {list.map((x) => <option key={x.id} value={x.id}>{itemLabel(x)}{pickedOnly ? ` — diambil ${picked[x.id]}` : ''}</option>)}
-            </select>
+            </Select>
             <input className="input w-28" type="number" min={1} max={max} placeholder="Qty" value={row.qty} onChange={(e) => set(i, { qty: e.target.value })} />
             <span className="self-center text-xs text-slate-500">{it?.unit}{max !== undefined ? ` (maks ${max})` : ''}</span>
             <button type="button" className="text-red-600" onClick={() => onChange(value.filter((_, k) => k !== i))}>✕</button>
@@ -160,15 +161,15 @@ function QcInput({ woId, value, onChange }: { woId?: string; value: any[]; onCha
       {value.map((r, i) => (
         <div key={r.serial} className="grid gap-2 rounded-lg border p-2 md:grid-cols-4">
           <div className="self-center font-mono text-sm">{r.serial}<div className="text-xs text-slate-500">{assets?.find((a) => a.serialNumber === r.serial)?.item.name}</div></div>
-          <select className="input" value={r.result} onChange={(e) => set(i, { result: e.target.value })}>
+          <Select className="input" value={r.result} onChange={(e) => set(i, { result: e.target.value })}>
             <option value="GOOD">Baik → Refurbished</option>
             <option value="DAMAGED">Rusak → Damaged (klaim garansi)</option>
             <option value="SCRAP">Scrap (pemutihan aset)</option>
-          </select>
-          <select className="input" value={r.warehouseId} onChange={(e) => set(i, { warehouseId: e.target.value })}>
+          </Select>
+          <Select className="input" value={r.warehouseId} onChange={(e) => set(i, { warehouseId: e.target.value })}>
             <option value="">{r.result === 'GOOD' ? '— gudang tujuan (wajib) —' : '— gudang (opsional) —'}</option>
             {whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
+          </Select>
           <input className="input" placeholder="Catatan kondisi" value={r.note} onChange={(e) => set(i, { note: e.target.value })} />
         </div>
       ))}
@@ -191,9 +192,9 @@ function CustomerSelect({ value, onChange, statuses }: { value: string; onChange
   return (
     <div className="space-y-1">
       <input className="input" placeholder="Cari nama / kode / IP pelanggan…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <select className="input" value={value} onChange={(e) => onChange(e.target.value)} size={Math.min(6, Math.max(2, rows.length))}>
+      <Select className="input" value={value} onChange={(e) => onChange(e.target.value)} size={Math.min(6, Math.max(2, rows.length))}>
         {rows.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name} ({c.status})</option>)}
-      </select>
+      </Select>
     </div>
   );
 }
@@ -216,17 +217,17 @@ export function BrandModelInput({ value, onChange, canCreate }: { value: { brand
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <select className="input" value={value.brandId ?? ''} onChange={(e) => onChange({ brandId: e.target.value || undefined })}>
+        <Select className="input" value={value.brandId ?? ''} onChange={(e) => onChange({ brandId: e.target.value || undefined })}>
           <option value="">— merk (opsional) —</option>
           {brands?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
+        </Select>
         {canCreate && <button type="button" className="btn-ghost shrink-0" onClick={() => add('brand')}>+ Merk</button>}
       </div>
       <div className="flex gap-2">
-        <select className="input" value={value.modelId ?? ''} disabled={!value.brandId} onChange={(e) => onChange({ brandId: value.brandId, modelId: e.target.value || undefined })}>
+        <Select className="input" value={value.modelId ?? ''} disabled={!value.brandId} onChange={(e) => onChange({ brandId: value.brandId, modelId: e.target.value || undefined })}>
           <option value="">— tipe / model (opsional) —</option>
           {models.map((m: any) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+        </Select>
         {canCreate && <button type="button" className="btn-ghost shrink-0" disabled={!value.brandId} onClick={() => add('model')}>+ Tipe</button>}
       </div>
       <ErrorMsg>{err}</ErrorMsg>
@@ -300,33 +301,33 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
           <label className="mb-1 block text-sm font-medium">{f.label}{f.required && <span className="text-red-500"> *</span>}</label>
           {f.type === 'textarea' ? <textarea className="input" rows={3} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />
             : f.type === 'select' ? (
-              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+              <Select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih —</option>
                 {f.options?.map((o) => <option key={o}>{o}</option>)}
-              </select>)
+              </Select>)
             : f.type === 'bool' ? <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!v[f.name]} onChange={(e) => set(f.name, e.target.checked)} /> Ya</label>
             : f.type === 'technician' ? (
-              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+              <Select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih teknisi —</option>
                 {techs?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>)
+              </Select>)
             : f.type === 'warehouse' ? (
-              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+              <Select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih gudang —</option>
                 {whs?.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.kind})</option>)}
-              </select>)
+              </Select>)
             : f.type === 'area' ? (
-              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+              <Select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih area —</option>
                 {v[f.name] && !areas?.some((a) => a.id === v[f.name]) && <option value={v[f.name]}>(area nonaktif)</option>}
                 {areas?.map((a) => <option key={a.id} value={a.id}>{a.name}{a.warehouse ? '' : ' (belum ada gudang)'}</option>)}
-              </select>)
+              </Select>)
             : f.type === 'package' ? (
-              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+              <Select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih paket —</option>
                 {v[f.name] && !pkgs?.some((p) => p.name === v[f.name]) && <option>{v[f.name]}</option>}
                 {pkgs?.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-              </select>)
+              </Select>)
             : f.type === 'brandmodel' ? <BrandModelInput value={v[f.name] ?? {}} onChange={(x) => set(f.name, x)} canCreate={user?.role === 'GA' || user?.role === 'ADMIN'} />
             : f.type === 'customer' ? <CustomerSelect value={v[f.name]} onChange={(x) => set(f.name, x)} statuses={f.customerStatus} />
             : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} onPending={(t) => setPending((p) => ({ ...p, [f.name]: t }))} />

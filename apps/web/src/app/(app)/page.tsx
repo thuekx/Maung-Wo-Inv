@@ -46,13 +46,22 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
-        {TYPE_KEYS.map((t) => (
-          <MetricCard key={t} href={`/work-orders?type=${t}`} icon={TYPE_ICON[t]} color={TYPE_COLOR[t]} value={data.byType[t] ?? 0} label={TYPE_LABEL[t]} hint="terbuka" />
-        ))}
-        <MetricCard href="/work-orders?overdue=7" icon="clock" color={data.overdue.total ? C.out : C.ok} value={data.overdue.total} label="WO > 7 hari" hint="belum tertangani" />
-        <MetricCard href="/inventory" icon="inbox" color={data.stockSummary.out ? C.out : data.stockSummary.low ? C.low : C.ok} value={data.stockSummary.out + data.stockSummary.low} label="Stok kritis" hint={`${data.stockSummary.out} habis · ${data.stockSummary.low} menipis`} />
-      </div>
+      {/* kartu ditata 2 baris seimbang di layar lebar (baris bawah diratakan ke tengah) */}
+      {(() => {
+        const cards = [
+          ...TYPE_KEYS.map((t) => <MetricCard href={`/work-orders?type=${t}`} icon={TYPE_ICON[t]} color={TYPE_COLOR[t]} value={data.byType[t] ?? 0} label={TYPE_LABEL[t]} hint="terbuka" />),
+          <MetricCard href="/work-orders?overdue=7" icon="clock" color={data.overdue.total ? C.out : C.ok} value={data.overdue.total} label="WO > 7 hari" hint="belum tertangani" />,
+          <MetricCard href="/inventory" icon="inbox" color={data.stockSummary.out ? C.out : data.stockSummary.low ? C.low : C.ok} value={data.stockSummary.out + data.stockSummary.low} label="Stok kritis" hint={`${data.stockSummary.out} habis · ${data.stockSummary.low} menipis`} />,
+        ];
+        const top = Math.ceil(cards.length / 2), bottom = cards.length - top;
+        return (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]" style={{ '--cols': top * 2 } as React.CSSProperties}>
+            {cards.map((c, i) => (
+              <div key={i} className="xl:[grid-column-end:span_2] xl:[grid-column-start:var(--cs,auto)]" style={i === top && bottom < top ? ({ '--cs': top - bottom + 1 } as React.CSSProperties) : undefined}>{c}</div>
+            ))}
+          </div>
+        );
+      })()}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Panel title="Penyelesaian WO (30 hari)">

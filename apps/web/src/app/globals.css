@@ -39,6 +39,9 @@
 }
 
 body { @apply bg-slate-50 text-slate-800 antialiased; }
+/* Anak grid tidak boleh melebarkan halaman (di HP memaksa browser zoom-out): kolom boleh menyusut */
+.grid > * { min-width: 0; }
+html, body { overflow-x: clip; }
 
 /* ── Komponen (Tabler: padat & tenang · TailAdmin: kartu membulat, ikon berlatar lembut · Brand: emas = aksi utama) ── */
 @layer components {

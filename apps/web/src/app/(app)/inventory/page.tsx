@@ -8,8 +8,9 @@ import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
+import { Select } from '@/components/Select';
 
-const CAT: Record<string, string> = { CONSUMABLE: 'Material Konsumsi ISP', NETWORK: 'Perangkat Jaringan', GA: 'Aset General (GA)' };
+const CAT: Record<string, string> = { CONSUMABLE: 'Material Habis Pakai', NETWORK: 'Perangkat Jaringan', GA: 'Aset General (GA)' };
 const ST_TONE: Record<string, any> = { IN_STOCK: 'green', REFURBISHED: 'green', INSTALLED: 'blue', IN_USE: 'blue', RETURNED_PENDING_QC: 'amber', DAMAGED: 'red', SCRAP: 'red', QTY: 'slate' };
 
 /* ───── Stok ───── */
@@ -19,10 +20,10 @@ function StockTab() {
   const { data, error } = useFetch<any[]>(`/stock${wh ? `?warehouseId=${wh}` : ''}`);
   return (
     <>
-      <select className="input mb-3 max-w-xs" value={wh} onChange={(e) => setWh(e.target.value)}>
+      <Select className="input mb-3 max-w-xs" value={wh} onChange={(e) => setWh(e.target.value)}>
         <option value="">Semua gudang (termasuk stok berjalan)</option>
         {whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-      </select>
+      </Select>
       <ErrorMsg>{error}</ErrorMsg>
       <Table head={['Gudang', 'Item', 'Kategori', 'Status', 'Qty']}>
         {data?.map((r, i) => (
@@ -87,7 +88,7 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
     { key: 'status', header: 'Status', sort: 'status', render: (a) => <Badge tone={ST_TONE[a.status]}>{a.status}</Badge> },
     { key: 'loc', header: 'Lokasi', render: (a) => (a.customer ? `Pelanggan: ${a.customer.name}` : a.warehouse?.name ?? '-') },
     { key: 'maint', header: 'Maintenance', sort: 'nextMaintenanceAt', render: (a) => (a.needsMaintenance ? (a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : <span className="text-amber-600">Perlu — belum dijadwalkan</span>) : '-') },
-    { key: 'act', header: '', className: 'whitespace-nowrap', render: (a) => <><LinkBtn onClick={() => setQr(a)}>QR</LinkBtn>{canManage && <> · <LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/assets/${a.id}`, `aset ${a.serialNumber}`)) { setSel((x) => x.filter((i) => i !== a.id)); reload(); } }}>Hapus</LinkBtn></>}</> },
+    { key: 'act', header: '', className: 'whitespace-nowrap', render: (a) => <><LinkBtn onClick={() => setQr(a)}>QR</LinkBtn>{canManage && <><LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/assets/${a.id}`, `aset ${a.serialNumber}`)) { setSel((x) => x.filter((i) => i !== a.id)); reload(); } }}>Hapus</LinkBtn></>}</> },
   ];
   const printSel = (ids: string[]) => { try { sessionStorage.setItem('qr_print_ids', JSON.stringify(ids)); } catch { /* ignore */ } window.open('/qr-print', '_blank'); };
 
@@ -132,10 +133,10 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
 
       {showReg && (
         <div className="card mb-4 max-w-2xl space-y-3">
-          <select className="input" value={regItem} onChange={(e) => setRegItem(e.target.value)}>
+          <Select className="input" value={regItem} onChange={(e) => setRegItem(e.target.value)}>
             <option value="">— pilih item (ber-SN / aset GA) —</option>
             {items?.filter((i) => i.tracked).map((i) => <option key={i.id} value={i.id}>{i.name} · {CAT[i.category]}</option>)}
-          </select>
+          </Select>
           {regItem && (
             <DynamicForm key={regItem} fields={regFields} submitLabel="Simpan & buat QR"
               onSubmit={async (v) => { const r = await api<any[]>('/assets/register', { body: { itemId: regItem, ...v } }); setShowReg(false); await reload(); toast.success(`${r.length} aset terdaftar.`); if (await confirmDialog('Cetak label QR sekarang (lembar A4)?')) printSel(r.map((a) => a.id)); }} />
@@ -146,8 +147,8 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
       <DataTable<any> path="/assets" initialQ={initialQ} columns={cols} params={{ status, category }} defaultSort="createdAt" refreshKey={rk} searchPlaceholder="Cari SN / kode aset / item / merk…"
         selectable selected={sel} onSelectedChange={setSel}
         filters={<>
-          <select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Kategori"><option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option></select>
-          <select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}</select>
+          <Select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Kategori"><option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option></Select>
+          <Select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}</Select>
         </>}
         selectionBar={({ total, q }) => (
           <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -205,8 +206,8 @@ function WarehousesTab({ canManage }: { canManage: boolean }) {
       <Table head={['Kode', 'Nama', 'Jenis', 'Pemilik', 'Aktif', '']}>
         {data?.map((w) => (
           <tr key={w.id}><td className="td font-mono">{w.code}</td><td className="td">{w.name}</td><td className="td"><Badge>{KIND[w.kind] ?? w.kind}</Badge></td><td className="td">{w.owner?.name ?? '-'}</td>
-            <td className="td">{canManage ? <button className="text-brand-700 hover:underline" onClick={async () => { await api(`/warehouses/${w.id}`, { method: 'PATCH', body: { active: !w.active } }); reload(); }}>{w.active ? 'Aktif' : 'Nonaktif'}</button> : w.active ? 'Ya' : 'Tidak'}</td>
-            <td className="td whitespace-nowrap">{canManage && <>{w.kind !== 'MOBILE' && <LinkBtn onClick={() => setEdit(w)}>Edit</LinkBtn>}{w.kind !== 'MOBILE' && ' · '}<LinkBtn danger onClick={async () => { if (await doDelete(`/warehouses/${w.id}`, `gudang ${w.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
+            <td className="td">{canManage ? <button className="btn-ghost !px-2.5 !py-1 !text-xs !text-brand-700" onClick={async () => { await api(`/warehouses/${w.id}`, { method: 'PATCH', body: { active: !w.active } }); reload(); }}>{w.active ? 'Aktif' : 'Nonaktif'}</button> : w.active ? 'Ya' : 'Tidak'}</td>
+            <td className="td whitespace-nowrap">{canManage && <>{w.kind !== 'MOBILE' && <LinkBtn onClick={() => setEdit(w)}>Edit</LinkBtn>}<LinkBtn danger onClick={async () => { if (await doDelete(`/warehouses/${w.id}`, `gudang ${w.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
         ))}
       </Table>
       {edit && (
@@ -239,7 +240,7 @@ function ItemsTab({ canManage }: { canManage: boolean }) {
       <Table head={['SKU', 'Nama', 'Kategori', 'Satuan', 'Std. pasang baru', 'Min. stok', '']}>
         {data?.map((i) => (
           <tr key={i.id}><td className="td font-mono">{i.sku}</td><td className="td">{i.name}</td><td className="td text-xs">{CAT[i.category]}</td><td className="td">{i.unit}{i.coreCount ? <span className="ml-1 text-xs text-slate-500">· {i.coreCount} core</span> : null}{i.isVehicle ? <span className="ml-1 text-xs text-slate-500">· kendaraan</span> : null}</td><td className="td">{i.installDefaultQty ?? '-'}</td><td className="td">{i.minStock || '-'}</td>
-            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(i)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/items/${i.id}`, `item ${i.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(i)}>Edit</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/items/${i.id}`, `item ${i.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
         ))}
       </Table>
       {edit && (
@@ -275,11 +276,11 @@ function OpnameTab() {
 
   return (
     <div className="max-w-2xl space-y-3">
-      <p className="text-sm text-slate-500">Stock opname untuk material konsumsi. Isi jumlah fisik; selisih dicatat sebagai mutasi stok. Aset ber-SN dicek lewat tab Aset & SN.</p>
-      <select className="input" value={wh} onChange={(e) => setWh(e.target.value)}>
+      <p className="text-sm text-slate-500">Stock opname untuk material habis pakai. Isi jumlah fisik; selisih dicatat sebagai mutasi stok. Aset ber-SN dicek lewat tab Aset & SN.</p>
+      <Select className="input" value={wh} onChange={(e) => setWh(e.target.value)}>
         <option value="">— pilih gudang —</option>
         {whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-      </select>
+      </Select>
       {wh && (
         <Table head={['Item', 'Tercatat', 'Fisik']}>
           {cons.map((i) => (

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { api, useFetch } from '@/lib/api';
 import { ErrorMsg } from './ui';
 import { toast } from '@/lib/dialog';
+import { Select } from '@/components/Select';
 
 export interface PrLineDraft { description: string; qty: number | string; unit: string; itemId: string; note: string; quotes: { vendorId: string; unitPrice: number | string; note: string; chosen: boolean }[] }
 export interface PrDraft { subject: string; note: string; taxPct: number | string; lines: PrLineDraft[] }
@@ -55,7 +56,7 @@ export function PrEditor({ initial, prId, onSaved, minVendors = 2 }: { initial: 
       {v.lines.map((l, i) => (
         <div key={i} className="card space-y-3">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold">Baris {i + 1}</h3>
+            <h3 className="font-semibold">Item {i + 1}</h3>
             {v.lines.length > 1 && <button type="button" className="text-sm text-red-600" onClick={() => setV({ ...v, lines: v.lines.filter((_, k) => k !== i) })}>Hapus baris</button>}
           </div>
           <div className="grid gap-3 md:grid-cols-6">
@@ -63,10 +64,10 @@ export function PrEditor({ initial, prId, onSaved, minVendors = 2 }: { initial: 
             <div><label className="mb-1 block text-xs font-medium">Qty *</label><input className="input" type="number" min={1} value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} /></div>
             <div><label className="mb-1 block text-xs font-medium">Satuan</label><input className="input" value={l.unit} maxLength={20} onChange={(e) => setLine(i, { unit: e.target.value })} /></div>
             <div><label className="mb-1 block text-xs font-medium">Barang stok?</label>
-              <select className="input" value={l.itemId} onChange={(e) => { const it = items?.find((x) => x.id === e.target.value); setLine(i, { itemId: e.target.value, ...(it && !l.description ? { description: it.name, unit: it.unit } : {}) }); }}>
+              <Select className="input" value={l.itemId} onChange={(e) => { const it = items?.find((x) => x.id === e.target.value); setLine(i, { itemId: e.target.value, ...(it && !l.description ? { description: it.name, unit: it.unit } : {}) }); }}>
                 <option value="">Non-stok / jasa</option>
                 {items?.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-              </select></div>
+              </Select></div>
           </div>
           <div>
             <div className="mb-1 flex items-center justify-between text-xs font-medium"><span>Perbandingan vendor (min. {minVendors}, pilih satu) — harga per satuan</span><span className={l.quotes.filter((q) => q.vendorId).length >= minVendors ? 'text-green-700' : 'text-amber-700'}>{l.quotes.filter((q) => q.vendorId).length} vendor</span></div>
@@ -74,10 +75,10 @@ export function PrEditor({ initial, prId, onSaved, minVendors = 2 }: { initial: 
               {l.quotes.map((q, j) => (
                 <div key={j} className="grid grid-cols-[auto_1fr_9rem_1fr_auto] items-center gap-2 max-md:grid-cols-[auto_1fr_auto]">
                   <input type="radio" name={`ch-${i}`} checked={q.chosen} disabled={!q.vendorId} onChange={() => setQuote(i, j, { chosen: true })} aria-label="Pilih vendor ini" />
-                  <select className="input" value={q.vendorId} onChange={(e) => setQuote(i, j, { vendorId: e.target.value })}>
+                  <Select className="input" value={q.vendorId} onChange={(e) => setQuote(i, j, { vendorId: e.target.value })}>
                     <option value="">— pilih vendor —</option>
                     {vendors?.filter((x) => x.id === q.vendorId || !l.quotes.some((o) => o.vendorId === x.id)).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                  </select>
+                  </Select>
                   <input className="input" type="number" min={0} step="any" placeholder="Harga satuan" value={q.unitPrice} onChange={(e) => setQuote(i, j, { unitPrice: e.target.value })} />
                   <input className="input max-md:col-span-3" placeholder="Keterangan (opsional)" value={q.note} maxLength={200} onChange={(e) => setQuote(i, j, { note: e.target.value })} />
                   <button type="button" className="text-red-600" aria-label="Hapus vendor" onClick={() => setLine(i, { quotes: l.quotes.filter((_, m) => m !== j) })}>✕</button>

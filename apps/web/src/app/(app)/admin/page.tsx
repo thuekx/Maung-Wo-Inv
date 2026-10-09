@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
+import { Select } from '@/components/Select';
 
 function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string }[]; onClose: () => void }) {
   const csv = () => {
@@ -69,8 +70,8 @@ function Users() {
             <td className="td"><input type="checkbox" checked={sel.includes(u.id)} onChange={() => toggle(u.id)} aria-label={`pilih ${u.name}`} /></td>
             <td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td"><Badge>{ROLE_LABEL[u.role] ?? u.role}</Badge></td><td className="td text-sm">{u.role === 'ADMIN' ? '-' : SUBROLE_LABEL[u.subRole] ?? u.subRole}</td>
             <td className="td">{u.telegramChatId ? '✓ terhubung' : '-'}</td>
-            <td className="td"><button className="text-brand-700 hover:underline" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).catch((e) => toast.error(e.message)); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button>{u.mustChangePassword && <div><Badge tone="amber">wajib ganti password</Badge></div>}</td>
-            <td className="td whitespace-nowrap"><LinkBtn onClick={() => setEdit(u)}>Edit</LinkBtn> · <LinkBtn onClick={() => { setErr(''); setPw({ ids: [u.id] }); }}>Reset PW</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/users/${u.id}`, `user ${u.email}`)) reload(); }}>Hapus</LinkBtn></td>
+            <td className="td"><button className="btn-ghost !px-2.5 !py-1 !text-xs !text-brand-700" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).catch((e) => toast.error(e.message)); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button>{u.mustChangePassword && <div><Badge tone="amber">wajib ganti password</Badge></div>}</td>
+            <td className="td whitespace-nowrap"><LinkBtn onClick={() => setEdit(u)}>Edit</LinkBtn><LinkBtn onClick={() => { setErr(''); setPw({ ids: [u.id] }); }}>Reset PW</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/users/${u.id}`, `user ${u.email}`)) reload(); }}>Hapus</LinkBtn></td>
           </tr>
         ))}
       </Table>
@@ -113,7 +114,7 @@ function AuditLog() {
     { key: 'before', header: 'Data sebelumnya', className: 'max-w-xs truncate font-mono text-xs text-slate-500', render: (a) => <span title={a.before ? JSON.stringify(a.before) : ''}>{a.before ? JSON.stringify(a.before) : '-'}</span> },
   ];
   return <DataTable<any> path="/admin/audit" columns={cols} params={{ entity }} defaultSort="createdAt" searchPlaceholder="Cari ringkasan / pengguna…" empty="Belum ada catatan"
-    filters={<select className="input w-52" value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Jenis data"><option value="">Semua data</option>{['pelanggan', 'user', 'item', 'gudang', 'aset', 'paket', 'merk', 'tipe', 'PO', 'WO'].map((x) => <option key={x}>{x}</option>)}</select>} />;
+    filters={<Select className="input w-52" value={entity} onChange={(e) => setEntity(e.target.value)} aria-label="Jenis data"><option value="">Semua data</option>{['pelanggan', 'user', 'item', 'gudang', 'aset', 'paket', 'merk', 'tipe', 'PO', 'WO'].map((x) => <option key={x}>{x}</option>)}</Select>} />;
 }
 
 const sTone = (s: string): any => (s === 'SENT' ? 'green' : s === 'FAILED' ? 'red' : s === 'NOT_SENT' ? 'amber' : s === 'SKIPPED' ? 'slate' : 'blue');
@@ -130,10 +131,10 @@ function Notifs() {
     { key: 'target', header: 'Tujuan', className: 'text-xs' },
     { key: 'subject', header: 'Subjek' },
     { key: 'status', header: 'Status', sort: 'status', render: (n) => <><Badge tone={sTone(n.status)}>{sLabel[n.status] ?? n.status}</Badge>{n.error && <div className="text-xs text-red-600">{n.error}</div>}</> },
-    { key: 'act', header: '', render: (n) => (n.status === 'SENT' || n.status === 'PENDING' ? null : <button className="text-xs text-brand-700 hover:underline" onClick={() => resend(n.id)}>Kirim ulang</button>) },
+    { key: 'act', header: '', render: (n) => (n.status === 'SENT' || n.status === 'PENDING' ? null : <button className="btn-ghost !px-2.5 !py-1 !text-xs !text-brand-700" onClick={() => resend(n.id)}>Kirim ulang</button>) },
   ];
   return <DataTable<any> path="/admin/notifications" columns={cols} params={{ status, r: String(n) }} defaultSort="createdAt" searchPlaceholder="Cari subjek / tujuan…"
-    filters={<><button className="btn-ghost" onClick={resendAll}>Kirim ulang semua yang belum terkirim</button><select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['PENDING', 'SENT', 'NOT_SENT', 'FAILED', 'SKIPPED'].map((x) => <option key={x} value={x}>{sLabel[x]}</option>)}</select></>} />;
+    filters={<><button className="btn-ghost" onClick={resendAll}>Kirim ulang semua yang belum terkirim</button><Select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['PENDING', 'SENT', 'NOT_SENT', 'FAILED', 'SKIPPED'].map((x) => <option key={x} value={x}>{sLabel[x]}</option>)}</Select></>} />;
 }
 
 function Outbound() {
@@ -223,7 +224,7 @@ function UploadBox({ title, hint, url: uploaded, dark, variant, onDone }: { titl
       {url && <p className="truncate text-[11px] text-slate-500" title={url}>{isDefault ? 'Logo bawaan aplikasi (belum ada unggahan)' : last ? `Baru diunggah ${last.at}: ${last.name} (${last.kb} KB)` : 'Berkas aktif'} · <a className="text-brand-700 hover:underline" href={fileUrl(url)} target="_blank" rel="noreferrer">buka</a></p>}
       <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e.target)} className="w-full text-xs" />
       <p className="text-xs text-slate-500">{hint}</p>
-      {uploaded && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); setLast(null); await loadBranding(true); onDone(); }, 'Dihapus — kembali ke logo bawaan')}>Hapus (pakai bawaan)</button>}
+      {uploaded && <button className="btn-ghost !px-2.5 !py-1 !text-xs !border-red-300 !text-red-600 hover:!bg-red-50" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); setLast(null); await loadBranding(true); onDone(); }, 'Dihapus — kembali ke logo bawaan')}>Hapus (pakai bawaan)</button>}
       <Msg m={a.msg} />
     </div>
   );
@@ -424,7 +425,7 @@ function SubFormCard() {
         {f('managerName', 'Manager Marketing (bawaan)')}
         {f('city', 'Kota')}{f('ppnNote', 'Keterangan PPN biaya langganan')}
         {f('bankName', 'Nama bank')}{f('accName', 'Atas nama rekening')}{f('accNo', 'No. rekening')}
-        <div><label className="mb-1 block text-sm font-medium">Pembayaran bawaan</label><select className="input" value={cur.defaultPayment} onChange={(e) => setV({ ...cur, defaultPayment: e.target.value })}><option value="TRANSFER">Transfer</option><option value="CASH">Tunai</option><option value="DEBIT">Debet</option></select></div>
+        <div><label className="mb-1 block text-sm font-medium">Pembayaran bawaan</label><Select className="input" value={cur.defaultPayment} onChange={(e) => setV({ ...cur, defaultPayment: e.target.value })}><option value="TRANSFER">Transfer</option><option value="CASH">Tunai</option><option value="DEBIT">Debet</option></Select></div>
         <div className="sm:col-span-2">{f('footer', 'Teks kaki halaman (alamat, telepon, web)', undefined, 3)}</div>
       </div>
       <ErrorMsg>{err}</ErrorMsg>

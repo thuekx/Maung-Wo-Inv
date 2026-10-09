@@ -39,7 +39,7 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
     <div className="space-y-4">
       <PageHeader title={po.number} sub={`Vendor ${po.vendor} · tujuan ${po.warehouse?.name}`}><Badge tone={po.status === 'RECEIVED' ? 'green' : 'blue'}>{po.status}</Badge>
         {canReceive && po.status === 'ISSUED' && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}
-        {canReceive && po.status === 'ISSUED' && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/purchase-orders/${po.id}`, `PO ${po.number}`)) router.replace('/purchase-orders'); }}>🗑 Hapus</button>}
+        {canReceive && po.status === 'ISSUED' && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/purchase-orders/${po.id}`, `PO ${po.number}`)) router.replace('/purchase-orders'); }}>🗑 Hapus</button>}
       </PageHeader>
       {po.note && <p className="text-sm text-slate-500">Catatan: {po.note}</p>}
       {po.pr && <p className="text-sm">Dari <Link className="text-brand-700 hover:underline" href={`/purchase-requests/${po.pr.id}`}>PR {po.pr.number ?? po.pr.subject}</Link>{po.poDate ? ` · tanggal PO ${new Date(po.poDate).toLocaleDateString('id-ID')}` : ''} · nomor PO sama dengan di Accurate</p>}

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { fmtDate, TYPE_LABEL } from '@/lib/api';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, PageHeader, statusTone, Tabs } from '@/components/ui';
+import { Select } from '@/components/Select';
 
 function List() {
   const sp = useSearchParams();
@@ -26,7 +27,7 @@ function List() {
       <Tabs value={scope} onChange={setScope} tabs={[{ key: 'mine', label: 'Tugas saya' }, { key: 'open', label: 'Semua terbuka' }, { key: 'closed', label: 'Selesai' }, { key: 'all', label: 'Semua' }]} />
       <DataTable<any> path="/work-orders" columns={cols} params={{ scope, type, olderThanDays: overdue ?? undefined }} defaultSort="createdAt" defaultDir={scope === 'mine' || overdue ? 'asc' : 'desc'}
         searchPlaceholder="Cari no. WO / judul / pelanggan…" empty={scope === 'mine' ? 'Tidak ada tugas untuk Anda 🎉' : 'Tidak ada WO'}
-        filters={<select className="input w-52" value={type} onChange={(e) => setType(e.target.value)} aria-label="Jenis WO"><option value="">Semua jenis</option>{Object.entries(TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>} />
+        filters={<Select className="input w-52" value={type} onChange={(e) => setType(e.target.value)} aria-label="Jenis WO"><option value="">Semua jenis</option>{Object.entries(TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>} />
     </>
   );
 }

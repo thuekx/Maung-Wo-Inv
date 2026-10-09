@@ -5,6 +5,7 @@ import { promptDialog, toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
+import { Select } from '@/components/Select';
 
 const pkgFields: Field[] = [
   { name: 'name', label: 'Nama paket / jasa', type: 'text', required: true, help: 'mis. Home 30 Mbps, Dedicated 100 Mbps, Sewa Router' },
@@ -25,7 +26,7 @@ function Packages({ canManage }: { canManage: boolean }) {
           <tr key={p.id}>
             <td className="td font-medium">{p.name}</td><td className="td text-slate-500">{p.description ?? '-'}</td><td className="td">{p.sortOrder}</td><td className="td">{p.customers}</td>
             <td className="td">{canManage ? <button onClick={async () => { await api(`/packages/${p.id}`, { method: 'PATCH', body: { active: !p.active } }); reload(); }}><Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
-            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(p)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/packages/${p.id}`, `paket ${p.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(p)}>Edit</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/packages/${p.id}`, `paket ${p.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
           </tr>
         ))}
       </Table>
@@ -91,7 +92,7 @@ function Vendors({ canManage }: { canManage: boolean }) {
           <tr key={v.id}>
             <td className="td font-medium">{v.name}</td><td className="td">{v.contactName ?? '-'}</td><td className="td">{v.phone ?? '-'}</td><td className="td">{v.email ?? '-'}</td>
             <td className="td">{canManage ? <button onClick={async () => { await api(`/vendors/${v.id}`, { method: 'PATCH', body: { active: !v.active } }); reload(); }}><Badge tone={v.active ? 'green' : 'slate'}>{v.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={v.active ? 'green' : 'slate'}>{v.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
-            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(v)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/vendors/${v.id}`, `vendor ${v.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(v)}>Edit</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/vendors/${v.id}`, `vendor ${v.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
           </tr>
         ))}
       </Table>
@@ -107,12 +108,13 @@ function Vendors({ canManage }: { canManage: boolean }) {
 }
 
 function Areas({ canManage }: { canManage: boolean }) {
+  const { user } = useAuth();
   const { data, error, reload } = useFetch<any[]>('/areas?all=1');
   const { data: whs } = useFetch<any[]>('/warehouses');
   const [edit, setEdit] = useState<any>(null);
   return (
     <>
-      <p className="mb-3 text-sm text-slate-500">Area layanan menggantikan istilah &quot;gudang / cabang&quot; pada pelanggan. Daftar area ditarik otomatis dari <b>MSRadius</b> (masterdata/area); di sini tiap area <b>dihubungkan ke gudang penyuplainya</b> agar cek stok pemasangan otomatis tahu gudang mana yang dipakai. Area manual juga dapat ditambahkan.</p>
+      {user?.role === 'ADMIN' && <p className="mb-3 text-sm text-slate-500">Area layanan menggantikan istilah &quot;gudang / cabang&quot; pada pelanggan. Daftar area ditarik otomatis dari <b>MSRadius</b> (masterdata/area); di sini tiap area <b>dihubungkan ke gudang penyuplainya</b> agar cek stok pemasangan otomatis tahu gudang mana yang dipakai. Area manual juga dapat ditambahkan.</p>}
       {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah area manual</button>}
       <ErrorMsg>{error}</ErrorMsg>
       <Table head={['Area', 'Sumber', 'Gudang penyuplai', 'Pelanggan', 'Status', '']}>
@@ -123,7 +125,7 @@ function Areas({ canManage }: { canManage: boolean }) {
             <td className="td">{a.warehouse?.name ?? <span className="text-amber-600">belum dihubungkan</span>}</td>
             <td className="td">{a._count.customers}</td>
             <td className="td">{canManage ? <button onClick={async () => { await api(`/areas/${a.id}`, { method: 'PATCH', body: { active: !a.active } }); reload(); }}><Badge tone={a.active ? 'green' : 'slate'}>{a.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={a.active ? 'green' : 'slate'}>{a.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
-            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn>{a.source !== 'RADIUS' && <> · <LinkBtn danger onClick={async () => { if (await doDelete(`/areas/${a.id}`, `area ${a.name}`)) reload(); }}>Hapus</LinkBtn></>}</>}</td>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn>{a.source !== 'RADIUS' && <><LinkBtn danger onClick={async () => { if (await doDelete(`/areas/${a.id}`, `area ${a.name}`)) reload(); }}>Hapus</LinkBtn></>}</>}</td>
           </tr>
         ))}
       </Table>
@@ -153,7 +155,7 @@ function AreaForm({ area, whs, onDone }: { area: any; whs: any[]; onDone: () => 
     <div className="space-y-3">
       <div><label className="mb-1 block text-sm font-medium">Nama area</label><input className="input" value={name} disabled={area.source === 'RADIUS'} onChange={(e) => setName(e.target.value)} />{area.source === 'RADIUS' && <p className="mt-0.5 text-xs text-slate-500">Nama dari MSRadius — diubah di MSRadius.</p>}</div>
       <div><label className="mb-1 block text-sm font-medium">Gudang penyuplai</label>
-        <select className="input" value={wh} onChange={(e) => setWh(e.target.value)}><option value="">— belum dihubungkan —</option>{whs.filter((w) => w.kind === 'MAIN' || w.kind === 'BRANCH').map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        <Select className="input" value={wh} onChange={(e) => setWh(e.target.value)}><option value="">— belum dihubungkan —</option>{whs.filter((w) => w.kind === 'MAIN' || w.kind === 'BRANCH').map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></div>
       <ErrorMsg>{err}</ErrorMsg>
       <button className="btn" onClick={save}>Simpan</button>
     </div>
@@ -168,11 +170,11 @@ export default function Master() {
   return (
     <>
       <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan, area, merk & tipe perangkat, dan vendor" />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'areas', label: 'Area' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }]} />
+      {role !== 'MKT' && <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'areas', label: 'Area' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }]} />}
       {tab === 'packages' && <Packages canManage={['ADMIN', 'MKT'].includes(role)} />}
-      {tab === 'areas' && <Areas canManage={['ADMIN', 'GA'].includes(role)} />}
-      {tab === 'vendors' && <Vendors canManage={['ADMIN', 'GA'].includes(role)} />}
-      {tab === 'brands' && <Brands canManage={['ADMIN', 'GA'].includes(role)} />}
+      {role !== 'MKT' && tab === 'areas' && <Areas canManage={['ADMIN', 'GA'].includes(role)} />}
+      {role !== 'MKT' && tab === 'vendors' && <Vendors canManage={['ADMIN', 'GA'].includes(role)} />}
+      {role !== 'MKT' && tab === 'brands' && <Brands canManage={['ADMIN', 'GA'].includes(role)} />}
     </>
   );
 }

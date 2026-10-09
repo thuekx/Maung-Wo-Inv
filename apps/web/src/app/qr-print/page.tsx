@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useBranding } from '@/lib/photo';
+import { Select } from '@/components/Select';
 
 /** Cetak massal label QR aset pada lembar A4 (dibuka dari Inventori → Aset). Ukuran dalam mm agar presisi saat dicetak 100%. */
 const PRESETS: Record<string, { label: string; cols: number; rows: number; w: number; h: number; mt: number; ml: number }> = {
@@ -67,7 +68,7 @@ export default function QrPrint() {
           <button className="btn-ghost" onClick={() => window.close()}>Tutup</button>
         </div>
         <div className="flex flex-wrap items-end gap-4 text-sm">
-          <label>Ukuran label<select className="input mt-1 w-80" value={preset} onChange={(e) => setPreset(e.target.value)}>{Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></label>
+          <label>Ukuran label<Select className="input mt-1 w-80" value={preset} onChange={(e) => setPreset(e.target.value)}>{Object.entries(PRESETS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select></label>
           <label>Salinan per aset<input className="input mt-1 w-24" type="number" min={1} max={20} value={copies} onChange={(e) => setCopies(Math.max(1, Number(e.target.value) || 1))} /></label>
           <label>Mulai dari label ke-<input className="input mt-1 w-24" type="number" min={1} max={perPage} value={skip + 1} onChange={(e) => setSkip(Math.max(0, (Number(e.target.value) || 1) - 1))} /></label>
           <label className="flex items-center gap-1"><input type="checkbox" checked={guides} onChange={(e) => setGuides(e.target.checked)} /> Garis potong</label>

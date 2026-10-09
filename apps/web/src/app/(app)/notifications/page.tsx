@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api, timeAgo } from '@/lib/api';
 import { Column, DataTable } from '@/components/DataTable';
 import { PageHeader } from '@/components/ui';
+import { Select } from '@/components/Select';
 
 interface Item { id: string; subject: string; body: string; woId: string | null; readAt: string | null; createdAt: string }
 
@@ -23,7 +24,7 @@ export default function Notifications() {
         <Link href="/work-orders" className="btn">Buka WO saya</Link>
       </PageHeader>
       <DataTable<Item> path="/inbox" columns={cols} params={{ unread }} defaultSort="createdAt" refreshKey={rk} searchPlaceholder="Cari notifikasi…" empty="Belum ada notifikasi"
-        filters={<select className="input w-44" value={unread} onChange={(e) => setUnread(e.target.value)} aria-label="Filter"><option value="">Semua</option><option value="1">Belum dibaca</option></select>} />
+        filters={<Select className="input w-44" value={unread} onChange={(e) => setUnread(e.target.value)} aria-label="Filter"><option value="">Semua</option><option value="1">Belum dibaca</option></Select>} />
     </>
   );
 }

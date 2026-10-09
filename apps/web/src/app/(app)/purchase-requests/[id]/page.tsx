@@ -9,6 +9,7 @@ import { DynamicForm } from '@/components/DynamicForm';
 import { Badge, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
 import { rupiah } from '@/components/DocSheet';
 import { PR_STATUS } from '@/lib/pr';
+import { Select } from '@/components/Select';
 
 export default function PrDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -36,8 +37,8 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
         <Link href={`/doc/pr/${id}`} className="btn-ghost">📄 {pr.number ? 'Cetak PDF' : 'Pratinjau'}</Link>
         {ga && pr.status === 'ISSUED' && <button className="btn" onClick={() => setModal('decision')}>Catat keputusan</button>}
         {ga && pr.status === 'APPROVED' && <button className="btn" onClick={() => setModal('po')}>Catat PO dari Accurate</button>}
-        {['DRAFT', 'SUBMITTED', 'ISSUED', 'APPROVED'].includes(pr.status) && !pr.pos.length && (mine || ga) && <button className="btn-ghost text-red-600" onClick={() => setModal('cancel')}>Batalkan</button>}
-        {['DRAFT', 'SUBMITTED'].includes(pr.status) && (mine || ga) && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/purchase-requests/${id}`, 'draft PR ini')) router.replace('/purchase-requests'); }}>🗑 Hapus</button>}
+        {['DRAFT', 'SUBMITTED', 'ISSUED', 'APPROVED'].includes(pr.status) && !pr.pos.length && (mine || ga) && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={() => setModal('cancel')}>Batalkan</button>}
+        {['DRAFT', 'SUBMITTED'].includes(pr.status) && (mine || ga) && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/purchase-requests/${id}`, 'draft PR ini')) router.replace('/purchase-requests'); }}>🗑 Hapus</button>}
       </PageHeader>
       <ErrorMsg>{err}</ErrorMsg>
 
@@ -129,15 +130,15 @@ function PoEntry({ pr, onClose, onDone }: { pr: any; onClose: () => void; onDone
       <div className="space-y-3">
         <p className="text-sm text-slate-500">PO diterbitkan di Accurate; di sini dicatat ulang dengan rincian barang & harga sebenarnya agar penerimaan/QC dan stok tersinkron.</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <div><label className="mb-1 block text-sm font-medium">Vendor *</label><select className="input" value={vendorId} onChange={(e) => { setVendorId(e.target.value); setRows({}); }}>{vendors.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>{fe.vendorId && <p className="mt-1 text-xs text-red-600">{fe.vendorId}</p>}</div>
+          <div><label className="mb-1 block text-sm font-medium">Vendor *</label><Select className="input" value={vendorId} onChange={(e) => { setVendorId(e.target.value); setRows({}); }}>{vendors.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</Select>{fe.vendorId && <p className="mt-1 text-xs text-red-600">{fe.vendorId}</p>}</div>
           <div><label className="mb-1 block text-sm font-medium">No. PO (dari Accurate) *</label><input className="input" value={number} maxLength={60} onChange={(e) => setNumber(e.target.value)} />{fe.number && <p className="mt-1 text-xs text-red-600">{fe.number}</p>}</div>
           <div><label className="mb-1 block text-sm font-medium">Tanggal PO *</label><input className="input" type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} /></div>
-          <div><label className="mb-1 block text-sm font-medium">Gudang tujuan *</label><select className="input" value={wh} onChange={(e) => setWh(e.target.value)}><option value="">— pilih gudang —</option>{whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select>{fe.toWarehouseId && <p className="mt-1 text-xs text-red-600">{fe.toWarehouseId}</p>}</div>
+          <div><label className="mb-1 block text-sm font-medium">Gudang tujuan *</label><Select className="input" value={wh} onChange={(e) => setWh(e.target.value)}><option value="">— pilih gudang —</option>{whs?.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select>{fe.toWarehouseId && <p className="mt-1 text-xs text-red-600">{fe.toWarehouseId}</p>}</div>
         </div>
         <div className="space-y-2">
           {mineLines.map((l: any) => (
             <div key={l.id} className="grid grid-cols-[1fr_6rem_9rem] items-center gap-2 max-md:grid-cols-1">
-              <div><div className="text-sm font-medium">{l.description}</div><select className="input mt-1" value={row(l).itemId} onChange={(e) => setRow(l, { itemId: e.target.value })}>{items?.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.unit})</option>)}</select></div>
+              <div><div className="text-sm font-medium">{l.description}</div><Select className="input mt-1" value={row(l).itemId} onChange={(e) => setRow(l, { itemId: e.target.value })}>{items?.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.unit})</option>)}</Select></div>
               <input className="input" type="number" min={1} value={row(l).qty} onChange={(e) => setRow(l, { qty: e.target.value })} aria-label="Qty" />
               <input className="input" type="number" min={0} step="any" value={row(l).unitPrice} onChange={(e) => setRow(l, { unitPrice: e.target.value })} aria-label="Harga satuan" />
             </div>

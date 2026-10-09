@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { fmtDate } from '@/lib/api';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, PageHeader } from '@/components/ui';
+import { Select } from '@/components/Select';
 
 export default function PurchaseOrders() {
   const [status, setStatus] = useState('');
@@ -19,7 +20,7 @@ export default function PurchaseOrders() {
     <>
       <PageHeader pretitle="Pengadaan" title="Purchase Order" sub="PO diterbitkan GA/Procurement dari WO Permintaan Barang" />
       <DataTable<any> path="/purchase-orders" columns={cols} params={{ status }} defaultSort="createdAt" searchPlaceholder="Cari no. PO / vendor…"
-        filters={<select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['ISSUED', 'PARTIAL', 'RECEIVED'].map((x) => <option key={x}>{x}</option>)}</select>} />
+        filters={<Select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['ISSUED', 'PARTIAL', 'RECEIVED'].map((x) => <option key={x}>{x}</option>)}</Select>} />
     </>
   );
 }

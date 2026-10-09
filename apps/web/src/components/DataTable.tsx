@@ -1,6 +1,7 @@
 'use client';
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { Select } from '@/components/Select';
 
 /**
  * Tabel data dengan paginasi, pencarian, dan pengurutan di SERVER.
@@ -156,7 +157,7 @@ export function DataTable<T extends { id: string }>({
         <span>{total ? `${from.toLocaleString('id-ID')}–${to.toLocaleString('id-ID')} dari ${total.toLocaleString('id-ID')}` : '0 data'}{loading && ' · memuat…'}</span>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1">Baris
-            <select className="input !w-auto !py-1" value={pageSize} onChange={(e) => { const v = Number(e.target.value); setPageSize(v); try { localStorage.setItem(SIZE_KEY, String(v)); } catch { /* ignore */ } }}>{SIZES.map((s) => <option key={s}>{s}</option>)}</select>
+            <Select className="input !w-auto !py-1" value={pageSize} onChange={(e) => { const v = Number(e.target.value); setPageSize(v); try { localStorage.setItem(SIZE_KEY, String(v)); } catch { /* ignore */ } }}>{SIZES.map((s) => <option key={s}>{s}</option>)}</Select>
           </label>
           <nav className="flex items-center gap-1" aria-label="Halaman">
             <button className="btn-ghost !px-2 !py-1" disabled={page <= 1} onClick={() => setPage(1)} aria-label="Halaman pertama">«</button>

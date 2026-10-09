@@ -12,6 +12,7 @@ import { config } from '../config';
 import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
 import { requireRole } from '../auth';
 import { workflowMeta, workflows } from '../workflows';
+import { resolveRefs } from '../refs';
 
 export const woRoutes = Router();
 woRoutes.use(authenticate);
@@ -94,6 +95,7 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
   const prefill = c ? { validate: { odp: c.odp ?? '', port: c.port ?? '', vlan: c.vlan ?? '', ip: c.ip ?? (isPrivateIPv4(radIp) ? radIp : ''), publicIp: c.publicIp ?? (radIp && !isPrivateIPv4(radIp) ? radIp : '') } } : {};
   res.json({
     prefill,
+    refs: await resolveRefs(wo.data),
     ...wo,
     attachments,
     canProgress,

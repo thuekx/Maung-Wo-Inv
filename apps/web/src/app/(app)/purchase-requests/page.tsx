@@ -7,6 +7,7 @@ import { Column, DataTable } from '@/components/DataTable';
 import { Badge, PageHeader } from '@/components/ui';
 import { rupiah } from '@/components/DocSheet';
 import { PR_STATUS } from '@/lib/pr';
+import { Select } from '@/components/Select';
 
 export default function PrList() {
   const { user } = useAuth();
@@ -26,7 +27,7 @@ export default function PrList() {
         {canCreate && <Link href="/purchase-requests/new" className="btn">+ Buat PR</Link>}
       </PageHeader>
       <DataTable<any> path="/purchase-requests" columns={cols} params={{ status }} defaultSort="createdAt" empty="Belum ada Purchase Request" searchPlaceholder="Cari no. PR / perihal…"
-        filters={<select className="input w-56" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{Object.entries(PR_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>} />
+        filters={<Select className="input w-56" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{Object.entries(PR_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select>} />
     </>
   );
 }

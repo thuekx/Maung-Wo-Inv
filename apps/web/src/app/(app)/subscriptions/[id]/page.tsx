@@ -23,7 +23,7 @@ export default function SubscriptionDetail({ params }: { params: Promise<{ id: s
         <Link href={`/doc/form/${id}`} className="btn">🖨 Cetak / PDF</Link>
         {canWrite && <Link href={`/subscriptions/${id}/edit`} className="btn-ghost">✎ Ubah</Link>}
         {canWrite && !s.woId && <Link href={`/work-orders/new?type=NEW_INSTALL&fromForm=${id}`} className="btn-ghost">➜ Buat WO Pasang Baru</Link>}
-        {canWrite && !s.woId && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/subscriptions/${id}`, `formulir ${s.regNo}`)) router.replace('/subscriptions'); }}>🗑 Hapus</button>}
+        {canWrite && !s.woId && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/subscriptions/${id}`, `formulir ${s.regNo}`)) router.replace('/subscriptions'); }}>🗑 Hapus</button>}
       </PageHeader>
       {s.wo && <p className="text-sm">Sudah menjadi WO <Link className="text-brand-700 hover:underline" href={`/work-orders/${s.wo.id}`}>{s.wo.number}</Link></p>}
       <div className="grid gap-4 md:grid-cols-2">
