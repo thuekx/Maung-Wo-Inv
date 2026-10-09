@@ -78,7 +78,7 @@ export const ROLE_LABEL: Record<string, string> = {
 };
 
 export const TYPE_LABEL: Record<string, string> = {
-  NEW_INSTALL: 'Pasang Baru', TROUBLE: 'Trouble Ticket', SUSPEND: 'Suspend', UNSUSPEND: 'Unsuspend', TERMINATE: 'Terminate', STOCK_REQUEST: 'Permintaan Barang', STOCK_RETURN: 'Serah-terima Sisa',
+  NEW_INSTALL: 'Pasang Baru', TROUBLE: 'Trouble Ticket', SUSPEND: 'Suspend', UNSUSPEND: 'Unsuspend', TERMINATE: 'Terminate', STOCK_REQUEST: 'Permintaan Barang', STOCK_RETURN: 'Serah-terima Sisa', MAINTENANCE: 'Maintenance / Troubleshoot',
 };
 
 /** "5 mnt lalu", "kemarin", atau tanggal bila lebih dari seminggu. */

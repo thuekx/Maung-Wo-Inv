@@ -75,7 +75,7 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   const cust = (await prisma.workOrder.findUniqueOrThrow({ where: { id: wo.id } })).customerId!;
   if (!at('ready')) return { ...wo, customerId: cust };
 
-  await act(wo.id, 'validate', 'noc', { odp: `ODP-${String.fromCharCode(65 + (i % 5))}${1 + (i % 4)}`, port: String(i), vlan: String(100 + (i % 3)), ip: `10.20.${i}.10`, note: 'Coverage OK' });
+  await act(wo.id, 'validate', 'citra', { odp: `ODP-${String.fromCharCode(65 + (i % 5))}${1 + (i % 4)}`, port: String(i), pop: o.cab ? 'POP-Cabang-A' : 'POP-Pusat', note: 'Coverage OK' });
   if ((await status(wo.id)) !== 'READY_TO_SCHEDULE' || !at('scheduled')) return { ...wo, customerId: cust };
 
   await act(wo.id, 'schedule', 'citra', { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY).toISOString(), note: 'Konfirmasi ke pelanggan' });
@@ -94,12 +94,12 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   }
 
   await act(wo.id, 'submit_report', tech, {
-    serials: [ont.serialNumber], materials: [{ itemId: ID.DROPCORE, qty: 95 }, { itemId: ID.FASTCONN, qty: 2 }, { itemId: ID.SLEEVE, qty: 2 }], opmDbm: -19.4,
+    serials: [ont.serialNumber], materials: [{ itemId: ID.DROPCORE, qty: 95 }, { itemId: ID.FASTCONN, qty: 2 }, { itemId: ID.SLEEVE, qty: 2 }], opmDbm: -19.4, pop: o.cab ? 'POP-Cabang-A' : 'POP-Pusat', mainSplitter: 'MS-01 1:8', lat, lng, signalDbm: -18.2,
     photos: [await photo(lat, lng, 'Perangkat ONT terpasang', tech), await photo(lat, lng, 'Hasil OPM -19.4 dBm', tech)], note: 'Instalasi rapi, sinyal stabil',
   });
   if (!at('awaiting_ba')) return { ...wo, customerId: cust };
 
-  await act(wo.id, 'service_active', 'noc', { ontAuthorized: true, profile: 'HOME-20M', pingMs: 4, latencyMs: 6, downMbps: 19.4, upMbps: 19.1, stable: true, note: 'Aktivasi OK' });
+  await act(wo.id, 'service_active', 'noc', { ontAuthorized: true, profile: 'HOME-20M', vlan: String(100 + (i % 3)), ip: `10.20.${i}.10`, pingMs: 4, jitterMs: 1, downMbps: 19.4, upMbps: 19.1, stable: true, note: 'Aktivasi OK' });
   if (!at('closed')) return { ...wo, customerId: cust };
 
   await act(wo.id, 'send_ba', 'mkt', {});

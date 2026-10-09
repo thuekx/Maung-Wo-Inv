@@ -117,10 +117,11 @@ function Areas({ canManage }: { canManage: boolean }) {
       {user?.role === 'ADMIN' && <p className="mb-3 text-sm text-slate-500">Area layanan menggantikan istilah &quot;gudang / cabang&quot; pada pelanggan. Daftar area ditarik otomatis dari <b>MSRadius</b> (masterdata/area); di sini tiap area <b>dihubungkan ke gudang penyuplainya</b> agar cek stok pemasangan otomatis tahu gudang mana yang dipakai. Area manual juga dapat ditambahkan.</p>}
       {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah area manual</button>}
       <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['Area', 'Sumber', 'Gudang penyuplai', 'Pelanggan', 'Status', '']}>
+      <Table head={['Area', 'Singkatan', 'Sumber', 'Gudang penyuplai', 'Pelanggan', 'Status', '']}>
         {data?.map((a) => (
           <tr key={a.id}>
             <td className="td font-medium">{a.name}{a.code && <span className="ml-2 text-xs text-slate-400">#{a.code}</span>}</td>
+            <td className="td font-mono">{a.alias ?? <span className="text-amber-600">—</span>}</td>
             <td className="td"><Badge tone={a.source === 'RADIUS' ? 'blue' : 'slate'}>{a.source === 'RADIUS' ? 'MSRadius' : 'Manual'}</Badge></td>
             <td className="td">{a.warehouse?.name ?? <span className="text-amber-600">belum dihubungkan</span>}</td>
             <td className="td">{a._count.customers}</td>
@@ -142,11 +143,12 @@ function Areas({ canManage }: { canManage: boolean }) {
 function AreaForm({ area, whs, onDone }: { area: any; whs: any[]; onDone: () => void }) {
   const [name, setName] = useState<string>(area.name ?? '');
   const [wh, setWh] = useState<string>(area.warehouseId ?? area.warehouse?.id ?? '');
+  const [alias, setAlias] = useState<string>(area.alias ?? '');
   const [err, setErr] = useState('');
   const save = async () => {
     setErr('');
     try {
-      const body = { ...(area.source === 'RADIUS' ? {} : { name }), warehouseId: wh || null };
+      const body = { ...(area.source === 'RADIUS' ? {} : { name }), warehouseId: wh || null, alias: alias.trim() || null };
       if (area.id) await api(`/areas/${area.id}`, { method: 'PATCH', body }); else await api('/areas', { body });
       toast.success('Area disimpan'); onDone();
     } catch (e) { setErr((e as Error).message); }
@@ -154,6 +156,7 @@ function AreaForm({ area, whs, onDone }: { area: any; whs: any[]; onDone: () => 
   return (
     <div className="space-y-3">
       <div><label className="mb-1 block text-sm font-medium">Nama area</label><input className="input" value={name} disabled={area.source === 'RADIUS'} onChange={(e) => setName(e.target.value)} />{area.source === 'RADIUS' && <p className="mt-0.5 text-xs text-slate-500">Nama dari MSRadius — diubah di MSRadius.</p>}</div>
+      <div><label className="mb-1 block text-sm font-medium">Singkatan area (untuk nomor dokumen)</label><input className="input !w-32 font-mono uppercase" maxLength={8} value={alias} onChange={(e) => setAlias(e.target.value.toUpperCase())} placeholder="BDG" /><p className="mt-0.5 text-xs text-slate-500">Dipakai di nomor Purchase Request (L1V/PNJ-<b>{alias || 'BDG'}</b>), BA (BAA/<b>{alias || 'BDG'}</b>/…) dan laporan FOC (FOC/INS-<b>{alias || 'BDG'}</b>/…). 2–8 huruf/angka.</p></div>
       <div><label className="mb-1 block text-sm font-medium">Gudang penyuplai</label>
         <Select className="input" value={wh} onChange={(e) => setWh(e.target.value)}><option value="">— belum dihubungkan —</option>{whs.filter((w) => w.kind === 'MAIN' || w.kind === 'BRANCH').map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></div>
       <ErrorMsg>{err}</ErrorMsg>

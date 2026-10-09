@@ -18,8 +18,13 @@ areaRoutes.get('/areas', async (req, res) => {
 const body = z.object({
   name: z.string().trim().min(2).max(80, 'Maksimal 80 karakter'),
   warehouseId: z.preprocess((v) => (v === '' ? null : v), z.string().nullable().optional()),
+  alias: z.preprocess((v) => (typeof v === 'string' ? v.trim().toUpperCase() || null : v), z.string().regex(/^[A-Z0-9]{2,8}$/, 'Singkatan 2–8 huruf/angka, mis. BDG').nullable().optional()),
   active: z.boolean().optional(),
 });
+
+async function checkAlias(alias: string | null | undefined, selfId?: string) {
+  if (alias && (await prisma.area.findFirst({ where: { alias, ...(selfId ? { id: { not: selfId } } : {}) } }))) throw fieldError('alias', `Singkatan ${alias} sudah dipakai area lain`, 409);
+}
 
 async function checkWarehouse(id?: string | null) {
   if (id && !(await prisma.warehouse.findFirst({ where: { id, kind: { in: ['MAIN', 'BRANCH'] } } }))) throw fieldError('warehouseId', 'Gudang tidak valid (pilih gudang utama/cabang)');
@@ -29,9 +34,10 @@ areaRoutes.post('/areas', gaOnly, async (req, res) => {
   const b = body.parse(req.body);
   if (await prisma.area.findFirst({ where: { name: { equals: b.name, mode: 'insensitive' } } })) throw fieldError('name', `Area "${b.name}" sudah ada`, 409);
   await checkWarehouse(b.warehouseId);
+  await checkAlias(b.alias);
   const who = whoOf(req);
   res.status(201).json(await transact(async (fx) => {
-    const a = await fx.tx.area.create({ data: { name: b.name, warehouseId: b.warehouseId ?? null } });
+    const a = await fx.tx.area.create({ data: { name: b.name, alias: b.alias ?? null, warehouseId: b.warehouseId ?? null } });
     await writeAudit(fx, who, { action: 'CREATE', entity: 'area', entityId: a.id, summary: `${who.name} menambah area ${a.name}` });
     return a;
   }));
@@ -45,6 +51,7 @@ areaRoutes.patch('/areas/:id', gaOnly, async (req, res) => {
   if (cur.source === 'RADIUS' && b.name && b.name !== cur.name) throw fieldError('name', 'Nama area dari MSRadius diubah di MSRadius');
   if (b.name && (await prisma.area.findFirst({ where: { name: { equals: b.name, mode: 'insensitive' }, id: { not: id } } }))) throw fieldError('name', `Area "${b.name}" sudah ada`, 409);
   await checkWarehouse(b.warehouseId);
+  await checkAlias(b.alias, id);
   const updated = await auditedUpdate(whoOf(req), 'area', id, cur.name, changes(cur, b), async (fx) => {
     const a = await fx.tx.area.update({ where: { id }, data: b as any });
     // gudang penyuplai berubah → ikut ke pelanggan di area ini

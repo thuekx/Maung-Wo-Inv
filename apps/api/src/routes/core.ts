@@ -71,9 +71,12 @@ core.post('/auth/change-password', async (req, res) => {
 /* ── users ── */
 core.get('/users/lookup', async (req, res) => {
   const role = req.query.role ? String(req.query.role) : undefined;
+  const me = req.user!;
+  // ?assignable=1: calon tim pelaksana — supervisor FOC tidak dapat menugaskan Manager
+  const hideManagers = req.query.assignable === '1' && me.role !== 'ADMIN' && me.subRole === 'SUPERVISOR';
   const users = await prisma.user.findMany({
-    where: { active: true, email: { not: 'system@l1v.local' }, ...(role ? { role: role as any } : {}) },
-    select: { id: true, name: true, role: true },
+    where: { active: true, email: { not: 'system@l1v.local' }, ...(role ? { role: role as any } : {}), ...(hideManagers ? { subRole: { not: 'MANAGER' as const } } : {}) },
+    select: { id: true, name: true, role: true, subRole: true },
     orderBy: { name: 'asc' },
   });
   res.json(users);

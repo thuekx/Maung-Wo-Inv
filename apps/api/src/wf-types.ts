@@ -4,7 +4,7 @@ import { Effects } from './effects';
 
 export type FieldType =
   | 'text' | 'number' | 'textarea' | 'datetime' | 'select' | 'bool'
-  | 'technician' | 'warehouse' | 'area' | 'customer' | 'package' | 'serials' | 'materials' | 'photos' | 'qc';
+  | 'technician' | 'technicians' | 'warehouse' | 'area' | 'customer' | 'package' | 'serials' | 'materials' | 'photos' | 'qc';
 
 /** Metadata form — dikirim ke frontend agar form dirender dinamis. Validasi sebenarnya ada di handler (zod). */
 export interface Field {
@@ -20,6 +20,9 @@ export interface Field {
   pickedOnly?: boolean;
 }
 
+/** Anggota tim pelaksana WO (teknisi utama atau salah satu dari tim). */
+export const inTeam = (wo: { assigneeId: string | null; teamIds?: string[] | null }, userId: string) => wo.assigneeId === userId || !!wo.teamIds?.includes(userId);
+
 export type WoFull = Prisma.WorkOrderGetPayload<{ include: { customer: true } }>;
 export interface Actor { id: string; name: string; role: Role; subRole?: SubRole | null; /** Admin yang bertindak sebagai peran lain */ acting?: boolean }
 
@@ -34,7 +37,7 @@ export interface Ctx {
   /** digabung ke wo.data saat transisi */
   data: Record<string, any>;
   /** kolom WO yang ikut diupdate saat transisi */
-  patch: { assigneeId?: string | null; scheduledAt?: Date | null };
+  patch: { assigneeId?: string | null; teamIds?: string[]; scheduledAt?: Date | null };
   createChild(type: WoType, input: Record<string, any>): Promise<{ id: string; number: string }>;
 }
 
@@ -44,7 +47,7 @@ export interface ActionDef {
   roles: Role[];
   to: string;
   fields: Field[];
-  assigneeOnly?: boolean; // hanya teknisi yang ditugaskan (atau ADMIN)
+  assigneeOnly?: boolean; // hanya tim yang ditugaskan (teknisi utama / anggota tim) atau ADMIN
   leadOnly?: boolean; // hanya supervisor/manager (atau ADMIN) di divisi yang berhak
   system?: boolean; // hanya dipicu sistem, tidak tampil di UI
   danger?: boolean;
@@ -70,7 +73,9 @@ export interface Workflow {
   createFields: Field[];
   initial: string;
   uniqueOpenPerCustomer?: boolean;
-  create(tx: Tx, input: any, actor: Actor): Promise<{ title: string; customerId?: string; data?: Record<string, any>; note?: string }>;
+  create(tx: Tx, input: any, actor: Actor): Promise<{ title: string; customerId?: string; data?: Record<string, any>; note?: string; assigneeId?: string; teamIds?: string[]; scheduledAt?: Date }>;
+  /** status awal bisa ditentukan saat dibuat (mis. Maintenance langsung terjadwal) */
+  initialFor?(made: { data?: Record<string, any> }): string;
   onCancel?(ctx: Ctx): Promise<void>;
   statuses: Record<string, StatusDef>;
 }

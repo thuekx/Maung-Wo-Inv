@@ -38,8 +38,8 @@ async function main() {
   const cabA = await wh('WH-CAB-A', 'Gudang Cabang A', 'BRANCH');
   await wh('WH-TRANSIT', 'Gudang Transit', 'TRANSIT');
   // Area awal (nama area asli ditarik dari MSRadius; di sini tiap area dihubungkan ke gudang penyuplainya)
-  for (const [name, w] of [['Pusat', main], ['Cabang A', cabA]] as const)
-    await prisma.area.upsert({ where: { name }, update: {}, create: { name, warehouseId: w.id } });
+  for (const [name, w, alias] of [['Pusat', main, 'BDG'], ['Cabang A', cabA, 'BGR']] as const)
+    await prisma.area.upsert({ where: { name }, update: {}, create: { name, alias, warehouseId: w.id } });
 
   const item = (sku: string, name: string, category: ItemCategory, extra: { unit?: string; installDefaultQty?: number; minStock?: number; coreCount?: number; isVehicle?: boolean } = {}) =>
     prisma.item.upsert({

@@ -33,6 +33,7 @@ enum WoType {
   TERMINATE
   STOCK_REQUEST
   STOCK_RETURN // serah-terima sisa material teknisi → gudang
+  MAINTENANCE // maintenance / troubleshoot mandiri (bukan dari tiket), ditugaskan supervisor/manager FOC
 }
 
 enum CustomerStatus {
@@ -107,6 +108,7 @@ model Customer {
   areaId         String?
   odp            String?
   port           String?
+  pop            String? // POP (titik kehadiran jaringan) yang melayani pelanggan, diisi FOC saat validasi
   vlan           String?
   ip             String?
   publicIp       String? // IP publik (opsional); dicek duplikat hanya bila terisi
@@ -146,7 +148,8 @@ model WorkOrder {
   title       String
   customerId  String?
   createdById String
-  assigneeId  String?
+  assigneeId  String? // teknisi utama (anggota pertama tim)
+  teamIds     String[]  @default([]) // seluruh tim pelaksana (termasuk teknisi utama); siapa pun di tim boleh mengirim laporan
   parentId    String?
   data        Json      @default("{}")
   scheduledAt DateTime?
@@ -563,6 +566,7 @@ model Area {
   code        String?  @unique // id_area di MSRadius
   name        String   @unique
   warehouseId String?
+  alias       String? // singkatan area untuk nomor dokumen, mis. BDG, BGR
   source      String   @default("MANUAL") // MANUAL | RADIUS
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())

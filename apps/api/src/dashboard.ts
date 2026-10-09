@@ -19,18 +19,22 @@ export function statusPairsOwnedBy(role: Role) {
 
 /**
  * Filter "tugas saya" yang dikerjakan di database (bukan di memori):
- * Admin = semua WO terbuka; divisi lain = WO pada status yang dimiliki divisinya; FOC = hanya yang ditugaskan padanya atau belum ditugaskan.
+ * Admin = semua WO terbuka; divisi lain = WO pada status yang dimiliki divisinya.
+ * FOC supervisor/manager = semua WO yang masih berada di tahap FOC (mengawal tim sampai WO keluar dari tanggung jawab FOC);
+ * FOC staff = hanya WO yang timnya memuat dirinya.
  */
-export function mineWhere(user: Pick<User, 'id' | 'role'>): Prisma.WorkOrderWhereInput {
+export function mineWhere(user: Pick<User, 'id' | 'role' | 'subRole'>): Prisma.WorkOrderWhereInput {
   if (user.role === 'ADMIN') return { closedAt: null };
   const pairs = statusPairsOwnedBy(user.role);
-  const own = pairs.map((p) => ({ type: p.type, status: { in: p.statuses }, ...(user.role === 'FOC' ? { OR: [{ assigneeId: null }, { assigneeId: user.id }] } : {}) }));
-  const OR: Prisma.WorkOrderWhereInput[] = [...own, ...(user.role === 'FOC' ? [{ assigneeId: user.id }] : [])];
+  const lead = user.subRole === 'SUPERVISOR' || user.subRole === 'MANAGER';
+  const mineOnly: Prisma.WorkOrderWhereInput = { OR: [{ assigneeId: user.id }, { teamIds: { has: user.id } }] };
+  const own = pairs.map((p) => ({ type: p.type, status: { in: p.statuses }, ...(user.role === 'FOC' && !lead ? mineOnly : {}) }));
+  const OR: Prisma.WorkOrderWhereInput[] = [...own, ...(user.role === 'FOC' && !lead ? [mineOnly] : [])];
   return { closedAt: null, ...(OR.length ? { OR } : { id: '__none__' }) };
 }
 
 /** Semua angka dashboard lewat agregasi SQL; waktu respons tidak bergantung pada jumlah WO/pelanggan/aset. */
-export async function buildDashboard(user: Pick<User, 'id' | 'role'>) {
+export async function buildDashboard(user: Pick<User, 'id' | 'role' | 'subRole'>) {
   const now = Date.now();
   const since30 = new Date(now - 30 * DAY);
   const since15 = new Date(now - 15 * DAY);

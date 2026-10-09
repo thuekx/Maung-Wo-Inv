@@ -3,8 +3,9 @@ import { WoType } from './orm';
 import { AppError, fieldError } from './db';
 import { config } from './config';
 import { AVAILABLE, installAvailability, mobileWarehouse, moveAsset, moveStock, mustAsset, nextNumber, normSn, qcAssets } from './inventory';
+import { aliasForArea, baNumber } from './docnum';
 import { assertNetworkFree, internalIp, odpName, portName, publicIp, vlanId } from './network';
-import type { ActionDef, Ctx, Field, Workflow } from './wf-types';
+import { inTeam, isLead, type ActionDef, type Ctx, type Field, type Workflow } from './wf-types';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -24,6 +25,37 @@ const materials = z
   .default([]);
 const yes = (msg: string) => z.literal(true, { errorMap: () => ({ message: msg }) });
 const optNote = z.string().max(1000, 'Maksimal 1000 karakter').optional();
+const blankToUndef = (v: unknown) => (v === '' || v === null ? undefined : v);
+const optText = z.preprocess(blankToUndef, z.string().trim().max(60, 'Maksimal 60 karakter').optional());
+const optNum = (min: number, max: number) => z.preprocess(blankToUndef, z.coerce.number().min(min).max(max).optional());
+
+/** Isian data teknis laporan lapangan (instalasi / troubleshooting / maintenance) — dibawa ke laporan PDF. */
+const techFields = (opts: { redamanRequired?: boolean } = {}): Field[] => [
+  { name: 'odp', label: 'ODP', type: 'text', help: 'Terisi dari validasi; ubah hanya bila aktual di lapangan berbeda (dicek duplikat)' },
+  { name: 'port', label: 'Port ODP', type: 'text', help: 'Terisi dari validasi; ubah hanya bila aktual berbeda' },
+  { name: 'pop', label: 'POP', type: 'text' },
+  { name: 'mainSplitter', label: 'Main splitter', type: 'text' },
+  { name: 'lat', label: 'Latitude (koordinat lokasi)', type: 'number', help: 'Tekan "Gunakan lokasi sekarang" atau pilih dari peta' },
+  { name: 'lng', label: 'Longitude (koordinat lokasi)', type: 'number' },
+  { name: 'signalDbm', label: 'Signal (dBm)', type: 'number', help: 'Mis. level terima ONT: -18.5' },
+  { name: 'opmDbm', label: 'Redaman OPM (dBm)', type: 'number', required: opts.redamanRequired, help: 'contoh: -19.5' },
+];
+const techZ = { odp: odpName, port: portName, pop: optText, mainSplitter: optText, lat: optNum(-90, 90), lng: optNum(-180, 180), signalDbm: optNum(-60, 20) };
+
+/** Terapkan data teknis ke pelanggan (ODP/port/POP/koordinat) dan kembalikan nilai akhir untuk laporan. */
+async function applyTech(ctx: Ctx, i: { odp?: string; port?: string; pop?: string; lat?: number; lng?: number }) {
+  const cur = ctx.wo.customer;
+  const out = { odp: i.odp ?? cur?.odp ?? undefined, port: i.port ?? cur?.port ?? undefined, pop: i.pop ?? cur?.pop ?? undefined };
+  if (cur) {
+    if ((i.odp && i.odp !== cur.odp) || (i.port && i.port !== cur.port)) {
+      await assertNetworkFree(ctx.tx, { odp: out.odp, port: out.port }, cur.id);
+      ctx.data.fieldChange = { from: { odp: cur.odp, port: cur.port }, to: { odp: out.odp, port: out.port }, by: ctx.actor.name, at: new Date() };
+      await ctx.fx.notify({ roles: ['NOC'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] ODP/port dikoreksi teknisi`, body: `Pelanggan ${cname(ctx)}\nRencana: ${cur.odp ?? '-'}/${cur.port ?? '-'} → Aktual: ${out.odp ?? '-'}/${out.port ?? '-'}\n${link(ctx)}` });
+    }
+    await setCustomer(ctx, { odp: out.odp ?? null, port: out.port ?? null, pop: out.pop ?? null, ...(i.lat != null && i.lng != null ? { lat: i.lat, lng: i.lng } : {}) });
+  }
+  return out;
+}
 
 async function customerOf(ctx: Ctx) {
   if (!ctx.wo.customerId) throw new AppError(400, 'WO tidak terhubung ke pelanggan');
@@ -34,10 +66,21 @@ async function setCustomer(ctx: Ctx, data: Record<string, any>) {
   await ctx.tx.customer.update({ where: { id: await customerOf(ctx) }, data });
 }
 
+/**
+ * Pemilik Stok Berjalan yang dipakai WO ini: yang mengambil material saat "Mulai" (tersimpan di data.pickup.techId),
+ * bila belum ada pengambilan = anggota tim yang sedang bertindak, atau teknisi utama.
+ */
+function stockOwner(ctx: Ctx) {
+  const picked = (ctx.wo.data as any)?.pickup?.techId as string | undefined;
+  return picked ?? (inTeam(ctx.wo, ctx.actor.id) ? ctx.actor.id : ctx.wo.assigneeId ?? ctx.actor.id);
+}
+
+const teamNames = async (ctx: Ctx, ids: string[]) => (await ctx.tx.user.findMany({ where: { id: { in: ids } }, select: { name: true } })).map((u) => u.name);
+
 /** Teknisi mengambil material dari gudang → Stok Berjalan miliknya. */
 async function pickup(ctx: Ctx, input: unknown) {
   const i = z.object({ sourceWarehouseId: z.string().min(1), serials: sn.default([]), materials }).parse(input);
-  const techId = ctx.wo.assigneeId ?? ctx.actor.id;
+  const techId = inTeam(ctx.wo, ctx.actor.id) ? ctx.actor.id : ctx.wo.assigneeId ?? ctx.actor.id;
   const mob = await mobileWarehouse(ctx.tx, techId);
   for (const s of i.serials) {
     const a = await mustAsset(ctx.tx, s);
@@ -47,7 +90,7 @@ async function pickup(ctx: Ctx, input: unknown) {
   }
   for (const m of i.materials)
     await moveStock(ctx.tx, { itemId: m.itemId, qty: m.qty, from: i.sourceWarehouseId, to: mob.id, reason: 'Ambil material ke stok berjalan', woId: ctx.wo.id, actorId: ctx.actor.id });
-  ctx.data.pickup = { serials: i.serials, materials: i.materials, at: new Date() };
+  ctx.data.pickup = { serials: i.serials, materials: i.materials, techId, at: new Date() };
 }
 
 /**
@@ -56,7 +99,7 @@ async function pickup(ctx: Ctx, input: unknown) {
  * `pickedOnly`: hanya boleh memakai item & jumlah yang diambil teknisi saat "Mulai & ambil material" (laporan instalasi).
  */
 async function consume(ctx: Ctx, cableMeters: number, lines: { itemId: string; qty: number }[], opts: { pickedOnly?: boolean } = {}) {
-  const mob = await mobileWarehouse(ctx.tx, ctx.wo.assigneeId ?? ctx.actor.id);
+  const mob = await mobileWarehouse(ctx.tx, stockOwner(ctx));
   const used = new Map<string, number>();
   for (const l of lines) used.set(l.itemId, (used.get(l.itemId) ?? 0) + l.qty);
   if (cableMeters > 0) {
@@ -93,26 +136,73 @@ async function installSerials(ctx: Ctx, serials: string[], mobId: string) {
   }
 }
 
+const technicianIdsF: Field = { name: 'technicianIds', label: 'Tim pelaksana (pilih 1 atau lebih)', type: 'technicians', required: true, help: 'Supervisor tidak dapat menugaskan Manager; boleh menugaskan diri sendiri atau supervisor lain. Salah satu anggota tim yang mengirim laporan dan namanya tercantum di kolom Tim Pelaksana.' };
+
+/** Validasi & ambil tim: teknisi FOC aktif; supervisor tidak boleh menugaskan manager. */
+async function resolveTeam(ctx: { tx: Ctx['tx']; actor: Ctx['actor'] }, input: { technicianIds?: string[]; technicianId?: string }) {
+  const ids = [...new Set((input.technicianIds?.length ? input.technicianIds : input.technicianId ? [input.technicianId] : []).filter(Boolean))];
+  if (!ids.length) throw fieldError('technicianIds', 'Pilih minimal 1 teknisi');
+  const techs = await ctx.tx.user.findMany({ where: { id: { in: ids }, role: 'FOC', active: true } });
+  if (techs.length !== ids.length) throw fieldError('technicianIds', 'Ada teknisi yang tidak valid / nonaktif');
+  if (ctx.actor.role !== 'ADMIN' && ctx.actor.subRole === 'SUPERVISOR' && techs.some((t) => t.subRole === 'MANAGER'))
+    throw fieldError('technicianIds', 'Supervisor tidak dapat menugaskan Manager FOC');
+  return ids.map((id) => techs.find((t) => t.id === id)!);
+}
+
+const teamInput = z.object({ technicianIds: z.array(z.string()).optional(), technicianId: z.string().optional(), scheduledAt: z.coerce.date(), note: optNote });
+
 const scheduleAction = (key: string, label: string, to: string): ActionDef => ({
   key,
   label,
   roles: ['FOC'],
   leadOnly: true,
   to,
-  fields: [technicianF, scheduledF, note()],
+  fields: [technicianIdsF, scheduledF, note()],
   run: async (ctx, input) => {
-    const i = z.object({ technicianId: z.string().min(1), scheduledAt: z.coerce.date(), note: optNote }).parse(input);
-    const tech = await ctx.tx.user.findFirst({ where: { id: i.technicianId, role: 'FOC', active: true } });
-    if (!tech) throw new AppError(400, 'Teknisi tidak valid');
-    ctx.patch.assigneeId = tech.id;
+    const i = teamInput.parse(input);
+    const team = await resolveTeam(ctx, i);
+    ctx.patch.assigneeId = team[0].id;
+    ctx.patch.teamIds = team.map((t) => t.id);
     ctx.patch.scheduledAt = i.scheduledAt;
+    ctx.data.team = team.map((t) => t.name);
     if (ctx.wo.type === 'NEW_INSTALL') await setCustomer(ctx, { status: 'INSTALLING' });
     await ctx.fx.notify({
-      userIds: [tech.id],
+      userIds: team.map((t) => t.id),
       woId: ctx.wo.id,
       subject: `[${ctx.wo.number}] Tugas baru untuk Anda`,
-      body: `${ctx.wo.title}\nPelanggan: ${cname(ctx)}\nAlamat: ${ctx.wo.customer?.address ?? '-'}\nJadwal: ${i.scheduledAt.toLocaleString('id-ID')}\n${link(ctx)}`,
+      body: `${ctx.wo.title}\nPelanggan: ${cname(ctx)}\nAlamat: ${ctx.wo.customer?.address ?? '-'}\nTim: ${team.map((t) => t.name).join(', ')}\nJadwal: ${i.scheduledAt.toLocaleString('id-ID')}\n${link(ctx)}`,
     });
+  },
+});
+
+/**
+ * Ganti tim saat pekerjaan sudah berjalan. Syarat: laporan progres lapangan harus sudah ada setelah pekerjaan dimulai
+ * (atau setelah pergantian tim terakhir) — selama belum ada laporan, tim tidak dapat diganti.
+ */
+const changeTeamAction = (to: string): ActionDef => ({
+  key: 'change_team',
+  label: 'Ganti tim pelaksana',
+  roles: ['FOC'],
+  leadOnly: true,
+  to,
+  fields: [technicianIdsF, note(true)],
+  run: async (ctx, input) => {
+    const i = z.object({ technicianIds: z.array(z.string()).optional(), technicianId: z.string().optional(), note: z.string().min(3, 'Isi alasan penggantian tim') }).parse(input);
+    const last = await ctx.tx.woEvent.findFirst({ where: { woId: ctx.wo.id, action: { in: ['progress', 'start', 'change_team'] } }, orderBy: { createdAt: 'desc' } });
+    if (last?.action !== 'progress') throw new AppError(409, 'Kirim laporan progres lapangan terlebih dahulu (kartu "Update progres lapangan"), baru tim dapat diganti');
+    const team = await resolveTeam(ctx, i);
+    const before = await teamNames(ctx, ctx.wo.teamIds.length ? ctx.wo.teamIds : ctx.wo.assigneeId ? [ctx.wo.assigneeId] : []);
+    ctx.patch.assigneeId = team[0].id;
+    ctx.patch.teamIds = team.map((t) => t.id);
+    ctx.data.team = team.map((t) => t.name);
+    ctx.data.teamHistory = [...(((ctx.wo.data as any)?.teamHistory ?? []) as unknown[]), { at: new Date(), by: ctx.actor.name, from: before, to: team.map((t) => t.name), reason: i.note }];
+    await ctx.fx.notify({
+      userIds: [...new Set([...team.map((t) => t.id), ...ctx.wo.teamIds])],
+      woId: ctx.wo.id,
+      subject: `[${ctx.wo.number}] Tim pelaksana diganti`,
+      body: `${ctx.wo.title}\nTim baru: ${team.map((t) => t.name).join(', ')}\nAlasan: ${i.note}\n${link(ctx)}`,
+    });
+    return ctx.wo.status;
   },
 });
 
@@ -140,7 +230,7 @@ const newInstall: Workflow = {
   type: 'NEW_INSTALL',
   prefix: 'WO-NI',
   label: 'Pasang Baru',
-  description: 'Registrasi → validasi NOC → cek stok → instalasi FOC → aktivasi NOC → BA Digital & trigger invoice.',
+  description: 'Registrasi → validasi teknis FOC (supervisor/manager) → cek stok → instalasi FOC → aktivasi NOC → BA Digital & trigger invoice.',
   createRoles: ['MKT'],
   createFields: [
     { name: 'customerCode', label: 'ID pelanggan MSRadius (opsional)', type: 'text', help: 'Isi bila ID/kode sudah dibuat di MSRadius; kosong = dibuat otomatis. Setelah akun aktif di MSRadius, tarik datanya dari halaman pelanggan (tombol "Tarik dari MSRadius").' },
@@ -154,7 +244,7 @@ const newInstall: Workflow = {
     { name: 'areaId', label: 'Area', type: 'area', required: true, help: 'Area layanan (dari MSRadius / Master Area); menentukan gudang yang menyuplai pemasangan' },
     { name: 'notes', label: 'Catatan sales', type: 'textarea' },
   ],
-  initial: 'NOC_VALIDATION',
+  initial: 'FOC_VALIDATION',
   async create(tx, input) {
     const i = z
       .object({
@@ -186,31 +276,30 @@ const newInstall: Workflow = {
     return { title: `Pasang baru – ${i.name}`, customerId: customer.id, data: { packageName: i.packageName, notes: i.notes } };
   },
   statuses: {
-    NOC_VALIDATION: {
-      label: 'Validasi Teknis (NOC)',
-      owner: 'NOC',
+    FOC_VALIDATION: {
+      label: 'Validasi Teknis (FOC)',
+      owner: 'FOC',
       actions: [
         {
           key: 'validate',
-          label: 'Validasi OK → alokasikan port/IP',
-          roles: ['NOC'],
+          label: 'Validasi OK → catat ODP / port / POP',
+          roles: ['FOC'],
+          leadOnly: true,
           to: 'STOCK_CHECK',
           fields: [
-            { name: 'odp', label: 'ODP / Node', type: 'text', required: true, help: 'Maks. 40 karakter. FOC boleh mengoreksi ODP/port di lapangan; IP & VLAN tetap dari NOC' },
+            { name: 'odp', label: 'ODP / Node', type: 'text', required: true, help: 'Maks. 40 karakter. Teknisi boleh mengoreksi ODP/port aktual saat instalasi' },
             { name: 'port', label: 'Port ODP', type: 'text', required: true, help: 'Maks. 20 karakter' },
-            { name: 'vlan', label: 'VLAN', type: 'text', required: true, help: 'Angka 1–4094' },
-            { name: 'ip', label: 'IP internal / Subnet', type: 'text', required: true, help: 'Wajib IP privat RFC 1918 (10.x.x.x, 172.16–31.x.x, 192.168.x.x), mis. 10.20.30.40 atau 10.20.30.0/30' },
-            { name: 'publicIp', label: 'IP Publik (opsional)', type: 'text', help: 'Hanya bila pelanggan memakai IP publik; dicek duplikat hanya jika diisi' },
+            { name: 'pop', label: 'POP', type: 'text', required: true, help: 'POP yang melayani lokasi pelanggan' },
             note(),
           ],
           run: async (ctx, input) => {
-            const i = z.object({ odp: odpName.pipe(z.string()), port: portName.pipe(z.string()), vlan: vlanId.pipe(z.string()), ip: internalIp.pipe(z.string()), publicIp, note: optNote }).parse(input);
-            await assertNetworkFree(ctx.tx, i, ctx.wo.customerId!);
-            await setCustomer(ctx, { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip, publicIp: i.publicIp ?? null });
-            ctx.data.validation = { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip, ...(i.publicIp ? { publicIp: i.publicIp } : {}) };
+            const i = z.object({ odp: odpName.pipe(z.string()), port: portName.pipe(z.string()), pop: optText.pipe(z.string()), note: optNote }).parse(input);
+            await assertNetworkFree(ctx.tx, { odp: i.odp, port: i.port }, ctx.wo.customerId!);
+            await setCustomer(ctx, { odp: i.odp, port: i.port, pop: i.pop });
+            ctx.data.validation = { odp: i.odp, port: i.port, pop: i.pop };
           },
         },
-        { key: 'reject', label: 'Tolak (tidak ada coverage/port)', roles: ['NOC'], to: 'REJECTED', danger: true, fields: [note(true)] },
+        { key: 'reject', label: 'Tolak (tidak ada coverage/port)', roles: ['FOC'], leadOnly: true, to: 'REJECTED', danger: true, fields: [note(true)] },
       ],
     },
     STOCK_CHECK: {
@@ -243,12 +332,13 @@ const newInstall: Workflow = {
     SCHEDULED: {
       label: 'Terjadwal (FOC)',
       owner: 'FOC',
-      actions: [scheduleAction('reschedule', 'Jadwalkan ulang', 'SCHEDULED'), startAction('IN_PROGRESS', true)],
+      actions: [scheduleAction('reschedule', 'Jadwalkan ulang / ganti tim', 'SCHEDULED'), startAction('IN_PROGRESS', true)],
     },
     IN_PROGRESS: {
       label: 'Instalasi Berjalan (FOC)',
       owner: 'FOC',
       actions: [
+        changeTeamAction('IN_PROGRESS'),
         {
           key: 'submit_report',
           label: 'Kirim laporan instalasi',
@@ -258,30 +348,20 @@ const newInstall: Workflow = {
           fields: [
             { name: 'serials', label: 'Scan SN ONT / Router terpasang', type: 'serials', required: true },
             { name: 'materials', label: 'Material terpakai (kabel dalam meter, fast connector, sleeve, dll)', type: 'materials', required: true, pickedOnly: true, help: 'Hanya material yang diambil saat "Mulai & ambil material". Sisa otomatis tetap di Stok Berjalan Anda.' },
-            { name: 'odp', label: 'ODP aktual (isi hanya bila berbeda dari rencana NOC)', type: 'text' },
-            { name: 'port', label: 'Port ODP aktual (isi hanya bila berbeda)', type: 'text', help: 'Dicek duplikat; IP & VLAN tidak dapat diubah teknisi' },
-            { name: 'opmDbm', label: 'Redaman OPM (dBm)', type: 'number', required: true, help: 'contoh: -19.5' },
+            ...techFields({ redamanRequired: true }),
             photosF,
             note(),
           ],
           run: async (ctx, input) => {
             const i = z
-              .object({ serials: sn.pipe(z.array(z.string()).min(1, 'Scan minimal 1 SN perangkat')), cableMeters: z.coerce.number().int().min(0).default(0), materials, odp: odpName, port: portName, opmDbm: z.coerce.number().min(-40).max(0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote })
+              .object({ serials: sn.pipe(z.array(z.string()).min(1, 'Scan minimal 1 SN perangkat')), cableMeters: z.coerce.number().int().min(0).default(0), materials, ...techZ, opmDbm: z.coerce.number().min(-40).max(0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote })
               .parse(input);
-            const cur = ctx.wo.customer!;
-            const newOdp = i.odp ?? cur.odp ?? undefined, newPort = i.port ?? cur.port ?? undefined;
-            if ((i.odp && i.odp !== cur.odp) || (i.port && i.port !== cur.port)) {
-              await assertNetworkFree(ctx.tx, { odp: newOdp, port: newPort }, cur.id);
-              await setCustomer(ctx, { odp: newOdp, port: newPort });
-              ctx.data.fieldChange = { from: { odp: cur.odp, port: cur.port }, to: { odp: newOdp, port: newPort }, by: ctx.actor.id, at: new Date() };
-              await ctx.fx.notify({ roles: ['NOC'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] ODP/port dikoreksi teknisi`, body: `Pelanggan ${cname(ctx)}\nRencana: ${cur.odp ?? '-'}/${cur.port ?? '-'} → Aktual: ${newOdp ?? '-'}/${newPort ?? '-'}\n${link(ctx)}` });
-            }
+            const tech = await applyTech(ctx, i);
             const mob = await consume(ctx, i.cableMeters, i.materials, { pickedOnly: true });
             await installSerials(ctx, i.serials, mob.id);
             const pk = ((ctx.wo.data as any)?.pickup?.serials ?? []) as string[];
             if (ctx.data.reconciliation) (ctx.data.reconciliation as any).serials = { picked: pk, installed: i.serials, leftover: pk.filter((x) => !i.serials.includes(x)) };
-            const { odp: _o, port: _p, ...rest } = i;
-            ctx.data.report = { ...rest, at: new Date() };
+            ctx.data.report = { ...i, ...tech, team: await teamNames(ctx, ctx.wo.teamIds), submittedBy: ctx.actor.name, at: new Date() };
           },
         },
       ],
@@ -298,8 +378,11 @@ const newInstall: Workflow = {
           fields: [
             { name: 'ontAuthorized', label: 'ONT/Router sudah di-authorize di OLT/Mikrotik', type: 'bool', required: true },
             { name: 'profile', label: 'Profil bandwidth', type: 'text', required: true },
-            { name: 'pingMs', label: 'Ping (ms)', type: 'number', required: true },
-            { name: 'latencyMs', label: 'Latency (ms)', type: 'number', required: true },
+            { name: 'vlan', label: 'VLAN', type: 'text', required: true, help: 'Angka 1–4094' },
+            { name: 'ip', label: 'IP internal / Subnet', type: 'text', required: true, help: 'Wajib IP privat RFC 1918 (10.x.x.x, 172.16–31.x.x, 192.168.x.x), mis. 10.20.30.40 atau 10.20.30.0/30. Terisi dari MSRadius bila ada' },
+            { name: 'publicIp', label: 'IP Publik (opsional)', type: 'text', help: 'Hanya bila pelanggan memakai IP publik; dicek duplikat hanya jika diisi' },
+            { name: 'pingMs', label: 'Ping / Latency (ms)', type: 'number', required: true },
+            { name: 'jitterMs', label: 'Jitter (ms) — opsional', type: 'number' },
             { name: 'downMbps', label: 'Speedtest download (Mbps)', type: 'number', required: true },
             { name: 'upMbps', label: 'Speedtest upload (Mbps)', type: 'number', required: true },
             { name: 'stable', label: 'Stability check lulus', type: 'bool', required: true },
@@ -310,8 +393,11 @@ const newInstall: Workflow = {
               .object({
                 ontAuthorized: yes('ONT/Router harus sudah di-authorize'),
                 profile: z.string().min(1),
+                vlan: vlanId.pipe(z.string()),
+                ip: internalIp.pipe(z.string()),
+                publicIp,
                 pingMs: z.coerce.number().min(0),
-                latencyMs: z.coerce.number().min(0),
+                jitterMs: optNum(0, 100000),
                 downMbps: z.coerce.number().min(0),
                 upMbps: z.coerce.number().min(0),
                 stable: yes('Stability check harus lulus'),
@@ -319,7 +405,8 @@ const newInstall: Workflow = {
               })
               .parse(input);
             const c = ctx.wo.customer!;
-            await setCustomer(ctx, { status: 'ACTIVE', activatedAt: new Date() });
+            await assertNetworkFree(ctx.tx, { ip: i.ip, publicIp: i.publicIp }, c.id);
+            await setCustomer(ctx, { status: 'ACTIVE', activatedAt: new Date(), vlan: i.vlan, ip: i.ip, publicIp: i.publicIp ?? null });
             ctx.data.activation = { ...i, at: new Date() };
             // Finance tidak terhubung langsung ke billing: hanya pengingat (Telegram + email) agar invoice segera disiapkan.
             await ctx.fx.notify({
@@ -345,28 +432,28 @@ const newInstall: Workflow = {
           run: async (ctx, input) => {
             const i = z.object({ recipientEmail: z.string().email().optional().or(z.literal('')), note: optNote }).parse(input);
             const c = ctx.wo.customer!;
-            const baNumber = `BA-${ctx.wo.number}`;
+            const baNo = baNumber(await aliasForArea(ctx.tx, c.areaId), ctx.wo.number);
             const to = i.recipientEmail || c.email;
             if (to)
               await ctx.fx.notify({
                 emails: [to],
                 woId: ctx.wo.id,
-                subject: `Berita Acara Aktivasi Layanan ${baNumber}`,
-                body: `Yth. ${c.name},\n\nLayanan internet Anda telah aktif.\nNo. BA: ${baNumber}\nPaket: ${c.packageName}\nAlamat: ${c.address}\n\nTerima kasih telah berlangganan.`,
+                subject: `Berita Acara Aktivasi Layanan ${baNo}`,
+                body: `Yth. ${c.name},\n\nLayanan internet Anda telah aktif.\nNo. BA: ${baNo}\nPaket: ${c.packageName}\nAlamat: ${c.address}\n\nTerima kasih telah berlangganan.`,
               });
-            ctx.data.ba = { number: baNumber, sentTo: to ?? null, at: new Date() };
+            ctx.data.ba = { number: baNo, sentTo: to ?? null, at: new Date() };
             await ctx.fx.notify({
               roles: ['FIN'],
               woId: ctx.wo.id,
               subject: `🔔 [${ctx.wo.number}] BA terkirim – pastikan invoice ${c.name} sudah disiapkan`,
-              body: `BA ${baNumber} sudah dikirim ke pelanggan ${c.name} (${c.code}), paket ${c.packageName}.\nPengingat: mulai cycle penagihan dan pastikan invoice pertama sudah disiapkan di sistem billing.\n${link(ctx)}`,
+              body: `BA ${baNo} sudah dikirim ke pelanggan ${c.name} (${c.code}), paket ${c.packageName}.\nPengingat: mulai cycle penagihan dan pastikan invoice pertama sudah disiapkan di sistem billing.\n${link(ctx)}`,
             });
           },
         },
       ],
     },
     CLOSED: { label: 'Selesai', owner: 'MKT', final: true, actions: [] },
-    REJECTED: { label: 'Ditolak NOC', owner: 'MKT', final: true, actions: [] },
+    REJECTED: { label: 'Ditolak (validasi teknis)', owner: 'MKT', final: true, actions: [] },
   },
 };
 
@@ -423,11 +510,12 @@ const trouble: Workflow = {
       ],
     },
     FIELD_DISPATCH: { label: 'WO Perbaikan – Menunggu Jadwal (FOC)', owner: 'FOC', actions: [scheduleAction('schedule', 'Jadwalkan teknisi', 'FIELD_SCHEDULED')] },
-    FIELD_SCHEDULED: { label: 'Perbaikan Terjadwal (FOC)', owner: 'FOC', actions: [scheduleAction('reschedule', 'Jadwalkan ulang', 'FIELD_SCHEDULED'), startAction('FIELD_IN_PROGRESS', false)] },
+    FIELD_SCHEDULED: { label: 'Perbaikan Terjadwal (FOC)', owner: 'FOC', actions: [scheduleAction('reschedule', 'Jadwalkan ulang / ganti tim', 'FIELD_SCHEDULED'), startAction('FIELD_IN_PROGRESS', false)] },
     FIELD_IN_PROGRESS: {
       label: 'Perbaikan Berjalan (FOC)',
       owner: 'FOC',
       actions: [
+        changeTeamAction('FIELD_IN_PROGRESS'),
         {
           key: 'submit_report',
           label: 'Kirim laporan perbaikan',
@@ -438,14 +526,15 @@ const trouble: Workflow = {
             { name: 'serialsNew', label: 'SN perangkat BARU terpasang', type: 'serials' },
             { name: 'serialsOld', label: 'SN perangkat LAMA yang diambil', type: 'serials' },
             { name: 'materials', label: 'Material terpakai (kabel dalam meter, dll)', type: 'materials', help: 'Diambil dari Stok Berjalan Anda; kabel yang belum diambil/diminta tidak bisa dipakai.' },
-            { name: 'opmDbm', label: 'Redaman OPM setelah perbaikan (dBm)', type: 'number' },
+            ...techFields(),
             photosF,
-            note(true),
+            { name: 'note', label: 'Langkah-langkah troubleshooting yang dilakukan', type: 'textarea', required: true, help: 'Isi urut: temuan, tindakan, hasil. Tercetak di Laporan Troubleshooting.' },
           ],
           run: async (ctx, input) => {
             const i = z
-              .object({ serialsNew: sn.default([]), serialsOld: sn.default([]), cableMeters: z.coerce.number().int().min(0).default(0), materials, opmDbm: z.coerce.number().min(-40).max(0).optional(), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: z.string().min(2, 'Isi catatan perbaikan') })
+              .object({ serialsNew: sn.default([]), serialsOld: sn.default([]), cableMeters: z.coerce.number().int().min(0).default(0), materials, ...techZ, opmDbm: optNum(-40, 0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: z.string().min(2, 'Isi langkah-langkah troubleshooting') })
               .parse(input);
+            const tech = await applyTech(ctx, i);
             const mob = await consume(ctx, i.cableMeters, i.materials);
             await installSerials(ctx, i.serialsNew, mob.id);
             for (const s of i.serialsOld) {
@@ -453,7 +542,7 @@ const trouble: Workflow = {
               if (a.customerId !== ctx.wo.customerId || a.status !== 'INSTALLED') throw new AppError(409, `SN lama ${a.serialNumber} tidak tercatat terpasang di pelanggan ini`);
               await moveAsset(ctx.tx, a, { status: 'RETURNED_PENDING_QC', toWarehouseId: mob.id, reason: `Diganti – ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
             }
-            ctx.data.report = { ...i, at: new Date() };
+            ctx.data.report = { ...i, ...tech, team: await teamNames(ctx, ctx.wo.teamIds), submittedBy: ctx.actor.name, at: new Date() };
           },
         },
       ],
@@ -462,7 +551,7 @@ const trouble: Workflow = {
       label: 'Verifikasi Koneksi (NOC)',
       owner: 'NOC',
       actions: [
-        { key: 'verify_up', label: 'Koneksi UP / normal', roles: ['NOC'], to: 'MKT_CONFIRM', fields: [{ name: 'pingMs', label: 'Ping (ms)', type: 'number' }, note()] },
+        { key: 'verify_up', label: 'Koneksi UP / normal', roles: ['NOC'], to: 'MKT_CONFIRM', fields: [{ name: 'pingMs', label: 'Ping / Latency (ms)', type: 'number' }, note()] },
         { key: 'not_up', label: 'Belum normal → kembali ke FOC', roles: ['NOC'], to: 'FIELD_DISPATCH', danger: true, fields: [note(true)] },
       ],
     },
@@ -602,11 +691,12 @@ const terminate: Workflow = {
       ],
     },
     DISMANTLE_DISPATCH: { label: 'Penarikan Aset – Menunggu Jadwal (FOC)', owner: 'FOC', actions: [scheduleAction('schedule', 'Jadwalkan teknisi', 'DISMANTLE_SCHEDULED')] },
-    DISMANTLE_SCHEDULED: { label: 'Penarikan Terjadwal (FOC)', owner: 'FOC', actions: [scheduleAction('reschedule', 'Jadwalkan ulang', 'DISMANTLE_SCHEDULED'), startAction('DISMANTLE_IN_PROGRESS', false)] },
+    DISMANTLE_SCHEDULED: { label: 'Penarikan Terjadwal (FOC)', owner: 'FOC', actions: [scheduleAction('reschedule', 'Jadwalkan ulang / ganti tim', 'DISMANTLE_SCHEDULED'), startAction('DISMANTLE_IN_PROGRESS', false)] },
     DISMANTLE_IN_PROGRESS: {
       label: 'Penarikan Berjalan (FOC)',
       owner: 'FOC',
       actions: [
+        changeTeamAction('DISMANTLE_IN_PROGRESS'),
         {
           key: 'submit_report',
           label: 'Kirim laporan penarikan',
@@ -621,7 +711,7 @@ const terminate: Workflow = {
           ],
           run: async (ctx, input) => {
             const i = z.object({ serials: sn.default([]), missingReason: optNote, photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote }).parse(input);
-            const mob = await mobileWarehouse(ctx.tx, ctx.wo.assigneeId ?? ctx.actor.id);
+            const mob = await mobileWarehouse(ctx.tx, stockOwner(ctx));
             for (const s of i.serials) {
               const a = await mustAsset(ctx.tx, s);
               if (a.customerId !== ctx.wo.customerId || a.status !== 'INSTALLED') throw new AppError(409, `SN ${a.serialNumber} tidak tercatat terpasang di pelanggan ini`);
@@ -787,6 +877,79 @@ const stockRequest: Workflow = {
 };
 
 
+/* ───────────────────────── MAINTENANCE / TROUBLESHOOT MANDIRI ───────────────────────── */
+
+const MAINT_CATEGORIES = ['Kabel putus / tertabrak', 'Maintenance rutin (UPS, perangkat, dll)', 'Pemotongan / pembersihan pohon', 'Relokasi / perapian jalur', 'Lainnya'];
+
+const maintenance: Workflow = {
+  type: 'MAINTENANCE',
+  prefix: 'WO-MT',
+  label: 'Maintenance / Troubleshoot',
+  description: 'Kegiatan perbaikan/perawatan jaringan di luar tiket pelanggan (kabel tertabrak, maintenance rutin, pemotongan pohon, dll). Supervisor/manager FOC menugaskan tim → mulai → progres → laporan troubleshooting.',
+  createRoles: ['FOC'],
+  createFields: [
+    { name: 'title', label: 'Kegiatan', type: 'text', required: true, help: 'Mis. "Kabel FO tertabrak truk di Jl. Merdeka"' },
+    { name: 'category', label: 'Kategori', type: 'select', required: true, options: MAINT_CATEGORIES },
+    { name: 'areaId', label: 'Area', type: 'area', required: true, help: 'Menentukan singkatan area pada nomor laporan' },
+    { name: 'location', label: 'Lokasi kegiatan', type: 'text', required: true },
+    { name: 'description', label: 'Uraian / penyebab', type: 'textarea', required: true },
+    technicianIdsF,
+    scheduledF,
+  ],
+  initial: 'SCHEDULED',
+  initialFor: () => 'SCHEDULED',
+  async create(tx, input, actor) {
+    if (!isLead(actor)) throw new AppError(403, 'Maintenance mandiri hanya dibuat oleh supervisor/manager FOC');
+    const i = z
+      .object({ title: z.string().trim().min(3).max(150), category: z.enum(MAINT_CATEGORIES as [string, ...string[]]), areaId: z.string().min(1), location: z.string().trim().min(2).max(200), description: z.string().trim().min(3).max(1000), technicianIds: z.array(z.string()).optional(), technicianId: z.string().optional(), scheduledAt: z.coerce.date() })
+      .parse(input);
+    if (!(await tx.area.findFirst({ where: { id: i.areaId, active: true } }))) throw fieldError('areaId', 'Area tidak ditemukan / nonaktif');
+    const team = await resolveTeam({ tx, actor }, i);
+    return {
+      title: `Maintenance – ${i.title}`,
+      data: { category: i.category, areaId: i.areaId, location: i.location, description: i.description, team: team.map((t) => t.name) },
+      assigneeId: team[0].id,
+      teamIds: team.map((t) => t.id),
+      scheduledAt: i.scheduledAt,
+      note: i.description,
+    };
+  },
+  statuses: {
+    SCHEDULED: {
+      label: 'Terjadwal (FOC)',
+      owner: 'FOC',
+      actions: [scheduleAction('reschedule', 'Jadwalkan ulang / ganti tim', 'SCHEDULED'), startAction('IN_PROGRESS', false)],
+    },
+    IN_PROGRESS: {
+      label: 'Pekerjaan Berjalan (FOC)',
+      owner: 'FOC',
+      actions: [
+        changeTeamAction('IN_PROGRESS'),
+        {
+          key: 'submit_report',
+          label: 'Kirim laporan troubleshooting',
+          roles: ['FOC'],
+          assigneeOnly: true,
+          to: 'CLOSED',
+          fields: [
+            { name: 'materials', label: 'Material terpakai (dari Stok Berjalan Anda)', type: 'materials', help: 'Hanya yang ada di Stok Berjalan Anda; ajukan permintaan barang bila belum ada.' },
+            ...techFields().filter((f) => !['odp', 'port'].includes(f.name)),
+            { name: 'odp', label: 'ODP (bila relevan)', type: 'text' },
+            photosF,
+            { name: 'note', label: 'Langkah-langkah troubleshooting yang dilakukan', type: 'textarea', required: true, help: 'Isi urut: temuan, tindakan, hasil. Tercetak di Laporan Troubleshooting.' },
+          ],
+          run: async (ctx, input) => {
+            const i = z.object({ cableMeters: z.coerce.number().int().min(0).default(0), materials, odp: optText, pop: optText, mainSplitter: optText, lat: optNum(-90, 90), lng: optNum(-180, 180), signalDbm: optNum(-60, 20), opmDbm: optNum(-40, 0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: z.string().min(2, 'Isi langkah-langkah troubleshooting') }).parse(input);
+            await consume(ctx, i.cableMeters, i.materials);
+            ctx.data.report = { ...i, team: await teamNames(ctx, ctx.wo.teamIds), submittedBy: ctx.actor.name, at: new Date() };
+          },
+        },
+      ],
+    },
+    CLOSED: { label: 'Selesai', owner: 'FOC', final: true, actions: [] },
+  },
+};
+
 /* ───────────────────────── SERAH-TERIMA SISA MATERIAL (STOCK_RETURN) ───────────────────────── */
 
 /** Selisih (diajukan − diterima) untuk material & SN. */
@@ -904,6 +1067,7 @@ export const workflows: Record<WoType, Workflow> = {
   TERMINATE: terminate,
   STOCK_REQUEST: stockRequest,
   STOCK_RETURN: stockReturn,
+  MAINTENANCE: maintenance,
 };
 
 /** Versi serializable untuk frontend. */

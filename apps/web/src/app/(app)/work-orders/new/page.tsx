@@ -15,7 +15,8 @@ function NewWo() {
   const type = sp.get('type');
   const fromForm = sp.get('fromForm');
   const { data: sub } = useFetch<any>(fromForm ? `/subscriptions/${fromForm}` : null);
-  const allowed = (meta ?? []).filter((m) => user?.role === 'ADMIN' || m.createRoles.includes(user?.role));
+  const isLead = user?.role === 'ADMIN' || user?.subRole === 'SUPERVISOR' || user?.subRole === 'MANAGER';
+  const allowed = (meta ?? []).filter((m) => (user?.role === 'ADMIN' || m.createRoles.includes(user?.role)) && (m.type !== 'MAINTENANCE' || isLead));
   const wf = allowed.find((m) => m.type === type);
 
   if (error) return <ErrorMsg>{error}</ErrorMsg>;

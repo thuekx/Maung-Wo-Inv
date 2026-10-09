@@ -4,7 +4,7 @@ import { Effects } from './effects';
 import { config } from './config';
 import { nextNumber } from './inventory';
 import { workflows } from './workflows';
-import { isLead, type Actor, type Ctx, type WoFull } from './wf-types';
+import { inTeam, isLead, type Actor, type Ctx, type WoFull } from './wf-types';
 
 const CANCELLED = 'CANCELLED';
 
@@ -68,11 +68,14 @@ export async function createWorkOrder(
       customerId: made.customerId,
       createdById: p.actor.id,
       parentId: p.parentId,
+      assigneeId: made.assigneeId,
+      teamIds: made.teamIds ?? (made.assigneeId ? [made.assigneeId] : []),
+      scheduledAt: made.scheduledAt,
       data: (made.data ?? {}) as Prisma.InputJsonValue,
       source: p.source ?? 'APP',
     },
   });
-  await enterStatus(fx, wo.id, p.actor, wf.initial, { action: 'create', note: made.note ?? (p.input.note as string | undefined) });
+  await enterStatus(fx, wo.id, p.actor, wf.initialFor?.(made) ?? wf.initial, { action: 'create', note: made.note ?? (p.input.note as string | undefined) });
   return { id: wo.id, number: wo.number };
 }
 
@@ -131,7 +134,7 @@ async function enterStatus(fx: Effects, woId: string, actor: Actor, to: string, 
     } else {
       await fx.notify({
         roles: [st!.owner],
-        userIds: st!.owner === 'FOC' ? [wo.assigneeId] : [],
+        userIds: st!.owner === 'FOC' ? [...new Set([wo.assigneeId, ...wo.teamIds])] : [],
         woId,
         subject: `[${wo.number}] Menunggu tindakan ${st!.owner}: ${label}`,
         body,
@@ -176,7 +179,7 @@ export async function applyAction(fx: Effects, woId: string, key: string, actor:
     if (action.system) throw new AppError(403, 'Aksi hanya dapat dipicu sistem');
     if (actor.role !== 'ADMIN' && !action.roles.includes(actor.role)) throw new AppError(403, `Aksi ini khusus divisi ${action.roles.join('/')}`);
     if (action.leadOnly && !isLead(actor)) throw new AppError(403, 'Aksi ini hanya untuk supervisor/manager');
-    if (action.assigneeOnly && actor.role !== 'ADMIN' && !actor.acting && wo.assigneeId !== actor.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan yang dapat melakukan ini');
+    if (action.assigneeOnly && actor.role !== 'ADMIN' && !actor.acting && !inTeam(wo, actor.id)) throw new AppError(403, 'Hanya tim yang ditugaskan yang dapat melakukan ini');
   }
 
   await bindPhotos(fx.tx, woId, actor, input.photos, 'REPORT');
@@ -192,11 +195,11 @@ export async function applyAction(fx: Effects, woId: string, key: string, actor:
 }
 
 /** Aksi yang boleh dilakukan `actor` pada WO ini (untuk UI). */
-export function allowedActions(wo: { type: WoType; status: string; assigneeId: string | null; createdById: string }, actor: Actor) {
+export function allowedActions(wo: { type: WoType; status: string; assigneeId: string | null; teamIds?: string[]; createdById: string }, actor: Actor) {
   if (!isOpen(wo.status, wo.type)) return [];
   const st = workflows[wo.type].statuses[wo.status];
   const keys = st.actions
-    .filter((a) => !a.system && (actor.role === 'ADMIN' || a.roles.includes(actor.role)) && (!a.leadOnly || isLead(actor)) && (!a.assigneeOnly || actor.role === 'ADMIN' || actor.acting || wo.assigneeId === actor.id))
+    .filter((a) => !a.system && (actor.role === 'ADMIN' || a.roles.includes(actor.role)) && (!a.leadOnly || isLead(actor)) && (!a.assigneeOnly || actor.role === 'ADMIN' || actor.acting || inTeam(wo, actor.id)))
     .map((a) => a.key);
   if (!st.noCancel && (actor.role === 'ADMIN' || actor.id === wo.createdById)) keys.push('cancel');
   return keys;

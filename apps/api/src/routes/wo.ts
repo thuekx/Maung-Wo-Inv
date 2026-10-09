@@ -12,6 +12,8 @@ import { config } from '../config';
 import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
 import { requireRole } from '../auth';
 import { workflowMeta, workflows } from '../workflows';
+import { aliasForArea, baNumber, reportNumber } from '../docnum';
+import { inTeam, isLead } from '../wf-types';
 import { resolveRefs } from '../refs';
 
 export const woRoutes = Router();
@@ -54,7 +56,7 @@ woRoutes.get('/work-orders', async (req, res) => {
 });
 
 woRoutes.post('/work-orders', async (req, res) => {
-  const { type, input } = z.object({ type: z.enum(['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST', 'STOCK_RETURN']), input: z.record(z.any()) }).parse(req.body);
+  const { type, input } = z.object({ type: z.enum(['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST', 'STOCK_RETURN', 'MAINTENANCE']), input: z.record(z.any()) }).parse(req.body);
   const u = req.user!;
   const subId = type === 'NEW_INSTALL' && typeof input.subscriptionId === 'string' ? input.subscriptionId : null;
   const created = await transact(async (fx) => {
@@ -88,15 +90,33 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
   const st = workflows[wo.type].statuses[wo.status];
   const uploaders = await prisma.user.findMany({ where: { id: { in: [...new Set(wo.attachments.map((a) => a.uploadedBy))] } }, select: { id: true, name: true } });
   const attachments = wo.attachments.map((a) => ({ ...a, uploaderName: uploaders.find((x) => x.id === a.uploadedBy)?.name ?? '-' }));
-  const canProgress = !st?.final && wo.status !== 'CANCELLED' && st?.owner === 'FOC' && !!wo.assigneeId && (u.role === 'ADMIN' || !!req.realUser || wo.assigneeId === u.id);
+  const canProgress = !st?.final && wo.status !== 'CANCELLED' && st?.owner === 'FOC' && !!wo.assigneeId && (u.role === 'ADMIN' || !!req.realUser || inTeam(wo, u.id) || (u.role === 'FOC' && isLead(actorOf(req))));
   // isian awal form aksi: NOC melihat IP dari MSRadius (bila ada) & data jaringan yang sudah tercatat
   const c = wo.customer;
   const radIp = c?.radiusIp ?? '';
-  const prefill = c ? { validate: { odp: c.odp ?? '', port: c.port ?? '', vlan: c.vlan ?? '', ip: c.ip ?? (isPrivateIPv4(radIp) ? radIp : ''), publicIp: c.publicIp ?? (radIp && !isPrivateIPv4(radIp) ? radIp : '') } } : {};
+  const tech = c ? { odp: c.odp ?? '', port: c.port ?? '', pop: c.pop ?? '', lat: c.lat ?? '', lng: c.lng ?? '' } : {};
+  const prefill = c
+    ? {
+        validate: { odp: c.odp ?? '', port: c.port ?? '', pop: c.pop ?? '' },
+        service_active: { vlan: c.vlan ?? '', ip: c.ip ?? (isPrivateIPv4(radIp) ? radIp : ''), publicIp: c.publicIp ?? (radIp && !isPrivateIPv4(radIp) ? radIp : '') },
+        submit_report: tech,
+      }
+    : {};
+  // nomor dokumen (BA / laporan) memakai singkatan area; area maintenance mandiri ada di data WO
+  const areaId = c?.areaId ?? ((wo.data as any)?.areaId as string | undefined) ?? null;
+  const alias = await aliasForArea(prisma, areaId);
+  const kind = wo.type === 'NEW_INSTALL' ? 'INS' : wo.type === 'TROUBLE' || wo.type === 'MAINTENANCE' ? 'TBS' : null;
+  const docs = { areaAlias: alias, baNumber: wo.type === 'NEW_INSTALL' ? baNumber(alias, wo.number) : null, reportNumber: kind && (wo.data as any)?.report ? reportNumber(kind, alias, wo.number) : null, reportKind: kind };
+  // BA Digital hanya untuk Marketing (dan Admin): FOC/NOC dan lainnya tidak melihatnya
+  const seeBa = u.role === 'ADMIN' || u.role === 'MKT';
+  const woData = seeBa ? wo.data : (({ ba: _ba, ...rest }) => rest)((wo.data ?? {}) as Record<string, unknown>);
   res.json({
     prefill,
-    refs: await resolveRefs(wo.data),
+    refs: await resolveRefs(woData),
     ...wo,
+    data: woData,
+    docs,
+    team: (await prisma.user.findMany({ where: { id: { in: wo.teamIds.length ? wo.teamIds : wo.assigneeId ? [wo.assigneeId] : [] } }, select: { id: true, name: true, subRole: true } })),
     attachments,
     canProgress,
     statusLabel: st?.label ?? (wo.status === 'CANCELLED' ? 'Dibatalkan' : wo.status),
@@ -126,7 +146,7 @@ woRoutes.post('/work-orders/:id/progress', async (req, res) => {
     if (!wo) throw new AppError(404, 'WO tidak ditemukan');
     const st = workflows[wo.type].statuses[wo.status];
     if (wo.closedAt || st?.owner !== 'FOC' || !wo.assigneeId) throw new AppError(409, 'Progres lapangan hanya untuk WO yang sedang dikerjakan teknisi');
-    if (u.role !== 'ADMIN' && wo.assigneeId !== u.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan');
+    if (u.role !== 'ADMIN' && !inTeam(wo, u.id) && !(u.role === 'FOC' && isLead(actorOf(req)))) throw new AppError(403, 'Hanya tim yang ditugaskan (atau supervisor/manager FOC)');
     await bindPhotos(fx.tx, wo.id, actorOf(req), b.photos, 'PROGRESS', b.note);
     await fx.tx.woEvent.create({ data: { woId: wo.id, action: 'progress', fromStatus: wo.status, toStatus: wo.status, actorId: u.id, actorName: u.name, note: b.note, payload: { photos: b.photos } } });
     await fx.notify({

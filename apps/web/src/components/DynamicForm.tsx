@@ -237,6 +237,30 @@ export function BrandModelInput({ value, onChange, canCreate }: { value: { brand
 
 /* ───────── form dinamis ───────── */
 
+/** Pilih tim pelaksana (1 atau lebih teknisi) dengan kotak cari. */
+function TeamPicker({ value, onChange, techs }: { value: string[]; onChange: (v: string[]) => void; techs: any[] }) {
+  const [q, setQ] = useState('');
+  const shown = techs.filter((t) => !q.trim() || t.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+  const SUB: Record<string, string> = { MANAGER: 'Manager', SUPERVISOR: 'Supervisor', STAFF: 'Staff' };
+  return (
+    <div className="rounded-lg border border-slate-300 p-2">
+      {techs.length > 6 && <input className="input mb-2" placeholder="Cari teknisi…" value={q} onChange={(e) => setQ(e.target.value)} />}
+      <div className="grid max-h-56 gap-1 overflow-y-auto sm:grid-cols-2">
+        {shown.map((t) => (
+          <label key={t.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm ${value.includes(t.id) ? 'border-accent-500 bg-accent-50 font-medium dark:bg-slate-700' : 'border-slate-200'}`}>
+            <input type="checkbox" checked={value.includes(t.id)} onChange={() => toggle(t.id)} />
+            <span className="min-w-0 flex-1 truncate">{t.name}</span>
+            <span className="text-[11px] text-slate-500">{SUB[t.subRole] ?? ''}</span>
+          </label>
+        ))}
+        {!shown.length && <p className="px-1 text-sm text-slate-400">Tidak ada teknisi</p>}
+      </div>
+      <p className="mt-1.5 text-xs text-slate-500">{value.length ? `${value.length} dipilih: ${techs.filter((t) => value.includes(t.id)).map((t) => t.name).join(', ')}` : 'Belum ada yang dipilih'}</p>
+    </div>
+  );
+}
+
 export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, woId, woNumber, photoKind, busy, initial, sendEmpty }: {
   fields: Field[]; onSubmit: (values: Record<string, any>) => void | Promise<void>; submitLabel?: string; danger?: boolean; woId?: string; woNumber?: string; photoKind?: 'REPORT' | 'PROGRESS'; busy?: boolean;
   /** nilai awal (mode edit) */ initial?: Record<string, any>;
@@ -245,13 +269,13 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   const { user } = useAuth();
   const [v, setV] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
-    for (const f of fields) init[f.name] = initial && initial[f.name] !== undefined && initial[f.name] !== null ? (f.type === 'datetime' ? String(initial[f.name]).slice(0, 16) : initial[f.name]) : f.type === 'brandmodel' ? {} : ['serials', 'photos', 'materials', 'qc'].includes(f.type) ? [] : f.type === 'bool' ? false : '';
+    for (const f of fields) init[f.name] = initial && initial[f.name] !== undefined && initial[f.name] !== null ? (f.type === 'datetime' ? String(initial[f.name]).slice(0, 16) : initial[f.name]) : f.type === 'brandmodel' ? {} : ['serials', 'technicians', 'photos', 'materials', 'qc'].includes(f.type) ? [] : f.type === 'bool' ? false : '';
     return init;
   });
   const [err, setErr] = useState('');
   const [fe, setFe] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Record<string, string>>({});
-  const { data: techs } = useFetch<any[]>(fields.some((f) => f.type === 'technician') ? '/users/lookup?role=FOC' : null);
+  const { data: techs } = useFetch<any[]>(fields.some((f) => f.type === 'technician' || f.type === 'technicians') ? '/users/lookup?role=FOC&assignable=1' : null);
   const { data: whs } = useFetch<any[]>(fields.some((f) => f.type === 'warehouse') ? '/warehouses' : null);
   const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
   const { data: areas } = useFetch<any[]>(fields.some((f) => f.type === 'area') ? '/areas' : null);
@@ -311,6 +335,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
                 <option value="">— pilih teknisi —</option>
                 {techs?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>)
+            : f.type === 'technicians' ? <TeamPicker value={v[f.name] ?? []} onChange={(x) => set(f.name, x)} techs={techs ?? []} />
             : f.type === 'warehouse' ? (
               <Select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih gudang —</option>

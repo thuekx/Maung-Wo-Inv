@@ -18,11 +18,12 @@ export default function BaPrint({ params }: { params: Promise<{ id: string }> })
     if (!serials.length) return;
     Promise.all(serials.map((sn) => api<any>(`/assets/by-serial/${encodeURIComponent(sn)}`).then((a) => ({ sn, name: [a.item?.name, a.brand?.name, a.model?.name].filter(Boolean).join(' · ') })).catch(() => ({ sn, name: '' })))).then(setDevices);
   }, [serials.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (user && !['MKT', 'ADMIN'].includes(user.role)) return <ErrorMsg>BA Digital hanya dapat dilihat dan dikirim oleh Marketing.</ErrorMsg>;
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!wo) return <p className="p-6 text-slate-500">Memuat…</p>;
   if (wo.type !== 'NEW_INSTALL' || !wo.data?.activation) return <ErrorMsg>BA hanya tersedia untuk WO Pasang Baru yang sudah diaktivasi NOC.</ErrorMsg>;
   const c = wo.customer, act = wo.data.activation, ba = wo.data.ba;
-  const number = ba?.number ?? `BA-${wo.number}`;
+  const number = ba?.number ?? wo.docs?.baNumber ?? `BAA/XXX/${wo.number}`;
   const row = (k: string, v: React.ReactNode) => <tr><td className="w-44 py-0.5 align-top">{k}</td><td className="w-4 align-top">:</td><td className="py-0.5">{v || '-'}</td></tr>;
   return (
     <DocShell title={`BA ${number}`} back={`/work-orders/${id}`}>
@@ -39,7 +40,7 @@ export default function BaPrint({ params }: { params: Promise<{ id: string }> })
         {devices.length ? <ul className="mb-4 list-disc pl-6">{devices.map((d) => <li key={d.sn}><span className="font-mono">{d.sn}</span>{d.name ? ` — ${d.name}` : ''}</li>)}</ul> : <p className="mb-4">-</p>}
         <p className="mb-1 font-semibold">Hasil pengujian layanan</p>
         <table className="mb-4 w-full"><tbody>
-          {row('Profil bandwidth', act.profile)}{row('Ping / Latency', `${act.pingMs} ms / ${act.latencyMs} ms`)}{row('Speedtest', `Download ${act.downMbps} Mbps · Upload ${act.upMbps} Mbps`)}{row('Redaman optik (OPM)', wo.data.report?.opmDbm != null ? `${wo.data.report.opmDbm} dBm` : '')}
+          {row('Profil bandwidth', act.profile)}{row('Ping / Latency', `${act.pingMs} ms${act.jitterMs != null && act.jitterMs !== '' ? ` · jitter ${act.jitterMs} ms` : ''}`)}{row('Speedtest', `Download ${act.downMbps} Mbps · Upload ${act.upMbps} Mbps`)}{row('Redaman optik (OPM)', wo.data.report?.opmDbm != null ? `${wo.data.report.opmDbm} dBm` : '')}
         </tbody></table>
         <p className="mb-6">Dengan ini kedua belah pihak menyatakan bahwa layanan telah terpasang dan berfungsi dengan baik, serta pelanggan menyetujui ketentuan berlangganan {brand.companyName}.</p>
         <div className="grid grid-cols-2 gap-8 text-center">

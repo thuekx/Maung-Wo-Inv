@@ -29,7 +29,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
   ];
   const current = available.find((a) => a.key === active);
   const c = wo.customer;
-  const { events, customer, createdBy, assignee, parent, children, purchase, data, attachments, refs, ...rest } = wo;
+  const { events, customer, createdBy, assignee, parent, children, purchase, data, attachments, refs, team: _team, docs: _docs, ...rest } = wo;
   const photos: any[] = (attachments ?? []).filter((a: any) => a.kind !== 'LOGO');
   void rest;
 
@@ -37,7 +37,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
     <div className="space-y-4">
       <PageHeader title={`${wo.number} · ${wo.title}`} sub={`${TYPE_LABEL[wo.type]} · dibuat ${fmtDate(wo.createdAt)} oleh ${createdBy.name}${wo.source === 'BILLING' ? ' (otomatis dari Billing)' : ''}`}>
         <Badge tone={statusTone(wo.final, wo.status)}>{wo.statusLabel}</Badge>
-        {wo.type === 'NEW_INSTALL' && data?.activation && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
+        {wo.type === 'NEW_INSTALL' && data?.activation && ['MKT', 'ADMIN'].includes(user?.role ?? '') && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
         {!wo.closedAt && (user?.role === 'ADMIN' || wo.createdById === user?.id) && <button className="btn-ghost" onClick={() => setEditWo(true)}>✎ Edit</button>}
         {user?.role === 'ADMIN' && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/work-orders/${wo.id}`, `WO ${wo.number}`)) router.replace('/work-orders'); }}>🗑 Hapus</button>}
       </PageHeader>
@@ -141,7 +141,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
           )}
           <div className="card text-sm">
             <h2 className="mb-2 font-semibold">Penugasan</h2>
-            <div>Teknisi: {assignee?.name ?? '-'}</div>
+            <div>{(wo.team?.length ?? 0) > 1 ? 'Tim pelaksana' : 'Teknisi'}: {wo.team?.length ? wo.team.map((t: any) => t.name).join(', ') : assignee?.name ?? '-'}</div>
             <div>Jadwal: {fmtDate(wo.scheduledAt)}</div>
           </div>
           {(parent || children.length > 0 || purchase.length > 0) && (
