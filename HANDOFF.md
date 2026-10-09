@@ -5,12 +5,25 @@
 ## Kalimat pembuka untuk sesi baru (salin-tempel)
 ```
 Lanjutkan proyek Maung-Wo-Inv (repo thuekx/Maung-Wo-Inv, branch main, sudah ter-clone di sesi ini).
-Baca dulu HANDOFF.md, lalu docs/RADIUS-API.md dan docs/BRANDING.md. Kerjakan backlog 36 butir di HANDOFF.md
-sesuai urutan batch di sana; jangan menambah fitur di luar daftar. Butir 29 (field/master dari API MSRadius)
-menunggu konfirmasi saya — tanyakan lebih dulu. Gunakan Bahasa Indonesia; identitas git thuekx <thuekx@kolu.web.id>
-tanpa trailer/atribusi Claude; uji sungguhan (API + browser) sebelum push; push ke main setiap batch selesai
-dan perbarui HANDOFF.md.
+Baca dulu HANDOFF.md (bagian "STATUS TERKINI" dan "Panduan sesi berikutnya"), lalu docs/DEMO.md dan docs/RADIUS-API.md.
+Seluruh backlog 36 butir + batch F sudah selesai dan ter-deploy ke staging (commit 823190c, database demo baru).
+Tugas sekarang: bantu saya UAT/validasi di staging (per peran), perbaiki temuan saya ("catatan minor"), dan uji
+integrasi MSRadius dengan token asli. Jangan menambah fitur di luar yang saya minta; Bahasa Indonesia; identitas git
+thuekx <thuekx@kolu.web.id> tanpa trailer/atribusi Claude; uji sungguhan (API + browser) sebelum push;
+beri perintah update satu baris; perbarui HANDOFF.md di akhir.
 ```
+
+## STATUS TERKINI (2026-10-09)
+- **Kode**: `origin/main` = `823190c` (Batch A–F selesai). Staging **sudah di-deploy fresh** dengan data demo terbaru (semua secret `.env` dirotasi). Repo di staging: `/opt/staging/projects/Maung-Wo-Inv`; backup pra-reset (`.env` lama, dump DB, uploads) di `~/backups/maung-pre-clean-<stempel>/` pada VM.
+- **Password**: semua akun demo memakai satu `SEED_PASSWORD` di `.env` VM (`grep ^SEED_PASSWORD .env`; jangan ditempel ke chat). Akun: `admin` (Admin), `mkt` (Marketing·Supervisor), `noc` (NOC·Supervisor), `citra` (FOC·Manager), `budi` (FOC·Supervisor), `andi` (FOC·Staff), `ga` (GA·Manager), `fin` (Finance·Manager) — semua `@l1v.local`.
+- **Belum teruji (hanya bisa di staging)**: Docker penuh di sandbox, token MSRadius asli (hanya server tiruan 2.320 pelanggan), hasil cetak PDF nyata (PR, BA, Formulir Berlangganan; aktifkan "Grafik latar belakang"), GPS foto (butuh HTTPS), Telegram/SMTP (belum diisi → status NOT_SENT).
+- **Langkah pertama pemilik di staging**: ganti password admin → Admin → Pengaturan: isi MSRadius (token, Uji koneksi, Tarik data), hubungkan tiap Area ke gudang (Master Data → Area), isi SMTP/Telegram, cek logo/kop/formulir (Branding) → uji per peran sesuai `docs/DEMO.md`.
+
+## Panduan sesi berikutnya
+- **Reset bersih staging** (menghapus semua data & rotasi secret; simpan ke file lalu jalankan dengan stdin kosong agar `docker compose exec` tidak memakan script): backup `.env`+`pg_dump -U l1v -d l1v_wo`+uploads → `git reset --hard origin/main` → `docker compose down -v --remove-orphans` → `rm -f .env` → `DEMO=1 bash scripts/deploy.sh` → `bash /tmp/script.sh </dev/null`. Tanpa hapus data: `git fetch origin && git reset --hard origin/main && bash scripts/deploy.sh` (migrasi otomatis; **tanpa** `DEMO=1` data demo tidak bertambah).
+- **Sandbox**: Postgres/Redis lokal (`l1v:l1v@localhost:5432/l1v_wo`, DB bersih uji `l1v_fresh`) harus dinyalakan manual; API `npx tsx src/index.ts`, worker `npx tsx src/worker.ts`, web `npx next dev`; server MSRadius tiruan ada di scratchpad sesi lama (tidak persisten — tulis ulang bila perlu: `GET /api/radius/{masterdata/area/list,databilling/profile,databilling/data}` dengan header `X-TOKEN`).
+- **Catatan desain penting**: sub-role hanya membedakan FOC (jadwal = supervisor/manager); Admin bisa "Bertindak sebagai" peran lain; pelanggan MSRadius hanya-baca untuk nama/telepon/alamat/paket; Area menggantikan gudang/cabang (`Customer.warehouseId` diturunkan dari `Area.warehouseId`); PR→PO Accurate dicatat ulang (nomor PO Accurate = nomor PO); Reg. No. formulir = awalan `SM` + 3 digit tahun + isian.
+- **Kandidat tindak lanjut (bukan fitur baru, hanya bila pemilik meminta)**: tombol "serah-terima sisa" otomatis dari laporan instalasi; filter pelanggan per Area; ekspor Excel kolom IP Publik; pembatasan akses file `uploads` (tanda tangan manager saat ini publik via URL).
 
 ## 1. Ringkasan proyek
 Aplikasi Work Order + Inventori multi-gudang untuk ISP. Brand **MAUNG by LIV** ("Gerak Cepat, Kerja Tepat."). Repo privat `github.com/thuekx/Maung-Wo-Inv`, branch `main`. Pengguna berbahasa Indonesia; UI dan dokumen berbahasa Indonesia.
@@ -20,7 +33,7 @@ Aplikasi Work Order + Inventori multi-gudang untuk ISP. Brand **MAUNG by LIV** (
 | Stack | Next.js 16 + React 19 + Tailwind 3 (web) · Node 24 + Express 5 + TypeScript 5.9 (api) · Prisma 7 (adapter-pg) · PostgreSQL 16 · Redis 7 + BullMQ · Docker Compose |
 | Staging pemilik | VirtualBox Ubuntu 24.04, 4 vCPU/6 GB, `http://172.24.12.23` (web :3000, api :4000), Docker sudah berjalan; **HTTP polos → GPS browser dan webhook Telegram belum bisa** (butuh HTTPS/Caddy) |
 | Deploy | `git fetch origin && git reset --hard origin/main && bash scripts/deploy.sh` (**satu baris dengan `&&`**). `DEMO=1` menambah data demo. Service `migrate` menjalankan `reconcile-migrations` lalu `prisma migrate deploy` |
-| Akun demo | `*@l1v.local` (admin, mkt, noc, budi, andi (FOC), ga, fin), kata sandi = `SEED_PASSWORD` di `.env` (bawaan `Passw0rd!`) |
+| Akun demo | `*@l1v.local` (admin, mkt, noc, citra, budi, andi, ga, fin), kata sandi = `SEED_PASSWORD` di `.env` (deploy.sh membuat acak) |
 | Peran | `ADMIN, MKT, NOC, FOC, GA (GA+Procurement satu peran), FIN` (PROC sudah dihapus) |
 | Peringatan tooling | jangan `pkill -f <pola>` (membunuh shell sendiri) → pakai `fuser -k 3000/tcp`; `redis-server` harus hidup untuk API; Postgres lokal sering mati (`service postgresql start`); Playwright ada di `/opt/node-tools/node_modules/playwright-core` dengan `executablePath: '/opt/pw-browsers/chromium'`; skrip uji di `/tmp` **tidak persisten** |
 
