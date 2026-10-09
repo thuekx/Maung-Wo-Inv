@@ -149,11 +149,11 @@ procurementRoutes.get('/purchase-requests/:id', async (req, res) => {
 
 async function writeLines(tx: Tx, prId: string, lines: z.infer<typeof lineBody>[]) {
   for (const [i, l] of lines.entries()) {
-    if (l.itemId && !(await tx.item.findUnique({ where: { id: l.itemId } }))) throw fieldError('lines', `Baris ${i + 1}: item tidak ditemukan`);
+    if (l.itemId && !(await tx.item.findUnique({ where: { id: l.itemId } }))) throw fieldError('lines', `Item ${i + 1}: item tidak ditemukan`);
     const vendorIds = l.quotes.map((x) => x.vendorId);
-    if (new Set(vendorIds).size !== vendorIds.length) throw fieldError('lines', `Baris ${i + 1}: vendor yang sama dimasukkan dua kali`);
-    if (vendorIds.length && (await tx.vendor.count({ where: { id: { in: vendorIds } } })) !== vendorIds.length) throw fieldError('lines', `Baris ${i + 1}: vendor tidak ditemukan`);
-    if (l.quotes.filter((x) => x.chosen).length > 1) throw fieldError('lines', `Baris ${i + 1}: hanya satu vendor yang boleh dipilih`);
+    if (new Set(vendorIds).size !== vendorIds.length) throw fieldError('lines', `Item ${i + 1}: vendor yang sama dimasukkan dua kali`);
+    if (vendorIds.length && (await tx.vendor.count({ where: { id: { in: vendorIds } } })) !== vendorIds.length) throw fieldError('lines', `Item ${i + 1}: vendor tidak ditemukan`);
+    if (l.quotes.filter((x) => x.chosen).length > 1) throw fieldError('lines', `Item ${i + 1}: hanya satu vendor yang boleh dipilih`);
     await tx.prLine.create({
       data: { prId, sort: i, description: l.description, qty: l.qty, unit: l.unit, itemId: l.itemId ?? null, note: l.note ?? null, quotes: { create: l.quotes.map((x) => ({ vendorId: x.vendorId, unitPrice: x.unitPrice, note: x.note ?? null, chosen: !!x.chosen })) } },
     });
@@ -212,7 +212,7 @@ procurementRoutes.delete('/purchase-requests/:id', async (req, res) => {
 async function assertComplete(pr: Awaited<ReturnType<typeof loadPr>>) {
   const { minVendors } = await getDocs();
   for (const [i, l] of pr.lines.entries()) {
-    const n = `Baris ${i + 1} (${l.description})`;
+    const n = `Item ${i + 1} (${l.description})`;
     if (l.quotes.length < minVendors) throw fieldError('lines', `${n}: minimal ${minVendors} vendor untuk perbandingan harga (baru ${l.quotes.length})`);
     if (l.quotes.some((q) => num(q.unitPrice) <= 0)) throw fieldError('lines', `${n}: harga vendor harus lebih dari 0`);
     if (l.quotes.filter((q) => q.chosen).length !== 1) throw fieldError('lines', `${n}: pilih tepat satu vendor`);
