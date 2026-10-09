@@ -17,6 +17,10 @@ new Worker(
     try {
       const text = `${n.subject}\n\n${n.body}`;
       const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : await sendTelegram(n.target, text);
+      if (r === 'disabled') {
+        await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: 'Pengiriman email dinonaktifkan (Admin → Pengaturan → SMTP → sakelar Email aktif)' } });
+        return;
+      }
       if (r === 'dry-run') {
         const why = n.channel === 'EMAIL' ? 'SMTP belum dikonfigurasi (Admin → Integrasi)' : 'Token bot Telegram belum dikonfigurasi (Admin → Integrasi)';
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });

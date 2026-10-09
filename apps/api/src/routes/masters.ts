@@ -13,6 +13,7 @@ import { auditedDelete, auditedUpdate, changes, whoOf, writeAudit } from '../aud
 import { config } from '../config';
 import { countIf, pageParams, sendPage } from '../paging';
 import { assertNetworkFree, internalIp, odpName, portName, publicIp, vlanId } from '../network';
+import { getAppName } from '../settings';
 
 /** Master & data pendukung: pelanggan (manual/impor/ekspor Excel), paket, merk/tipe, reset password, hapus/edit, audit. */
 export const masterRoutes = Router();
@@ -479,7 +480,7 @@ async function resetPasswords(req: import('express').Request, ids: string[], o: 
       if (o.notify)
         await fx.notify({
           userIds: [u.id],
-          subject: '🔑 Password akun L1V WO diubah oleh Admin',
+          subject: `🔑 Password akun ${await getAppName()} diubah oleh Admin`,
           body: `Halo ${u.name},\n\nPassword akun Anda (${u.email}) telah diubah oleh ${who.name}.${o.sendPassword ? `\nPassword sementara: ${plain}` : '\nHubungi Admin untuk mendapatkan password baru.'}${o.mustChange ? '\nAnda diminta mengganti password saat login berikutnya.' : ''}\n${config.webUrl}\n\nJika Anda tidak mengharapkan perubahan ini, segera hubungi Admin.`,
         });
     }

@@ -232,13 +232,13 @@ function UploadBox({ title, hint, url: uploaded, dark, variant, onDone }: { titl
 
 function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
   const b = d.branding;
-  const [f, setF] = useState({ companyName: b.companyName, tagline: b.tagline, subtitle: b.subtitle, loginText: b.loginText, primary: b.colors.primary, accent: b.colors.accent, charts: [...b.colors.charts] as string[] });
+  const [f, setF] = useState({ appName: b.appName ?? 'MAUNG | SuperApps', companyName: b.companyName, tagline: b.tagline, subtitle: b.subtitle, loginText: b.loginText, primary: b.colors.primary, accent: b.colors.accent, charts: [...b.colors.charts] as string[] });
   const a = useAction();
   const set = (k: string, v: any) => setF((p) => ({ ...p, [k]: v }));
   const valid = HEXRE.test(f.primary) && HEXRE.test(f.accent) && f.charts.every((c) => HEXRE.test(c));
   const lines: string[] = String(f.loginText).split('\n').filter(Boolean);
   const save = () => a.run(async () => {
-    await api('/admin/settings/branding', { method: 'PUT', body: { companyName: f.companyName, tagline: f.tagline, subtitle: f.subtitle, loginText: f.loginText, colors: { primary: f.primary, accent: f.accent, charts: f.charts } } });
+    await api('/admin/settings/branding', { method: 'PUT', body: { appName: f.appName, companyName: f.companyName, tagline: f.tagline, subtitle: f.subtitle, loginText: f.loginText, colors: { primary: f.primary, accent: f.accent, charts: f.charts } } });
     await loadBranding(true); reload();
   }, 'Tampilan & brand disimpan — langsung berlaku');
   const reset = async () => { if (!(await confirmDialog('Kembalikan teks dan warna ke bawaan panduan MAUNG by LIV? (Logo tidak dihapus)'))) return; a.run(async () => { await api('/admin/settings/branding/reset', { body: {} }); await loadBranding(true); reload(); setTimeout(() => window.location.reload(), 600); }, 'Dikembalikan ke bawaan'); };
@@ -260,6 +260,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
       <div className="grid gap-3 md:grid-cols-2">
         <Field label="Nama brand / perusahaan (juga tertulis di foto)"><input className="input" value={f.companyName} onChange={(e) => set('companyName', e.target.value)} /></Field>
         <Field label="Tagline" help="Tampil di halaman login, dashboard, dan sidebar. Kosongkan untuk menyembunyikan."><input className="input" value={f.tagline} onChange={(e) => set('tagline', e.target.value)} /></Field>
+        <Field label="Nama aplikasi" help="Dipakai sebagai nama pengirim & penutup email/notifikasi, mis. MAUNG | SuperApps"><input className="input" value={f.appName} maxLength={60} onChange={(e) => set('appName', e.target.value)} /></Field>
         <Field label="Sub-judul (di bawah logo)"><input className="input" value={f.subtitle} onChange={(e) => set('subtitle', e.target.value)} /></Field>
         <Field label="Teks halaman login" help="Satu baris per paragraf."><textarea className="input" rows={3} value={f.loginText} onChange={(e) => set('loginText', e.target.value)} /></Field>
       </div>
@@ -303,13 +304,19 @@ function SmtpCard({ d, reload }: { d: any; reload: () => void }) {
   const set = (k: string, v: any) => setF((p) => ({ ...p, [k]: v }));
   return (
     <div className="card space-y-3">
-      <div className="flex items-center justify-between"><h2 className="font-semibold">Email (SMTP pengirim)</h2><Badge tone={s.source === 'db' ? 'green' : s.source === 'env' ? 'blue' : 'amber'}>{s.source === 'db' ? 'Diatur di sini' : s.source === 'env' ? 'Dari .env' : 'Belum diatur (dry-run)'}</Badge></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Email (SMTP pengirim)</h2><Badge tone={s.source === 'db' ? 'green' : s.source === 'env' ? 'blue' : 'amber'}>{s.source === 'db' ? 'Diatur di sini' : s.source === 'env' ? 'Dari .env' : 'Belum diatur (dry-run)'}</Badge></div>
+      {s.host && (
+        <label className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${s.enabled ? 'border-green-300 bg-green-50 dark:bg-slate-800' : 'border-amber-300 bg-amber-50 dark:bg-slate-800'}`}>
+          <input type="checkbox" className="mt-1" checked={s.enabled} disabled={a.busy} onChange={(e) => a.run(async () => { await api('/admin/settings/smtp/enabled', { method: 'PUT', body: { enabled: e.target.checked } }); reload(); }, e.target.checked ? 'Pengiriman email diaktifkan' : 'Pengiriman email dinonaktifkan')} />
+          <span><b>Kirim email: {s.enabled ? 'AKTIF' : 'NONAKTIF'}</b><span className="block text-xs text-slate-600">{s.enabled ? 'Notifikasi dikirim ke email penerima.' : 'Email tidak dikirim (tercatat "Tidak terkirim" di Log notifikasi dan bisa dikirim ulang nanti) — cocok saat uji coba / pengisian data awal.'}</span></span>
+        </label>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Server SMTP" help="mis. smtp.gmail.com / smtp.office365.com / mail.perusahaan.co.id"><input className="input" value={f.host} onChange={(e) => set('host', e.target.value)} placeholder="smtp.contoh.com" /></Field>
         <Field label="Port" help="587 (STARTTLS) atau 465 (SSL)"><input className="input" type="number" value={f.port} onChange={(e) => set('port', e.target.value)} /></Field>
         <Field label="Username"><input className="input" value={f.user} onChange={(e) => set('user', e.target.value)} autoComplete="off" /></Field>
         <Field label="Password / App Password" help={s.hasPass ? 'Tersimpan (terenkripsi). Kosongkan untuk tetap memakai yang lama.' : 'Disimpan terenkripsi di database.'}><input className="input" type="password" value={f.pass} onChange={(e) => set('pass', e.target.value)} placeholder={s.hasPass ? '••••••••' : ''} autoComplete="new-password" /></Field>
-        <Field label="Alamat pengirim (From)" help='contoh: L1V WO <noreply@perusahaan.co.id> — harus alamat yang diizinkan SMTP Anda'><input className="input" value={f.from} onChange={(e) => set('from', e.target.value)} /></Field>
+        <Field label="Alamat pengirim (From)" help='contoh: noreply@perusahaan.co.id — nama pengirim otomatis memakai Nama aplikasi; alamat harus yang diizinkan SMTP Anda'><input className="input" value={f.from} onChange={(e) => set('from', e.target.value)} /></Field>
         <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={f.secure} onChange={(e) => set('secure', e.target.checked)} /> SSL langsung (port 465)</label>
       </div>
       <div className="flex flex-wrap items-center gap-3">

@@ -26,7 +26,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: '/purchase-orders', label: 'Purchase Order', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'] },
   ] },
   { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', roles: ['ADMIN', 'MKT', 'GA'] }] },
-  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }] },
+  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }] },
 ];
 
 const canSee = (i: Item, u: { role: string; subRole?: string }) => !i.roles || i.roles.includes(u.role) || (!!i.lead && (u.subRole === 'SUPERVISOR' || u.subRole === 'MANAGER'));
@@ -81,7 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <NotificationBell />
           <div ref={menuRef} className="relative">
             <button className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-white/10" onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu}>
-              <Avatar name={user.name} size={32} />
+              <Avatar name={user.name} size={32} url={user.avatarUrl} />
               <span className="hidden text-left leading-tight sm:block"><span className="block text-sm font-medium">{user.name}</span><span className="block text-[11px] text-slate-300">{roleText(user)}</span></span>
               <Icon name="chevronDown" size={16} className="hidden text-slate-300 sm:block" />
             </button>
@@ -108,7 +108,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Sidebar (TailAdmin): grup menu, bisa diciutkan, drawer di HP; aktif = penanda emas */}
       <aside className={`fixed bottom-0 left-0 top-16 z-40 overflow-y-auto border-r border-slate-200 bg-white px-3 py-4 transition-all duration-200 ${mobile ? 'translate-x-0' : '-translate-x-full'} w-64 lg:translate-x-0 ${collapsed ? 'lg:w-[76px]' : 'lg:w-64'}`}>
         <div className={`mb-4 flex items-center gap-3 rounded-xl bg-brand-50 px-3 py-3 ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}>
-          <Avatar name={user.name} size={36} />
+          <Avatar name={user.name} size={36} url={user.avatarUrl} />
           <div className={`min-w-0 leading-tight ${collapsed ? 'lg:hidden' : ''}`}>
             <div className="text-[11px] text-slate-500">Selamat datang,</div>
             <div className="truncate text-sm font-semibold text-brand-900">{user.name}</div>

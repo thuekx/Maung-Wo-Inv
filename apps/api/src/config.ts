@@ -15,7 +15,7 @@ export const config = {
     port: Number(env.SMTP_PORT ?? 587),
     user: env.SMTP_USER,
     pass: env.SMTP_PASS,
-    from: env.SMTP_FROM ?? 'L1V WO <noreply@l1v.local>',
+    from: env.SMTP_FROM ?? 'MAUNG | SuperApps <noreply@l1v.local>',
   },
   telegram: {
     token: env.TELEGRAM_BOT_TOKEN,

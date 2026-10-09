@@ -82,4 +82,4 @@ void (async () => {
   } catch { /* folder belum ada: tidak masalah */ }
 })();
 
-app.listen(config.port, () => console.log(`L1V WO API :${config.port}`));
+app.listen(config.port, () => console.log(`MAUNG API :${config.port}`));

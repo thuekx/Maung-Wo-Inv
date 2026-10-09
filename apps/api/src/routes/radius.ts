@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppError, fieldError, prisma } from '../db';
 import { authenticate, requireRole } from '../auth';
 import { cronQueue } from '../queue';
-import { getRadius, pullOne, RADIUS_DEFAULT_URL, saveRadius, syncRunning, testRadius } from '../radius';
+import { getRadius, pullOne, radiusGet, RADIUS_DEFAULT_URL, saveRadius, syncRunning, testRadius } from '../radius';
 import { whoOf, writeAudit } from '../audit';
 import { transact } from '../effects';
 
@@ -61,4 +61,40 @@ radiusRoutes.post('/customers/:id/radius-pull', requireRole('MKT'), async (req, 
   try { stats = await pullOne(c.code); } catch (e) { throw new AppError(502, (e as Error).message); }
   if (!stats) throw fieldError('code', `Kode ${c.code} belum ada di MSRadius — pastikan akun sudah dibuat di MSRadius dengan kode yang sama`, 404);
   res.json({ ok: true, ...stats, customer: await prisma.customer.findUnique({ where: { id: c.id } }) });
+});
+
+
+/**
+ * Katalog endpoint MSRadius (dari dokumen "Authentication API") + sampel nyata 1 item untuk dianalisis Admin.
+ * Hanya GET; sampel diambil dari server (token tidak pernah dikirim ke browser) dan dibatasi satu panggilan per klik (batas MSRadius 10/menit).
+ */
+const CATALOG = [
+  { key: 'users', path: 'masterdata/users/list', title: 'Daftar user (reseller / partner / mitra)', params: [], usedBy: 'Uji koneksi', note: 'data = { id_user: nama }' },
+  { key: 'nas', path: 'masterdata/nas/list', title: 'Daftar NAS / router', params: [], usedBy: '— (belum dipakai)', note: 'data = { ip_router: nama NAS }' },
+  { key: 'area', path: 'masterdata/area/list', title: 'Daftar area', params: [], usedBy: 'Master Area (sinkron)', note: 'data = { id_area: nama }' },
+  { key: 'voucher-profile', path: 'datavoucher/profile', title: 'Profil voucher (hotspot / evoucher)', params: [], usedBy: '— (di luar lingkup)', note: 'Voucher hotspot' },
+  { key: 'voucher-report', path: 'datavoucher/report', title: 'Laporan penjualan voucher', params: ['date_start', 'date_end'], usedBy: '— (di luar lingkup)', note: 'Rentang maks. 7 hari; contoh memakai 3 hari terakhir' },
+  { key: 'billing-profile', path: 'databilling/profile', title: 'Profil / paket billing', params: [], usedBy: 'Master Paket (sinkron)', note: 'Harga modal & komisi tidak disimpan' },
+  { key: 'billing-report', path: 'databilling/report', title: 'Transaksi billing per periode', params: ['date_start', 'date_end'], usedBy: '— (data keuangan, belum dipakai)', note: 'Rentang maks. 7 hari; contoh memakai 3 hari terakhir' },
+  { key: 'billing-data', path: 'databilling/data', title: 'Data pelanggan billing', params: [], usedBy: 'Pelanggan (sinkron)', note: 'Semua pelanggan dalam satu panggilan (tanpa paginasi); sampel hanya 1 item' },
+] as const;
+
+radiusRoutes.get('/admin/radius/endpoints', requireRole('ADMIN'), async (_req, res) => {
+  const cfg = await getRadius();
+  res.json({ baseUrl: cfg.baseUrl, tokenSet: !!cfg.token, endpoints: CATALOG });
+});
+
+radiusRoutes.post('/admin/radius/endpoints/:key/sample', requireRole('ADMIN'), async (req, res) => {
+  const ep = CATALOG.find((e) => e.key === String(req.params.key));
+  if (!ep) throw new AppError(404, 'Endpoint tidak dikenal');
+  const cfg = await getRadius();
+  const day = (n: number) => new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+  const params = ep.params.length ? { date_start: day(3), date_end: day(1) } : undefined;
+  try {
+    const r = await radiusGet<any>(cfg, ep.path, params);
+    const d = r.data;
+    const first = Array.isArray(d) ? d[0] : d && typeof d === 'object' ? (() => { const k = Object.keys(d)[0]; return k === undefined ? undefined : { [k]: d[k] }; })() : d;
+    const size = Array.isArray(d) ? d.length : d && typeof d === 'object' ? Object.keys(d).length : 0;
+    res.json({ path: ep.path, params: params ?? null, count: r.count ?? size, shape: Array.isArray(d) ? 'daftar (array)' : 'objek (kunci → nilai)', sample: first ?? null });
+  } catch (e) { throw new AppError(502, (e as Error).message); }
 });

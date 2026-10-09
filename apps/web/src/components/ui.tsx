@@ -27,7 +27,8 @@ export const Badge = ({ children, tone = 'slate' }: { children: React.ReactNode;
   <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}><i className={`inline-block h-1.5 w-1.5 rounded-full ${DOT[tone]}`} />{children}</span>
 );
 
-export function Avatar({ name, size = 32, className = '' }: { name: string; size?: number; className?: string }) {
+export function Avatar({ name, size = 32, className = '', url }: { name: string; size?: number; className?: string; url?: string | null }) {
+  if (url) return <img src={fileUrl(url)} alt="" className={`shrink-0 rounded-full object-cover ${className}`} style={{ width: size, height: size }} />;
   const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
   return <span className={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent-100 font-semibold text-brand-900 ${className}`} style={{ width: size, height: size, fontSize: size * 0.38 }} aria-hidden="true">{ini}</span>;
 }

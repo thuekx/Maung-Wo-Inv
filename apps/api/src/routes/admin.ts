@@ -8,8 +8,8 @@ import nodemailer from 'nodemailer';
 import { AppError, prisma } from '../db';
 import { requireRole } from '../auth';
 import { config } from '../config';
-import { encryptSecret, getBranding, getSetting, getSmtp, getTelegram, putSetting } from '../settings';
-import { sendTelegram, telegramApi } from '../senders';
+import { encryptSecret, getAppName, getBranding, getSetting, getSmtp, getTelegram, putSetting } from '../settings';
+import { fromHeader, sendTelegram, telegramApi } from '../senders';
 
 /** Pengaturan yang dikelola Admin: SMTP, Telegram, logo/branding, kebijakan GPS. Dipasang SETELAH authenticate. */
 export const adminRoutes = Router();
@@ -21,7 +21,7 @@ const hint = (s: string) => (s ? `••••${s.slice(-4)}` : '');
 async function overview() {
   const [smtp, tg, branding] = await Promise.all([getSmtp(), getTelegram(), getBranding()]);
   return {
-    smtp: { host: smtp.host, port: smtp.port, secure: smtp.secure, user: smtp.user, from: smtp.from, hasPass: !!smtp.pass, source: smtp.source },
+    smtp: { host: smtp.host, port: smtp.port, secure: smtp.secure, user: smtp.user, from: smtp.from, enabled: smtp.enabled, hasPass: !!smtp.pass, source: smtp.source },
     telegram: { hasToken: !!tg.token, tokenHint: hint(tg.token), botUsername: tg.botUsername, roleChats: tg.roleChats, hasWebhookSecret: !!tg.webhookSecret, source: tg.source },
     branding,
     webUrl: config.webUrl,
@@ -33,12 +33,21 @@ adminRoutes.get('/admin/settings', async (_req, res) => res.json(await overview(
 /* ── SMTP ── */
 adminRoutes.put('/admin/settings/smtp', async (req, res) => {
   const b = z
-    .object({ host: z.string().trim(), port: z.coerce.number().int().min(1).max(65535).default(587), secure: z.boolean().default(false), user: z.string().trim().default(''), pass: z.string().optional(), from: z.string().trim().default('') })
+    .object({ host: z.string().trim(), port: z.coerce.number().int().min(1).max(65535).default(587), secure: z.boolean().default(false), user: z.string().trim().default(''), pass: z.string().optional(), from: z.string().trim().default(''), enabled: z.boolean().optional() })
     .parse(req.body);
   const old = (await getSetting<any>('smtp')) ?? {};
   // host kosong = hapus pengaturan DB (kembali ke .env / dry-run)
   if (!b.host) await putSetting('smtp', {}, req.user!.id);
-  else await putSetting('smtp', { host: b.host, port: b.port, secure: b.secure, user: b.user, from: b.from, pass: b.pass === undefined ? old.pass : b.pass ? encryptSecret(b.pass) : '' }, req.user!.id);
+  else await putSetting('smtp', { host: b.host, port: b.port, secure: b.secure, user: b.user, from: b.from, enabled: b.enabled ?? old.enabled !== false, pass: b.pass === undefined ? old.pass : b.pass ? encryptSecret(b.pass) : '' }, req.user!.id);
+  res.json(await overview());
+});
+
+/** Sakelar cepat: matikan/nyalakan pengiriman email tanpa mengubah pengaturan SMTP lain. */
+adminRoutes.put('/admin/settings/smtp/enabled', async (req, res) => {
+  const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+  const old = (await getSetting<any>('smtp')) ?? {};
+  if (!old.host) throw new AppError(400, 'SMTP belum diatur (isi host dulu)');
+  await putSetting('smtp', { ...old, enabled }, req.user!.id);
   res.json(await overview());
 });
 
@@ -49,7 +58,8 @@ adminRoutes.post('/admin/settings/smtp/test', async (req, res) => {
   const t = nodemailer.createTransport({ host: c.host, port: c.port, secure: c.secure || c.port === 465, auth: c.user ? { user: c.user, pass: c.pass } : undefined, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000 });
   try {
     await t.verify();
-    await t.sendMail({ from: c.from, to, subject: 'Tes email L1V WO', text: `Email uji dari L1V WO.\nDikirim ${new Date().toLocaleString('id-ID')} oleh ${req.user!.name}.\nJika Anda menerima ini, pengaturan SMTP sudah benar.` });
+    const app = await getAppName();
+    await t.sendMail({ from: fromHeader(c.from, app), to, subject: `Tes email ${app}`, text: `Email uji dari ${app}.\nDikirim ${new Date().toLocaleString('id-ID')} oleh ${req.user!.name}.\nJika Anda menerima ini, pengaturan SMTP sudah benar.` });
   } catch (e) {
     throw new AppError(400, `Gagal: ${(e as Error).message}`);
   }
@@ -109,7 +119,7 @@ adminRoutes.post('/admin/settings/telegram/test', async (req, res) => {
   const tg = await getTelegram();
   if (!tg.token) throw new AppError(400, 'Token bot belum diisi');
   try {
-    await sendTelegram(chatId, `✅ Tes L1V WO — pesan ini dikirim oleh ${req.user!.name}. Notifikasi akan masuk ke chat ini.`);
+    await sendTelegram(chatId, `✅ Tes ${await getAppName()} — pesan ini dikirim oleh ${req.user!.name}. Notifikasi akan masuk ke chat ini.`);
   } catch (e) {
     throw new AppError(400, `Gagal kirim: ${(e as Error).message}`);
   }
@@ -152,6 +162,7 @@ adminRoutes.put('/admin/settings/branding', async (req, res) => {
       tagline: z.string().trim().max(120),
       subtitle: z.string().trim().max(160),
       loginText: z.string().max(400),
+      appName: z.string().trim().min(2).max(60),
       colors: z.object({ primary: hex, accent: hex, charts: z.array(hex).length(6) }),
     })
     .partial()

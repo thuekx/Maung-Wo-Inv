@@ -1,9 +1,10 @@
 'use client';
 import { useState } from 'react';
-import { api, ROLE_LABEL } from '@/lib/api';
+import { API, api, getToken, ROLE_LABEL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
-import { PageHeader } from '@/components/ui';
+import { Avatar, PageHeader } from '@/components/ui';
+import { toast } from '@/lib/dialog';
 
 export default function Profile() {
   const { user } = useAuth();
@@ -14,6 +15,28 @@ export default function Profile() {
     <div className="max-w-xl space-y-4">
       {user.mustChangePassword && <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">⚠ Password Anda diatur ulang oleh Admin. Ganti password di bawah sebelum melanjutkan.</p>}
       <PageHeader title="Profil" sub={`${user.email} · ${ROLE_LABEL[user.role]}`} />
+      <div className="card space-y-4">
+        <h2 className="font-semibold">Data profil</h2>
+        <div className="flex flex-wrap items-center gap-4">
+          <Avatar name={user.name} size={72} url={user.avatarUrl} />
+          <div className="space-y-1.5">
+            <label className="btn-ghost cursor-pointer">Unggah foto
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={async (e) => {
+                const f = e.target.files?.[0]; if (!f) return;
+                const fd = new FormData(); fd.append('file', f);
+                const res = await fetch(`${API}/api/auth/me/avatar`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
+                if (!res.ok) return void toast.error((await res.json().catch(() => ({}))).error ?? 'Foto gagal diunggah');
+                toast.success('Foto profil tersimpan'); window.location.reload();
+              }} />
+            </label>
+            {user.avatarUrl && <button className="btn-ghost ml-2 !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { await api('/auth/me/avatar', { method: 'DELETE' }); window.location.reload(); }}>Hapus foto</button>}
+            <p className="text-xs text-slate-500">JPG/PNG/WEBP, maks. 2 MB. Tampil di pojok kanan atas dan menu samping.</p>
+          </div>
+        </div>
+        <DynamicForm submitLabel="Simpan profil" initial={{ name: user.name, email: user.email }}
+          fields={[{ name: 'name', label: 'Nama', type: 'text', required: true }, { name: 'email', label: 'Email (juga dipakai untuk login & notifikasi)', type: 'text', required: true }]}
+          onSubmit={async (v) => { await api('/auth/me', { method: 'PATCH', body: { name: v.name, email: v.email } }); toast.success('Profil tersimpan'); window.location.reload(); }} />
+      </div>
       <div className="card space-y-2">
         <h2 className="font-semibold">Notifikasi Telegram {user.telegramLinked && <span className="text-sm font-normal text-green-700">✓ terhubung</span>}</h2>
         <p className="text-sm text-slate-500">Buat kode, lalu kirim perintah di bawah ke bot Telegram perusahaan. Email selalu aktif.</p>

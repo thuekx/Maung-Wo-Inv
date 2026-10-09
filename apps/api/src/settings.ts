@@ -49,12 +49,12 @@ export async function putSetting(k: string, value: unknown, userId?: string) {
 }
 
 /* ── SMTP ── */
-export interface SmtpCfg { host: string; port: number; secure: boolean; user: string; pass: string; from: string; source: 'db' | 'env' | 'none' }
+export interface SmtpCfg { host: string; port: number; secure: boolean; user: string; pass: string; from: string; enabled: boolean; source: 'db' | 'env' | 'none' }
 export async function getSmtp(): Promise<SmtpCfg> {
   const s = await getSetting<any>('smtp');
-  if (s?.host) return { host: s.host, port: Number(s.port ?? 587), secure: !!s.secure, user: s.user ?? '', pass: decryptSecret(s.pass), from: s.from || config.smtp.from, source: 'db' };
-  if (config.smtp.host) return { host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, user: config.smtp.user ?? '', pass: config.smtp.pass ?? '', from: config.smtp.from, source: 'env' };
-  return { host: '', port: 587, secure: false, user: '', pass: '', from: config.smtp.from, source: 'none' };
+  if (s?.host) return { host: s.host, port: Number(s.port ?? 587), secure: !!s.secure, user: s.user ?? '', pass: decryptSecret(s.pass), from: s.from || config.smtp.from, enabled: s.enabled !== false, source: 'db' };
+  if (config.smtp.host) return { host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, user: config.smtp.user ?? '', pass: config.smtp.pass ?? '', from: config.smtp.from, enabled: true, source: 'env' };
+  return { host: '', port: 587, secure: false, user: '', pass: '', from: config.smtp.from, enabled: false, source: 'none' };
 }
 
 /* ── Telegram ── */
@@ -75,6 +75,7 @@ export async function getTelegram(): Promise<TelegramCfg> {
 }
 
 /* ── Branding & kebijakan aplikasi ── */
+export const APP_NAME_DEFAULT = 'MAUNG | SuperApps';
 export const BRAND_DEFAULTS = {
   companyName: 'MAUNG by LIV',
   tagline: 'Gerak Cepat, Kerja Tepat.',
@@ -91,6 +92,7 @@ export async function getBranding() {
   const c = b.colors ?? {};
   return {
     companyName: (b.companyName as string) || BRAND_DEFAULTS.companyName,
+    appName: (b.appName as string) || APP_NAME_DEFAULT, // nama aplikasi di email & notifikasi
     tagline: typeof b.tagline === 'string' ? b.tagline : BRAND_DEFAULTS.tagline,
     subtitle: typeof b.subtitle === 'string' ? b.subtitle : BRAND_DEFAULTS.subtitle,
     loginText: typeof b.loginText === 'string' ? b.loginText : BRAND_DEFAULTS.loginText,
@@ -142,3 +144,6 @@ export async function getSubForm(): Promise<SubFormCfg> {
 }
 /** Awalan nomor registrasi: awalan + 3 digit tahun (2026 → 026, 2027 → 027). */
 export const regYear3 = (d: Date) => String(d.getFullYear() % 1000).padStart(3, '0');
+
+/** Nama aplikasi untuk email/notifikasi (Admin → Tampilan & brand → Nama aplikasi). */
+export const getAppName = async () => (((await getSetting<any>('branding')) ?? {}).appName as string) || APP_NAME_DEFAULT;

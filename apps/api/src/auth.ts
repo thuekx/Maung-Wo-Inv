@@ -54,4 +54,4 @@ import type { Actor } from './wf-types';
 /** Pelaku untuk engine WO (peran efektif; `acting` = Admin yang sedang bertindak sebagai peran lain). */
 export const actorOf = (req: Request): Actor => ({ id: req.user!.id, name: req.realUser ? `${req.user!.name} (Admin sbg ${req.user!.role})` : req.user!.name, role: req.user!.role, subRole: req.user!.subRole, acting: !!req.realUser });
 
-export const publicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, role: u.role, subRole: u.subRole, telegramLinked: !!u.telegramChatId, mustChangePassword: u.mustChangePassword });
+export const publicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, role: u.role, subRole: u.subRole, avatarUrl: u.avatarUrl, telegramLinked: !!u.telegramChatId, mustChangePassword: u.mustChangePassword });

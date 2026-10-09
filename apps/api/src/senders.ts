@@ -1,5 +1,8 @@
 import nodemailer, { Transporter } from 'nodemailer';
-import { getSmtp, getTelegram, SmtpCfg } from './settings';
+import { getAppName, getSmtp, getTelegram, SmtpCfg } from './settings';
+
+/** Alamat pengirim dengan nama tampilan = nama aplikasi ("MAUNG | SuperApps" <noreply@…>). */
+export const fromHeader = (from: string, appName: string) => { const m = /<([^>]+)>/.exec(from) ?? /([^\s<>"]+@[^\s<>"]+)/.exec(from); return m ? `"${appName.replace(/"/g, '')}" <${m[1]}>` : from; };
 
 let cached: { sig: string; t: Transporter } | null = null;
 const transportFor = (c: SmtpCfg) => {
@@ -25,7 +28,9 @@ export async function sendEmail(to: string, subject: string, text: string) {
     console.log(`[email dry-run] → ${to} | ${subject}`);
     return 'dry-run';
   }
-  await transportFor(c).sendMail({ from: c.from, to, subject, text });
+  if (!c.enabled) return 'disabled'; // sakelar email dimatikan Admin (mis. saat uji coba/demo)
+  const app = await getAppName();
+  await transportFor(c).sendMail({ from: fromHeader(c.from, app), to, subject, text: `${text}\n\n—\n${app}` });
   return 'sent';
 }
 

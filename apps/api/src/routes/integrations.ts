@@ -7,7 +7,7 @@ import { connection } from '../queue';
 import { transact } from '../effects';
 import { createWorkOrder, systemActor } from '../engine';
 import { sendTelegram } from '../senders';
-import { getBranding, getTelegram } from '../settings';
+import { getAppName, getBranding, getTelegram } from '../settings';
 
 export const integrationRoutes = Router();
 
@@ -74,7 +74,7 @@ integrationRoutes.post('/telegram/webhook/:secret', async (req, res) => {
     if (userId) {
       await prisma.user.update({ where: { id: userId }, data: { telegramChatId: chatId } });
       await connection.del(`tg:${code}`);
-      await sendTelegram(chatId, '✅ Akun L1V WO berhasil terhubung. Notifikasi WO akan dikirim ke chat ini.').catch(() => {});
+      await sendTelegram(chatId, `✅ Akun ${await getAppName()} berhasil terhubung. Notifikasi WO akan dikirim ke chat ini.`).catch(() => {});
     } else {
       await sendTelegram(chatId, '❌ Kode tidak valid / kedaluwarsa. Buat kode baru di halaman Profil.').catch(() => {});
     }
@@ -82,7 +82,7 @@ integrationRoutes.post('/telegram/webhook/:secret', async (req, res) => {
     // berguna untuk grup divisi: kirim /id di grup, salin angkanya ke Admin → Pengaturan → Telegram
     await sendTelegram(chatId, `Chat ID: ${chatId}`).catch(() => {});
   } else if (chatId && text.startsWith('/start')) {
-    await sendTelegram(chatId, `Selamat datang di L1V WO Bot${botUsername ? ` (@${botUsername})` : ''}.\nHubungkan akun: buka halaman Profil di aplikasi, buat kode, lalu kirim: /link KODE\nPerintah lain: /id (tampilkan chat id)\n(chat id ini: ${chatId})`).catch(() => {});
+    await sendTelegram(chatId, `Selamat datang di ${await getAppName()} Bot${botUsername ? ` (@${botUsername})` : ''}.\nHubungkan akun: buka halaman Profil di aplikasi, buat kode, lalu kirim: /link KODE\nPerintah lain: /id (tampilkan chat id)\n(chat id ini: ${chatId})`).catch(() => {});
   }
   res.json({ ok: true });
 });

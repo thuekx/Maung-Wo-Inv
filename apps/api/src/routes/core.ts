@@ -6,7 +6,7 @@ import path from 'path';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { AppError, prisma } from '../db';
+import { AppError, fieldError, prisma } from '../db';
 import { authenticate, publicUser, requireRole, signToken } from '../auth';
 import { config } from '../config';
 import { connection, requeueNotification } from '../queue';
@@ -53,6 +53,35 @@ core.get('/search', async (req, res) => {
 });
 
 core.get('/auth/me', (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null }));
+
+/** Profil sendiri: nama & email (Admin yang bertindak sebagai peran lain mengubah akun aslinya). */
+core.patch('/auth/me', async (req, res) => {
+  const me = req.realUser ?? req.user!;
+  const b = z.object({ name: z.string().trim().min(2, 'Nama minimal 2 karakter').max(80), email: z.string().trim().toLowerCase().email('Format email tidak valid').max(120) }).partial().parse(req.body);
+  if (b.email && b.email !== me.email && (await prisma.user.findUnique({ where: { email: b.email } }))) throw fieldError('email', 'Email sudah dipakai akun lain', 409);
+  const u = await prisma.user.update({ where: { id: me.id }, data: b });
+  res.json(publicUser(u));
+});
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({ destination: config.uploadDir, filename: (req, file, cb) => cb(null, `avatar-${(req.realUser ?? req.user!).id}-${Date.now()}${path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '')}`) }),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+});
+const dropAvatarFile = (url?: string | null) => { if (url?.startsWith('/uploads/avatar-')) fs.unlink(path.join(config.uploadDir, path.basename(url)), () => {}); };
+core.post('/auth/me/avatar', avatarUpload.single('file'), async (req, res) => {
+  const me = req.realUser ?? req.user!;
+  if (!req.file) throw new AppError(400, 'Foto harus JPG/PNG/WEBP ≤ 2 MB');
+  const u = await prisma.user.update({ where: { id: me.id }, data: { avatarUrl: `/uploads/${req.file.filename}` } });
+  dropAvatarFile(me.avatarUrl);
+  res.status(201).json(publicUser(u));
+});
+core.delete('/auth/me/avatar', async (req, res) => {
+  const me = req.realUser ?? req.user!;
+  const u = await prisma.user.update({ where: { id: me.id }, data: { avatarUrl: null } });
+  dropAvatarFile(me.avatarUrl);
+  res.json(publicUser(u));
+});
 
 core.post('/auth/telegram-code', async (req, res) => {
   const code = crypto.randomBytes(4).toString('hex').toUpperCase();

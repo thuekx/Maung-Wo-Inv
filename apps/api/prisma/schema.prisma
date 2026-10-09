@@ -83,6 +83,7 @@ model User {
   telegramChatId     String?
   active             Boolean  @default(true)
   mustChangePassword Boolean  @default(false)
+  avatarUrl          String? // foto profil (diunggah pengguna sendiri)
   createdAt          DateTime @default(now())
 
   created          WorkOrder[]       @relation("creator")
