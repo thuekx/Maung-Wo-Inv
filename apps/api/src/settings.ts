@@ -98,6 +98,8 @@ export async function getBranding() {
     logoStackedUrl: (b.logoStackedUrl as string) || null, // tegak: untuk latar terang (kartu login)
     logoMarkUrl: (b.logoMarkUrl as string) || null, // ikon ringkas (tanpa teks): top bar
     loginBgUrl: (b.loginBgUrl as string) || null,
+    formLogoUrl: (b.formLogoUrl as string) || null, // logo merek di Formulir Berlangganan (bawaan: Sunmori)
+    mgrSignUrl: (b.mgrSignUrl as string) || null, // tanda tangan Manager Marketing (opsional)
     kopUrl: (b.kopUrl as string) || null, // kop surat A4 (gambar latar penuh) untuk dokumen PR/BA/laporan
     gpsLogoUrl: (b.gpsLogoUrl as string) || null, // logo perusahaan untuk banner foto GPS (terpisah dari logo aplikasi)
     colors: {
@@ -122,3 +124,21 @@ export async function getDocs(): Promise<DocsCfg> {
     minVendors: Number.isInteger(Number(d.minVendors)) && Number(d.minVendors) >= 1 ? Number(d.minVendors) : DOCS_DEFAULTS.minVendors,
   };
 }
+
+/* ── Formulir Berlangganan (nomor registrasi, rekening, penandatangan bawaan) ── */
+export interface SubFormCfg { regPrefix: string; city: string; managerName: string; bankName: string; accName: string; accNo: string; footer: string; defaultPayment: 'CASH' | 'TRANSFER' | 'DEBIT'; ppnNote: string }
+export const SUBFORM_DEFAULTS: SubFormCfg = {
+  regPrefix: 'SM', city: 'Bandung', managerName: 'M Gugi Granada',
+  bankName: 'BANK BCA KCP Buahbatu BANDUNG', accName: 'Lintas Satu Visi PT', accNo: '7753555511',
+  footer: 'Jl. Magenta Raya No. 26\nBandung, 40173, Indonesia, Tlp : 022-21000234\nWeb : www.sunmori.net Mail : info@liv.co.id',
+  defaultPayment: 'TRANSFER', ppnNote: 'Include PPN 11%',
+};
+export async function getSubForm(): Promise<SubFormCfg> {
+  const d = (await getSetting<any>('subform')) ?? {};
+  const out: any = { ...SUBFORM_DEFAULTS };
+  for (const k of Object.keys(SUBFORM_DEFAULTS) as (keyof SubFormCfg)[]) if (typeof d[k] === 'string' && d[k].trim()) out[k] = d[k].trim();
+  if (!['CASH', 'TRANSFER', 'DEBIT'].includes(out.defaultPayment)) out.defaultPayment = 'TRANSFER';
+  return out as SubFormCfg;
+}
+/** Awalan nomor registrasi: awalan + 3 digit tahun (2026 → 026, 2027 → 027). */
+export const regYear3 = (d: Date) => String(d.getFullYear() % 1000).padStart(3, '0');

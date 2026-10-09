@@ -151,7 +151,7 @@ const newInstall: Workflow = {
     { name: 'lat', label: 'Latitude (GPS)', type: 'number', help: 'Opsional. contoh: -6.2088' },
     { name: 'lng', label: 'Longitude (GPS)', type: 'number', help: 'Opsional. contoh: 106.8456' },
     { name: 'packageName', label: 'Paket langganan', type: 'package', required: true },
-    { name: 'warehouseId', label: 'Gudang / cabang terkait', type: 'warehouse', required: true },
+    { name: 'areaId', label: 'Area', type: 'area', required: true, help: 'Area layanan (dari MSRadius / Master Area); menentukan gudang yang menyuplai pemasangan' },
     { name: 'notes', label: 'Catatan sales', type: 'textarea' },
   ],
   initial: 'NOC_VALIDATION',
@@ -166,17 +166,22 @@ const newInstall: Workflow = {
         lat: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().min(-90).max(90).optional()),
         lng: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().min(-180).max(180).optional()),
         packageName: z.string().min(1),
-        warehouseId: z.string().min(1),
+        areaId: z.string().min(1).optional(),
+        warehouseId: z.string().min(1).optional(), // lama (API billing): langsung gudang
         notes: optNote,
       })
       .parse(input);
-    const wh = await tx.warehouse.findFirst({ where: { id: i.warehouseId, kind: { not: 'MOBILE' }, active: true } });
+    if (!i.areaId && !i.warehouseId) throw fieldError('areaId', 'Pilih area');
+    const area = i.areaId ? await tx.area.findFirst({ where: { id: i.areaId, active: true } }) : null;
+    if (i.areaId && !area) throw fieldError('areaId', 'Area tidak ditemukan / nonaktif');
+    if (area && !area.warehouseId) throw fieldError('areaId', `Area "${area.name}" belum dihubungkan ke gudang (Master Data → Area)`);
+    const wh = await tx.warehouse.findFirst({ where: { id: area?.warehouseId ?? i.warehouseId!, kind: { not: 'MOBILE' }, active: true } });
     if (!wh) throw new AppError(400, 'Gudang tidak valid');
     if (!(await tx.package.findFirst({ where: { name: i.packageName, active: true } }))) throw new AppError(400, `Paket "${i.packageName}" tidak ada di Master Paket / sudah nonaktif`);
     const code = i.customerCode ?? (await nextNumber(tx, 'CUST'));
     if (i.customerCode && (await tx.customer.findUnique({ where: { code } }))) throw fieldError('customerCode', `Kode pelanggan ${code} sudah ada — cari di menu Pelanggan`, 409);
     const customer = await tx.customer.create({
-      data: { code: code, name: i.name, phone: i.phone, email: i.email || null, address: i.address, lat: i.lat, lng: i.lng, packageName: i.packageName, warehouseId: wh.id },
+      data: { code: code, name: i.name, phone: i.phone, email: i.email || null, address: i.address, lat: i.lat, lng: i.lng, packageName: i.packageName, warehouseId: wh.id, areaId: area?.id ?? null },
     });
     return { title: `Pasang baru – ${i.name}`, customerId: customer.id, data: { packageName: i.packageName, notes: i.notes } };
   },

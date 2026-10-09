@@ -35,3 +35,6 @@ Login sebagai `budi@l1v.local` → buka WO *Rudi Hartono* → **Update progres l
 
 **Pengadaan (login `ga@l1v.local`):** menu *Purchase Request* — ada draft (budi), diajukan (citra), diterbitkan (GA, bisa dicatat keputusan), ditolak (noc), dan satu PR disetujui yang POnya (`PO-ACC-2610-017`) siap diterima di *Purchase Order*. Master vendor di *Master Data → Vendor*. Cetak PDF berkop: buka PR → **Cetak PDF**.
 **Admin sebagai peran lain:** menu akun (kanan atas) → *Bertindak sebagai* → pilih peran & sub-role → Terapkan (banner kuning; "Kembali sebagai Admin").
+
+**Formulir Berlangganan (login `mkt@l1v.local`):** menu *Form Berlangganan* — 3 contoh (`SM026…`, termasuk satu dengan isian minimal). Reg. No. = awalan `SM` + 3 digit tahun otomatis (2026 → `026`, 2027 → `027`) + nomor isian. Pembayaran bawaan Transfer, Manager Marketing bawaan *M Gugi Granada* (ubah di Admin → Pengaturan → Formulir Berlangganan). Cetak: buka formulir → **Cetak / PDF** (Simpan sebagai PDF, A4, margin Tidak ada).
+**Area:** Master Data → Area (area dari MSRadius muncul setelah sinkron; hubungkan tiap area ke gudangnya).

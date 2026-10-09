@@ -12,6 +12,8 @@ import { woRoutes } from './routes/wo';
 import { inventoryRoutes } from './routes/inventory';
 import { procurementRoutes } from './routes/procurement';
 import { radiusRoutes } from './routes/radius';
+import { areaRoutes } from './routes/areas';
+import { subscriptionRoutes } from './routes/subscriptions';
 import { integrationRoutes } from './routes/integrations';
 import { exportRoutes } from './routes/export';
 import { adminRoutes } from './routes/admin';
@@ -36,6 +38,8 @@ api.use(woRoutes);
 api.use(inventoryRoutes);
 api.use(procurementRoutes);
 api.use(radiusRoutes);
+api.use(areaRoutes);
+api.use(subscriptionRoutes);
 app.use('/api', api);
 
 /** Pesan validasi Zod → Indonesia (tampil inline di bawah kolom). */

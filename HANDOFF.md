@@ -51,6 +51,11 @@ Dokumen: `README.md`, `docs/{API,BRANDING,DEMO,FITUR,MIGRATIONS,NOTIFIKASI,RADIU
 - **Demo baru**: akun `citra@` (FOC manager), `budi@` (supervisor), `andi@` (staff), NOC/MKT supervisor, GA/FIN manager; PR di tiap tahap, PO dari PR, serah-terima sisa, aset GA berflag perawatan + kendaraan berplat.
 - Uji di sandbox: DB baru (migrate + seed + seed-demo) OK, `next build` OK, API/Playwright untuk alur utama; **belum** diuji dengan Docker penuh dan token MSRadius asli.
 
+### Tambahan sesi 2026-10-09 (batch F)
+- **Area** menggantikan "gudang/cabang" pada pelanggan (`Area` + `Customer.areaId`; `warehouseId` pelanggan diturunkan dari area). Disinkron dari MSRadius; tautan area→gudang diatur di Master Data → Area.
+- **Nama pelanggan MSRadius**: `_` → spasi otomatis (opsi toggle dihapus). **Anti-ganda**: input manual dengan nama/telepon sama meminta konfirmasi. Pelanggan MSRadius: hanya nama/telepon/alamat/paket yang terkunci.
+- **Formulir Berlangganan digital** (`Subscription`, menu *Form Berlangganan*, cetak `/doc/form/:id`; format dari "Draft FAB Sunmori"): Reg. No. `SM`+3 digit tahun+isian; semua isian opsional kecuali Reg. No.; paket & harga dari Master Paket (MSRadius); pembayaran bawaan Transfer; Manager Marketing bawaan M Gugi Granada (isian); logo formulir (bawaan Sunmori) & tanda tangan manager diunggah di Admin → Branding; dapat dijadikan WO Pasang Baru (prefill, tertaut). Syarat & ketentuan disalin dari dokumen (`apps/web/src/lib/terms.ts`).
+
 ## 3. BACKLOG — 36 butir dari pemilik (SEMUA sudah dikerjakan: batch A–E)
 Status: ✅ selesai · ◑ sebagian · ☐ belum · ⛔ menunggu keputusan/berkas. Batch = urutan kerja yang disarankan (A→E).
 

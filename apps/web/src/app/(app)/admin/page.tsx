@@ -224,6 +224,8 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
         <UploadBox title="Logo tegak (latar terang)" hint="Untuk cetakan/dokumen latar putih. ≤ 2 MB." url={b.logoStackedUrl} variant="stacked" onDone={reload} />
         <UploadBox title="Logo untuk foto GPS (logo perusahaan)" hint="Logo PT yang ditempel di banner foto lapangan (bersama koordinat GPS). Terpisah dari logo aplikasi; bila kosong dipakai logo horizontal. PNG/WEBP ≤ 2 MB." url={b.gpsLogoUrl} dark variant="gps" onDone={reload} />
         <UploadBox title="Kop surat A4 (dokumen PR, BA, laporan)" hint="Gambar kop satu halaman penuh (A4 portrait, mis. 2480×3508 px) dengan area isi kosong di tengah. Bila kosong dipakai kop bawaan. JPG/PNG/WEBP ≤ 3 MB." url={b.kopUrl} variant="kop" onDone={reload} />
+        <UploadBox title="Logo Formulir Berlangganan" hint="Logo merek di pojok kanan atas formulir (bawaan: Sunmori). PNG/WEBP transparan ≤ 2 MB." url={b.formLogoUrl} variant="formlogo" onDone={reload} />
+        <UploadBox title="Tanda tangan Manager Marketing (opsional)" hint="Gambar tanda tangan (PNG transparan ≤ 1 MB) yang tercetak di formulir. Bila kosong, kolom dibiarkan kosong untuk tanda tangan basah." url={b.mgrSignUrl} variant="mgrsign" onDone={reload} />
         <UploadBox title="Gambar latar login (opsional)" hint="Foto lanskap/pegunungan. Diberi lapisan navy otomatis. JPG/WEBP ≤ 6 MB." url={b.loginBgUrl} dark variant="loginbg" onDone={reload} />
       </div>
 
@@ -348,7 +350,7 @@ function RadiusCard() {
   const upd = (k: string, val: unknown) => setV({ ...cur, [k]: val });
   const save = async () => {
     setErr(''); setBusy(true);
-    try { await api('/admin/radius', { method: 'PUT', body: { baseUrl: cur.baseUrl, token: token || undefined, enabled: cur.enabled, intervalMin: Number(cur.intervalMin), prettyName: cur.prettyName } }); toast.success('Pengaturan MSRadius disimpan'); setToken(''); setV(null); await reload(); }
+    try { await api('/admin/radius', { method: 'PUT', body: { baseUrl: cur.baseUrl, token: token || undefined, enabled: cur.enabled, intervalMin: Number(cur.intervalMin) } }); toast.success('Pengaturan MSRadius disimpan'); setToken(''); setV(null); await reload(); }
     catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   const test = async () => { setErr(''); setBusy(true); try { const r = await api<any>('/admin/radius/test', { body: {} }); toast.success(`Koneksi MSRadius OK (${r.users} user terdaftar di master).`); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
@@ -361,18 +363,45 @@ function RadiusCard() {
         <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Token API {cur.tokenSet && <span className="text-xs font-normal text-slate-500">(tersimpan {cur.tokenHint} — kosongkan bila tidak diganti)</span>}</label><input className="input font-mono" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={cur.tokenSet ? '••••••••' : 'tempel token di sini'} /></div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cur.enabled} onChange={(e) => upd('enabled', e.target.checked)} /> Sinkron otomatis</label>
         <div><label className="mb-1 block text-sm font-medium">Interval otomatis (menit)</label><input className="input" type="number" min={5} max={1440} value={cur.intervalMin} onChange={(e) => upd('intervalMin', e.target.value)} /></div>
-        <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={cur.prettyName} onChange={(e) => upd('prettyName', e.target.checked)} /> Rapikan nama (PANJI_AGUNG → Panji Agung) — nyalakan bila field <code>name</code> di MSRadius berisi nama akun berformat huruf besar/garis bawah</label>
+        <p className="text-xs text-slate-500 sm:col-span-2">Nama pelanggan dirapikan otomatis: garis bawah (_) dianggap spasi, dan nama huruf besar semua dijadikan huruf kapital di awal kata (PANJI_AGUNG → Panji Agung).</p>
       </div>
       <ErrorMsg>{err}</ErrorMsg>
       <div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={save}>Simpan</button><button className="btn-ghost" disabled={busy || !cur.tokenSet} onClick={test}>Uji koneksi</button></div>
       {cur.runs.length > 0 && (
         <div>
           <h3 className="mb-1 text-sm font-semibold">Riwayat sinkron</h3>
-          <Table head={['Mulai', 'Pemicu', 'Status', 'Baru', 'Diperbarui', 'Tetap', 'Hilang di MSRadius', 'Paket']}>
-            {cur.runs.map((r: any) => <tr key={r.id}><td className="td text-xs">{fmtDate(r.startedAt)}</td><td className="td text-xs">{r.trigger}</td><td className="td"><Badge tone={r.status === 'OK' ? 'green' : r.status === 'ERROR' ? 'red' : 'blue'}>{r.status}</Badge>{r.error && <div className="text-xs text-red-600">{r.error}</div>}</td><td className="td">{r.created}</td><td className="td">{r.updated}</td><td className="td">{r.unchanged}</td><td className="td">{r.missing}</td><td className="td">{r.packages}</td></tr>)}
+          <Table head={['Mulai', 'Pemicu', 'Status', 'Baru', 'Diperbarui', 'Tetap', 'Hilang di MSRadius', 'Paket', 'Area']}>
+            {cur.runs.map((r: any) => <tr key={r.id}><td className="td text-xs">{fmtDate(r.startedAt)}</td><td className="td text-xs">{r.trigger}</td><td className="td"><Badge tone={r.status === 'OK' ? 'green' : r.status === 'ERROR' ? 'red' : 'blue'}>{r.status}</Badge>{r.error && <div className="text-xs text-red-600">{r.error}</div>}</td><td className="td">{r.created}</td><td className="td">{r.updated}</td><td className="td">{r.unchanged}</td><td className="td">{r.missing}</td><td className="td">{r.packages}</td><td className="td">{r.areas}</td></tr>)}
           </Table>
         </div>
       )}
+    </div>
+  );
+}
+
+function SubFormCard() {
+  const { data, reload } = useFetch<any>('/subscription-settings');
+  const [v, setV] = useState<any>(null);
+  const [err, setErr] = useState('');
+  const cur = v ?? data;
+  if (!cur) return null;
+  const f = (k: string, label: string, help?: string, rows?: number) => (
+    <div><label className="mb-1 block text-sm font-medium">{label}</label>{rows ? <textarea className="input" rows={rows} value={cur[k]} onChange={(e) => setV({ ...cur, [k]: e.target.value })} /> : <input className="input" value={cur[k]} onChange={(e) => setV({ ...cur, [k]: e.target.value })} />}{help && <p className="mt-0.5 text-xs text-slate-500">{help}</p>}</div>
+  );
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Formulir Berlangganan</h2>
+      <p className="text-sm text-slate-500">Reg. No. dibentuk <b>{cur.regPrefix}{cur.year3}</b> + nomor isian (3 digit tahun otomatis: 2027 → 027). Logo formulir & tanda tangan Manager Marketing diunggah di kartu Branding.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {f('regPrefix', 'Awalan Reg. No.', 'Huruf saja, mis. SM')}
+        {f('managerName', 'Manager Marketing (bawaan)')}
+        {f('city', 'Kota')}{f('ppnNote', 'Keterangan PPN biaya langganan')}
+        {f('bankName', 'Nama bank')}{f('accName', 'Atas nama rekening')}{f('accNo', 'No. rekening')}
+        <div><label className="mb-1 block text-sm font-medium">Pembayaran bawaan</label><select className="input" value={cur.defaultPayment} onChange={(e) => setV({ ...cur, defaultPayment: e.target.value })}><option value="TRANSFER">Transfer</option><option value="CASH">Tunai</option><option value="DEBIT">Debet</option></select></div>
+        <div className="sm:col-span-2">{f('footer', 'Teks kaki halaman (alamat, telepon, web)', undefined, 3)}</div>
+      </div>
+      <ErrorMsg>{err}</ErrorMsg>
+      <button className="btn" onClick={async () => { setErr(''); try { const { year3, ...body } = cur; void year3; await api('/admin/settings/subform', { method: 'PUT', body: { ...body } }); toast.success('Pengaturan formulir disimpan'); setV(null); await reload(); } catch (e) { setErr((e as Error).message); } }}>Simpan</button>
     </div>
   );
 }
@@ -411,6 +440,7 @@ function Settings() {
     <div className="max-w-4xl space-y-4">
       <BrandingCard d={data} reload={reload} />
       <RadiusCard />
+      <SubFormCard />
       <DocsCard />
       <SmtpCard d={data} reload={reload} />
       <TelegramCard d={data} reload={reload} />

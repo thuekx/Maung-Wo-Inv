@@ -17,6 +17,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
   { title: 'Menu', items: [
     { href: '/', label: 'Dashboard', icon: 'dashboard' },
     { href: '/work-orders', label: 'Work Order', icon: 'clipboard' },
+    { href: '/subscriptions', label: 'Form Berlangganan', icon: 'clipboard', roles: ['ADMIN', 'MKT', 'FIN', 'NOC'] },
     { href: '/my-stock', label: 'Stok Saya', icon: 'box', roles: ['FOC'] },
     { href: '/customers', label: 'Pelanggan', icon: 'users', roles: ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'] },
     { href: '/inventory', label: 'Inventori & Aset', icon: 'box', roles: ['ADMIN', 'GA'] },

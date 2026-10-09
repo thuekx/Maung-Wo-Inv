@@ -106,6 +106,60 @@ function Vendors({ canManage }: { canManage: boolean }) {
   );
 }
 
+function Areas({ canManage }: { canManage: boolean }) {
+  const { data, error, reload } = useFetch<any[]>('/areas?all=1');
+  const { data: whs } = useFetch<any[]>('/warehouses');
+  const [edit, setEdit] = useState<any>(null);
+  return (
+    <>
+      <p className="mb-3 text-sm text-slate-500">Area layanan menggantikan istilah &quot;gudang / cabang&quot; pada pelanggan. Daftar area ditarik otomatis dari <b>MSRadius</b> (masterdata/area); di sini tiap area <b>dihubungkan ke gudang penyuplainya</b> agar cek stok pemasangan otomatis tahu gudang mana yang dipakai. Area manual juga dapat ditambahkan.</p>
+      {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah area manual</button>}
+      <ErrorMsg>{error}</ErrorMsg>
+      <Table head={['Area', 'Sumber', 'Gudang penyuplai', 'Pelanggan', 'Status', '']}>
+        {data?.map((a) => (
+          <tr key={a.id}>
+            <td className="td font-medium">{a.name}{a.code && <span className="ml-2 text-xs text-slate-400">#{a.code}</span>}</td>
+            <td className="td"><Badge tone={a.source === 'RADIUS' ? 'blue' : 'slate'}>{a.source === 'RADIUS' ? 'MSRadius' : 'Manual'}</Badge></td>
+            <td className="td">{a.warehouse?.name ?? <span className="text-amber-600">belum dihubungkan</span>}</td>
+            <td className="td">{a._count.customers}</td>
+            <td className="td">{canManage ? <button onClick={async () => { await api(`/areas/${a.id}`, { method: 'PATCH', body: { active: !a.active } }); reload(); }}><Badge tone={a.active ? 'green' : 'slate'}>{a.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={a.active ? 'green' : 'slate'}>{a.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn>{a.source !== 'RADIUS' && <> · <LinkBtn danger onClick={async () => { if (await doDelete(`/areas/${a.id}`, `area ${a.name}`)) reload(); }}>Hapus</LinkBtn></>}</>}</td>
+          </tr>
+        ))}
+      </Table>
+      {data?.length === 0 && <p className="mt-3 text-slate-400">Belum ada area — tarik data MSRadius (menu Pelanggan) atau tambah manual.</p>}
+      {edit && (
+        <Modal title={edit.id ? `Edit area ${edit.name}` : 'Tambah area'} onClose={() => setEdit(null)}>
+          <AreaForm area={edit} whs={whs ?? []} onDone={async () => { setEdit(null); await reload(); }} />
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function AreaForm({ area, whs, onDone }: { area: any; whs: any[]; onDone: () => void }) {
+  const [name, setName] = useState<string>(area.name ?? '');
+  const [wh, setWh] = useState<string>(area.warehouseId ?? area.warehouse?.id ?? '');
+  const [err, setErr] = useState('');
+  const save = async () => {
+    setErr('');
+    try {
+      const body = { ...(area.source === 'RADIUS' ? {} : { name }), warehouseId: wh || null };
+      if (area.id) await api(`/areas/${area.id}`, { method: 'PATCH', body }); else await api('/areas', { body });
+      toast.success('Area disimpan'); onDone();
+    } catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <div className="space-y-3">
+      <div><label className="mb-1 block text-sm font-medium">Nama area</label><input className="input" value={name} disabled={area.source === 'RADIUS'} onChange={(e) => setName(e.target.value)} />{area.source === 'RADIUS' && <p className="mt-0.5 text-xs text-slate-500">Nama dari MSRadius — diubah di MSRadius.</p>}</div>
+      <div><label className="mb-1 block text-sm font-medium">Gudang penyuplai</label>
+        <select className="input" value={wh} onChange={(e) => setWh(e.target.value)}><option value="">— belum dihubungkan —</option>{whs.filter((w) => w.kind === 'MAIN' || w.kind === 'BRANCH').map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+      <ErrorMsg>{err}</ErrorMsg>
+      <button className="btn" onClick={save}>Simpan</button>
+    </div>
+  );
+}
+
 export default function Master() {
   const { user } = useAuth();
   const role = user?.role ?? '';
@@ -113,9 +167,10 @@ export default function Master() {
   if (!['ADMIN', 'MKT', 'GA'].includes(role)) return <ErrorMsg>Akses ditolak</ErrorMsg>;
   return (
     <>
-      <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan, merk & tipe perangkat, dan vendor" />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }]} />
+      <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan, area, merk & tipe perangkat, dan vendor" />
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'areas', label: 'Area' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }]} />
       {tab === 'packages' && <Packages canManage={['ADMIN', 'MKT'].includes(role)} />}
+      {tab === 'areas' && <Areas canManage={['ADMIN', 'GA'].includes(role)} />}
       {tab === 'vendors' && <Vendors canManage={['ADMIN', 'GA'].includes(role)} />}
       {tab === 'brands' && <Brands canManage={['ADMIN', 'GA'].includes(role)} />}
     </>

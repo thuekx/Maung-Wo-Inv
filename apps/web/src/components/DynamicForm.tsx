@@ -253,6 +253,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   const { data: techs } = useFetch<any[]>(fields.some((f) => f.type === 'technician') ? '/users/lookup?role=FOC' : null);
   const { data: whs } = useFetch<any[]>(fields.some((f) => f.type === 'warehouse') ? '/warehouses' : null);
   const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
+  const { data: areas } = useFetch<any[]>(fields.some((f) => f.type === 'area') ? '/areas' : null);
   const set = (name: string, val: any) => setV((p) => ({ ...p, [name]: val }));
 
   async function submit(e: React.FormEvent) {
@@ -313,6 +314,12 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
               <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
                 <option value="">— pilih gudang —</option>
                 {whs?.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.kind})</option>)}
+              </select>)
+            : f.type === 'area' ? (
+              <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+                <option value="">— pilih area —</option>
+                {v[f.name] && !areas?.some((a) => a.id === v[f.name]) && <option value={v[f.name]}>(area nonaktif)</option>}
+                {areas?.map((a) => <option key={a.id} value={a.id}>{a.name}{a.warehouse ? '' : ' (belum ada gudang)'}</option>)}
               </select>)
             : f.type === 'package' ? (
               <select className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)}>

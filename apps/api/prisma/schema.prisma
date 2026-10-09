@@ -89,41 +89,45 @@ model User {
   warehouse        Warehouse[]
   inbox            Inbox[]
   purchaseRequests PurchaseRequest[]
+  subscriptions    Subscription[]
 }
 
 model Customer {
-  id          String         @id @default(cuid())
-  code        String         @unique
-  name        String
-  phone       String
-  email       String?
-  address     String
-  lat         Float?
-  lng         Float?
-  packageName String
-  status      CustomerStatus @default(PROSPECT)
-  warehouseId String?
-  odp         String?
-  port        String?
-  vlan        String?
-  ip          String?
-  publicIp    String? // IP publik (opsional); dicek duplikat hanya bila terisi
-  source      String         @default("MANUAL") // MANUAL | RADIUS (bersumber dari MSRadius, hanya dibaca)
-  radiusName  String? // nama akun apa adanya dari MSRadius
-  radiusIp    String? // IP statis dari MSRadius (rujukan NOC; tidak menggantikan IP internal)
-  expiredAt   DateTime?
-  resellerName String?
-  salesName   String?
-  missingFromApi Boolean    @default(false) // tidak ada lagi di MSRadius pada sinkron terakhir (tidak dihapus otomatis)
-  syncedAt    DateTime?
-  activatedAt DateTime?
-  createdAt   DateTime       @default(now())
-  archivedAt  DateTime? // diarsipkan (dihapus dari daftar tetapi riwayat WO tetap utuh); Admin dapat memulihkan
+  id             String         @id @default(cuid())
+  code           String         @unique
+  name           String
+  phone          String
+  email          String?
+  address        String
+  lat            Float?
+  lng            Float?
+  packageName    String
+  status         CustomerStatus @default(PROSPECT)
+  warehouseId    String? // gudang yang melayani area pelanggan (diturunkan dari Area)
+  areaId         String?
+  odp            String?
+  port           String?
+  vlan           String?
+  ip             String?
+  publicIp       String? // IP publik (opsional); dicek duplikat hanya bila terisi
+  source         String         @default("MANUAL") // MANUAL | RADIUS (bersumber dari MSRadius, hanya dibaca)
+  radiusName     String? // nama akun apa adanya dari MSRadius
+  radiusIp       String? // IP statis dari MSRadius (rujukan NOC; tidak menggantikan IP internal)
+  expiredAt      DateTime?
+  resellerName   String?
+  salesName      String?
+  missingFromApi Boolean        @default(false) // tidak ada lagi di MSRadius pada sinkron terakhir (tidak dihapus otomatis)
+  syncedAt       DateTime?
+  activatedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  archivedAt     DateTime? // diarsipkan (dihapus dari daftar tetapi riwayat WO tetap utuh); Admin dapat memulihkan
 
   warehouse  Warehouse?  @relation(fields: [warehouseId], references: [id])
+  area       Area?       @relation(fields: [areaId], references: [id])
   workOrders WorkOrder[]
   assets     Asset[]
 
+  @@index([areaId])
   @@index([status])
   @@index([archivedAt])
   @@index([publicIp])
@@ -219,6 +223,7 @@ model Warehouse {
   stock     StockLevel[]
   assets    Asset[]
   customers Customer[]
+  areas     Area[]
 }
 
 model Item {
@@ -545,8 +550,54 @@ model SyncRun {
   skipped    Int       @default(0)
   missing    Int       @default(0)
   packages   Int       @default(0)
+  areas      Int       @default(0)
   error      String?
   userId     String?
 
   @@index([startedAt])
+}
+
+/// Area layanan (master dari MSRadius `masterdata/area/list` atau manual); tiap area dilayani satu gudang.
+model Area {
+  id          String   @id @default(cuid())
+  code        String?  @unique // id_area di MSRadius
+  name        String   @unique
+  warehouseId String?
+  source      String   @default("MANUAL") // MANUAL | RADIUS
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
+  customers Customer[]
+}
+
+/// Formulir Berlangganan digital (diterbitkan Marketing, dicetak untuk ditandatangani pelanggan)
+model Subscription {
+  id            String   @id @default(cuid())
+  regNo         String   @unique // awalan + 3 digit tahun (mis. SM026) + nomor isian
+  formDate      DateTime @default(now())
+  name          String?
+  address       String?
+  phone         String?
+  email         String?
+  referral      String?
+  packageName   String?
+  serviceNote   String?
+  installFee    Decimal? @db.Decimal(18, 2)
+  monthlyFee    Decimal? @db.Decimal(18, 2)
+  picName       String?
+  picPhone      String?
+  payment       String   @default("TRANSFER") // CASH | TRANSFER | DEBIT
+  marketingName String?
+  managerName   String?
+  createdById   String
+  customerId    String?
+  woId          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  @@index([createdAt])
+  @@index([name])
 }

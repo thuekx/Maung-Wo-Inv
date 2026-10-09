@@ -35,6 +35,8 @@ const customerBody = z.object({
   packageName: z.string().trim().min(1),
   status: z.enum(CUST_STATUS).default('ACTIVE'),
   warehouseId: optStr,
+  areaId: optStr,
+  allowDuplicate: z.boolean().optional(), // lewati peringatan kemungkinan duplikat (nama/telepon sama)
   odp: z.preprocess(nul, odpName.nullable()),
   port: z.preprocess(nul, portName.nullable()),
   vlan: z.preprocess(nul, vlanId.nullable()),
@@ -51,7 +53,19 @@ masterRoutes.post('/customers', requireRole('MKT'), async (req, res) => {
     if (await fx.tx.customer.findUnique({ where: { code } })) throw fieldError('code', `Kode pelanggan ${code} sudah ada`, 409);
     await assertNetworkFree(fx.tx, b);
     if (b.warehouseId && !(await fx.tx.warehouse.findUnique({ where: { id: b.warehouseId } }))) throw new AppError(400, 'Gudang tidak valid');
-    const row = await fx.tx.customer.create({ data: { ...b, code, activatedAt: b.activatedAt ?? (b.status === 'ACTIVE' ? new Date() : null) } as any });
+    if (b.areaId) {
+      const a = await fx.tx.area.findUnique({ where: { id: b.areaId } });
+      if (!a) throw fieldError('areaId', 'Area tidak ditemukan');
+      b.warehouseId = a.warehouseId ?? b.warehouseId ?? null;
+    }
+    if (!b.allowDuplicate) {
+      // pelanggan MSRadius adalah sumber utama: cegah input manual ganda dengan nama/telepon yang sama
+      const digits = b.phone.replace(/\D/g, '');
+      const dup = await fx.tx.customer.findFirst({ where: { archivedAt: null, OR: [{ name: { equals: b.name, mode: 'insensitive' } }, ...(digits.length >= 8 ? [{ phone: b.phone }] : [])] }, select: { code: true, name: true, source: true } });
+      if (dup) throw new AppError(409, `Kemungkinan duplikat: sudah ada pelanggan "${dup.name}" (${dup.code}${dup.source === 'RADIUS' ? ', dari MSRadius' : ''}) dengan nama/telepon sama`, { name: `Mirip ${dup.name} (${dup.code})` });
+    }
+    const { allowDuplicate: _ad, ...rest } = b;
+    const row = await fx.tx.customer.create({ data: { ...rest, code, activatedAt: b.activatedAt ?? (b.status === 'ACTIVE' ? new Date() : null) } as any });
     await writeAudit(fx, who, { action: 'CREATE', entity: 'pelanggan', entityId: row.id, summary: `${who.name} menambah pelanggan ${row.code} ${row.name} (input manual)` });
     return row;
   });
@@ -60,7 +74,7 @@ masterRoutes.post('/customers', requireRole('MKT'), async (req, res) => {
 
 masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res) => {
   const id = String(req.params.id);
-  const b = customerBody.partial().parse(req.body);
+  const { allowDuplicate: _ad, ...b } = customerBody.partial().parse(req.body);
   const who = whoOf(req);
   if (b.status && who.role !== 'ADMIN' && who.role !== 'NOC') throw new AppError(403, 'Status pelanggan hanya diubah NOC/Admin (lewat WO untuk alur normal)');
   if (who.role === 'NOC') {
@@ -70,6 +84,11 @@ masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res)
   }
   const cur = await prisma.customer.findUnique({ where: { id } });
   if (!cur) throw new AppError(404, 'Pelanggan tidak ditemukan');
+  if (b.areaId) {
+    const ar = await prisma.area.findUnique({ where: { id: b.areaId } });
+    if (!ar) throw fieldError('areaId', 'Area tidak ditemukan');
+    if (ar.warehouseId) b.warehouseId = ar.warehouseId;
+  }
   if (cur.source === 'RADIUS') {
     const locked = (['name', 'phone', 'address', 'packageName'] as const).filter((k) => b[k] !== undefined && b[k] !== cur[k]);
     if (locked.length) throw new AppError(409, `Pelanggan ini bersumber dari MSRadius (hanya dibaca): ubah ${locked.join(', ')} di MSRadius lalu tarik datanya`);
@@ -132,7 +151,7 @@ const COLS: { key: string; label: string; width: number; alias: string[] }[] = [
   { key: 'lng', label: 'Longitude', width: 12, alias: ['longitude', 'lng', 'long', 'lon'] },
   { key: 'packageName', label: 'Paket', width: 22, alias: ['paket', 'package', 'packagename', 'layanan', 'jasa', 'namapaket'] },
   { key: 'status', label: 'Status', width: 14, alias: ['status'] },
-  { key: 'warehouse', label: 'Gudang', width: 14, alias: ['gudang', 'warehouse', 'cabang'] },
+  { key: 'area', label: 'Area', width: 16, alias: ['area', 'gudang', 'warehouse', 'cabang'] },
   { key: 'odp', label: 'ODP', width: 12, alias: ['odp', 'node'] },
   { key: 'port', label: 'Port', width: 8, alias: ['port', 'portodp'] },
   { key: 'vlan', label: 'VLAN', width: 8, alias: ['vlan'] },
@@ -192,7 +211,7 @@ masterRoutes.get('/customers/import-template.xlsx', async (_req, res) => {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Pelanggan');
   ws.columns = COLS.map((c) => ({ header: c.label, key: c.key, width: c.width }));
-  ws.addRow({ code: '', name: 'Contoh Pelanggan', phone: '081234567890', email: 'contoh@mail.com', address: 'Jl. Contoh No. 1, Jakarta', lat: -6.2088, lng: 106.8456, packageName: 'Home 20 Mbps', status: 'ACTIVE', warehouse: 'WH-PUSAT', odp: 'ODP-A1', port: '3', vlan: '100', ip: '10.20.0.10', activatedAt: new Date() });
+  ws.addRow({ code: '', name: 'Contoh Pelanggan', phone: '081234567890', email: 'contoh@mail.com', address: 'Jl. Contoh No. 1, Jakarta', lat: -6.2088, lng: 106.8456, packageName: 'Home 20 Mbps', status: 'ACTIVE', area: 'Pusat', odp: 'ODP-A1', port: '3', vlan: '100', ip: '10.20.0.10', activatedAt: new Date() });
   ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
   ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
   ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -227,9 +246,9 @@ masterRoutes.get('/customers/export.xlsx', requireRole('MKT', 'NOC', 'FIN', 'GA'
   ws.getRow(1).commit();
   let cursor: string | undefined;
   for (;;) {
-    const batch = await prisma.customer.findMany({ where, include: { warehouse: { select: { code: true } } }, orderBy: { id: 'asc' }, take: 2000, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+    const batch = await prisma.customer.findMany({ where, include: { area: { select: { name: true } } }, orderBy: { id: 'asc' }, take: 2000, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
     if (!batch.length) break;
-    for (const c of batch) ws.addRow({ ...c, warehouse: c.warehouse?.code ?? '' }).commit();
+    for (const c of batch) ws.addRow({ ...c, area: c.area?.name ?? '' }).commit();
     cursor = batch[batch.length - 1].id;
     if (batch.length < 2000) break;
   }
@@ -245,7 +264,7 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
 
   const [existing, whs, pkgs] = await Promise.all([
     prisma.customer.findMany({ select: { id: true, code: true, name: true, phone: true, ip: true, odp: true, port: true, status: true, source: true } }),
-    prisma.warehouse.findMany({ where: { kind: { not: 'MOBILE' } } }),
+    prisma.area.findMany(),
     prisma.package.findMany(),
   ]);
   const byCode = new Map(existing.map((c) => [c.code.toLowerCase(), c]));
@@ -276,9 +295,9 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
         if (!Number.isFinite(n) || n < min || n > max) throw new Error(`${label} tidak valid`);
         return n;
       };
-      const wcell = str(raw.warehouse);
-      const wh = wcell ? whs.find((w) => w.code.toLowerCase() === wcell.toLowerCase() || w.name.toLowerCase() === wcell.toLowerCase()) : undefined;
-      if (wcell && !wh) throw new Error(`Gudang "${wcell}" tidak ditemukan`);
+      const wcell = str(raw.area);
+      const wh = wcell ? whs.find((w) => w.name.toLowerCase() === wcell.toLowerCase() || w.code?.toLowerCase() === wcell.toLowerCase()) : undefined;
+      if (wcell && !wh) throw new Error(`Area "${wcell}" tidak ditemukan di Master Area`);
       const email = str(raw.email);
       if (email && !z.string().email().safeParse(email).success) throw new Error('Email tidak valid');
       let activatedAt: Date | null = null;
@@ -300,7 +319,7 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
       plan.push({
         row,
         id: hit?.id,
-        data: { code: code || undefined, name, phone, email: email || null, address: str(raw.address) || '-', lat: num(raw.lat, -90, 90, 'Latitude'), lng: num(raw.lng, -180, 180, 'Longitude'), packageName, status, warehouseId: wh?.id ?? null, odp, port, vlan: str(raw.vlan) || null, ip, activatedAt: activatedAt ?? (status === 'ACTIVE' ? undefined : null) },
+        data: { code: code || undefined, name, phone, email: email || null, address: str(raw.address) || '-', lat: num(raw.lat, -90, 90, 'Latitude'), lng: num(raw.lng, -180, 180, 'Longitude'), packageName, status, areaId: wh?.id ?? null, warehouseId: wh?.warehouseId ?? null, odp, port, vlan: str(raw.vlan) || null, ip, activatedAt: activatedAt ?? (status === 'ACTIVE' ? undefined : null) },
       });
     } catch (e) {
       errors.push({ row, message: (e as Error).message });

@@ -118,7 +118,7 @@ adminRoutes.post('/admin/settings/telegram/test', async (req, res) => {
 
 /* ── Branding / logo ── */
 fs.mkdirSync(config.uploadDir, { recursive: true });
-const VARIANTS = { horizontal: { key: 'logoUrl', max: 2 }, stacked: { key: 'logoStackedUrl', max: 2 }, mark: { key: 'logoMarkUrl', max: 1 }, loginbg: { key: 'loginBgUrl', max: 6 }, gps: { key: 'gpsLogoUrl', max: 2 }, kop: { key: 'kopUrl', max: 3 } } as const;
+const VARIANTS = { horizontal: { key: 'logoUrl', max: 2 }, stacked: { key: 'logoStackedUrl', max: 2 }, mark: { key: 'logoMarkUrl', max: 1 }, loginbg: { key: 'loginBgUrl', max: 6 }, gps: { key: 'gpsLogoUrl', max: 2 }, kop: { key: 'kopUrl', max: 3 }, formlogo: { key: 'formLogoUrl', max: 2 }, mgrsign: { key: 'mgrSignUrl', max: 1 } } as const;
 const brandUpload = multer({
   storage: multer.diskStorage({
     destination: config.uploadDir,
@@ -133,7 +133,7 @@ const brandUpload = multer({
  */
 async function sweepBrandFiles() {
   const b = (await getSetting<any>('branding')) ?? {};
-  const live = new Set([b.logoUrl, b.logoStackedUrl, b.logoMarkUrl, b.loginBgUrl, b.gpsLogoUrl, b.kopUrl].filter(Boolean) as string[]);
+  const live = new Set([b.logoUrl, b.logoStackedUrl, b.logoMarkUrl, b.loginBgUrl, b.gpsLogoUrl, b.kopUrl, b.formLogoUrl, b.mgrSignUrl].filter(Boolean) as string[]);
   const stale = await prisma.attachment.findMany({ where: { kind: 'LOGO', url: { notIn: [...live] } }, select: { id: true, url: true } });
   for (const a of stale) {
     const file = path.join(config.uploadDir, path.basename(a.url)); // basename: cegah path traversal
@@ -164,12 +164,12 @@ adminRoutes.put('/admin/settings/branding', async (req, res) => {
 /** Kembalikan semua teks & warna ke bawaan panduan brand (logo tidak dihapus). */
 adminRoutes.post('/admin/settings/branding/reset', async (req, res) => {
   const old = (await getSetting<any>('branding')) ?? {};
-  await putSetting('branding', { logoUrl: old.logoUrl, logoStackedUrl: old.logoStackedUrl, logoMarkUrl: old.logoMarkUrl, loginBgUrl: old.loginBgUrl, gpsLogoUrl: old.gpsLogoUrl, kopUrl: old.kopUrl }, req.user!.id);
+  await putSetting('branding', { logoUrl: old.logoUrl, logoStackedUrl: old.logoStackedUrl, logoMarkUrl: old.logoMarkUrl, loginBgUrl: old.loginBgUrl, gpsLogoUrl: old.gpsLogoUrl, kopUrl: old.kopUrl, formLogoUrl: old.formLogoUrl, mgrSignUrl: old.mgrSignUrl }, req.user!.id);
   res.json(await overview());
 });
 
 adminRoutes.post('/admin/settings/branding/logo', brandUpload.single('file'), async (req, res) => {
-  const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg', 'gps', 'kop']).default('horizontal').parse(req.query.variant);
+  const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg', 'gps', 'kop', 'formlogo', 'mgrsign']).default('horizontal').parse(req.query.variant);
   const v = VARIANTS[variant];
   if (!req.file) throw new AppError(400, 'File harus PNG/JPG/WEBP');
   if (req.file.size > v.max * 1024 * 1024) { fs.unlink(req.file.path, () => {}); throw new AppError(400, `Maksimal ${v.max} MB`); }
@@ -182,7 +182,7 @@ adminRoutes.post('/admin/settings/branding/logo', brandUpload.single('file'), as
 });
 
 adminRoutes.delete('/admin/settings/branding/logo', async (req, res) => {
-  const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg', 'gps', 'kop']).default('horizontal').parse(req.query.variant);
+  const variant = z.enum(['horizontal', 'stacked', 'mark', 'loginbg', 'gps', 'kop', 'formlogo', 'mgrsign']).default('horizontal').parse(req.query.variant);
   const old = (await getSetting<any>('branding')) ?? {};
   await putSetting('branding', { ...old, [VARIANTS[variant].key]: null }, req.user!.id);
   await sweepBrandFiles();

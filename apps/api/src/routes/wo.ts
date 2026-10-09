@@ -55,7 +55,16 @@ woRoutes.get('/work-orders', async (req, res) => {
 woRoutes.post('/work-orders', async (req, res) => {
   const { type, input } = z.object({ type: z.enum(['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST', 'STOCK_RETURN']), input: z.record(z.any()) }).parse(req.body);
   const u = req.user!;
-  const created = await transact((fx) => createWorkOrder(fx, { type, actor: actorOf(req), input }));
+  const subId = type === 'NEW_INSTALL' && typeof input.subscriptionId === 'string' ? input.subscriptionId : null;
+  const created = await transact(async (fx) => {
+    const r = await createWorkOrder(fx, { type, actor: actorOf(req), input });
+    if (subId) {
+      // tautkan Formulir Berlangganan ke WO & pelanggan yang baru dibuat
+      const wo = await fx.tx.workOrder.findUnique({ where: { id: r.id }, select: { customerId: true } });
+      await fx.tx.subscription.updateMany({ where: { id: subId, woId: null }, data: { woId: r.id, customerId: wo?.customerId ?? null } });
+    }
+    return r;
+  });
   res.status(201).json(created);
 });
 

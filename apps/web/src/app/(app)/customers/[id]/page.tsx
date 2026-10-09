@@ -34,7 +34,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           <DataGrid items={[
             { label: 'Telepon', value: c.phone }, { label: 'Email', value: c.email },
             { label: 'Alamat', value: <>{c.address}{c.lat != null && <> · <a className="text-brand-700 hover:underline" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`}>Buka peta</a></>}</> },
-            { label: 'Paket', value: c.packageName }, { label: 'Gudang', value: c.warehouse?.name },
+            { label: 'Paket', value: c.packageName }, { label: 'Area', value: c.area ? `${c.area.name}${c.warehouse ? ` · gudang ${c.warehouse.name}` : ''}` : '-' },
           ]} />
         </div>
         <div className="card">

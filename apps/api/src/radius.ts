@@ -8,7 +8,7 @@ import { decryptSecret, encryptSecret, getSetting, putSetting } from './settings
  * Batas MSRadius: 10 request/60 dtk per token → satu putaran sinkron hanya memakai 2 request dengan jeda ≥ 7 dtk.
  */
 
-export interface RadiusCfg { baseUrl: string; token: string; enabled: boolean; intervalMin: number; prettyName: boolean; lastAutoAt: number | null }
+export interface RadiusCfg { baseUrl: string; token: string; enabled: boolean; intervalMin: number; lastAutoAt: number | null }
 export const RADIUS_DEFAULT_URL = 'http://radius.liv.net.id/api/radius';
 
 export async function getRadius(): Promise<RadiusCfg> {
@@ -16,16 +16,15 @@ export async function getRadius(): Promise<RadiusCfg> {
   return {
     baseUrl: (typeof s.baseUrl === 'string' && s.baseUrl.trim() ? s.baseUrl.trim() : RADIUS_DEFAULT_URL).replace(/\/+$/, ''),
     token: decryptSecret(s.token),
-    enabled: !!s.enabled,
+    enabled: s.enabled !== false, // bawaan: otomatis aktif begitu token diisi
     intervalMin: Number.isInteger(Number(s.intervalMin)) && Number(s.intervalMin) >= 5 ? Number(s.intervalMin) : 60,
-    prettyName: !!s.prettyName,
     lastAutoAt: typeof s.lastAutoAt === 'number' ? s.lastAutoAt : null,
   };
 }
 
-export async function saveRadius(p: { baseUrl: string; token?: string; enabled: boolean; intervalMin: number; prettyName: boolean }, userId: string) {
+export async function saveRadius(p: { baseUrl: string; token?: string; enabled: boolean; intervalMin: number }, userId: string) {
   const cur = (await getSetting<any>('radius')) ?? {};
-  await putSetting('radius', { ...cur, baseUrl: p.baseUrl, enabled: p.enabled, intervalMin: p.intervalMin, prettyName: p.prettyName, ...(p.token ? { token: encryptSecret(p.token) } : {}) }, userId);
+  await putSetting('radius', { ...cur, baseUrl: p.baseUrl, enabled: p.enabled, intervalMin: p.intervalMin, ...(p.token ? { token: encryptSecret(p.token) } : {}) }, userId);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -56,7 +55,11 @@ export async function testRadius() {
 /* ── pemetaan data ── */
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
 const coord = (v: unknown, lim: number) => { const n = parseFloat(str(v)); return Number.isFinite(n) && Math.abs(n) <= lim && n !== 0 ? n : null; };
-const prettify = (n: string) => n.replace(/[_.]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase().replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+/** Garis bawah dianggap spasi (nama akun MSRadius tidak boleh berspasi); bila hasilnya semua huruf besar/kecil → Title Case. */
+export const tidyName = (n: string) => {
+  const t = n.replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  return t === t.toUpperCase() || t === t.toLowerCase() ? t.toLowerCase().replace(/(^|[\s.'-])\p{L}/gu, (c) => c.toUpperCase()) : t;
+};
 function dateOf(v: unknown): Date | null {
   const s = str(v);
   if (!s || /^(not set|-|0)$/i.test(s)) return null;
@@ -69,7 +72,7 @@ const registered = (notes: unknown) => { const m = /(\d{4}-\d{2}-\d{2})/.exec(st
 
 export interface Mapped { code: string; name: string; phone: string; address: string; lat: number | null; lng: number | null; packageName: string; radiusName: string; radiusIp: string | null; expiredAt: Date | null; resellerName: string | null; salesName: string | null; suspended: boolean; registeredAt: Date | null }
 
-export function mapRow(r: any, pretty: boolean): Mapped | null {
+export function mapRow(r: any, _pretty?: boolean): Mapped | null {
   const code = str(r?.kode);
   if (!code) return null;
   const raw = str(r.name);
@@ -77,7 +80,7 @@ export function mapRow(r: any, pretty: boolean): Mapped | null {
   const addr = str(r.address);
   return {
     code,
-    name: (pretty ? prettify(raw) : raw) || code,
+    name: tidyName(raw) || code,
     phone: phone.length >= 6 ? phone : '-',
     address: addr && addr !== '-' ? addr : '-',
     lat: coord(r.lat, 90), lng: coord(r.lng, 180),
@@ -94,11 +97,11 @@ export function mapRow(r: any, pretty: boolean): Mapped | null {
 
 const rowsOf = (d: any): any[] => (Array.isArray(d) ? d : d && typeof d === 'object' ? Object.values(d) : []);
 
-export interface SyncStats { created: number; updated: number; unchanged: number; skipped: number; missing: number; packages: number }
+export interface SyncStats { created: number; updated: number; unchanged: number; skipped: number; missing: number; packages: number; areas: number }
 
 /** Terapkan baris MSRadius ke tabel Customer (upsert by `kode`); kolom milik Maung (email, ODP, port, VLAN, IP internal, gudang) tidak disentuh. */
 export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyCode?: string } = {}): Promise<SyncStats> {
-  const st: SyncStats = { created: 0, updated: 0, unchanged: 0, skipped: 0, missing: 0, packages: 0 };
+  const st: SyncStats = { created: 0, updated: 0, unchanged: 0, skipped: 0, missing: 0, packages: 0, areas: 0 };
   const mapped: Mapped[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
@@ -170,6 +173,23 @@ export async function applyPackages(rows: any[]): Promise<number> {
   return n;
 }
 
+/** Master Area dari masterdata/area/list ({id_area: nama}). Area manual bernama sama diadopsi; tidak pernah menghapus/menonaktifkan; tautan gudang tetap diatur di Maung. */
+export async function applyAreas(data: any): Promise<number> {
+  const pairs: [string, string][] = Array.isArray(data) ? data.map((x: any) => [str(x?.id ?? x?.id_area), str(x?.name ?? x?.nama)] as [string, string]) : Object.entries(data ?? {}).map(([k, v]) => [str(k), str(v)] as [string, string]);
+  let n = 0;
+  for (const [code, name] of pairs) {
+    if (!code || !name) continue;
+    const byCode = await prisma.area.findUnique({ where: { code } });
+    if (byCode) { if (byCode.name !== name && !(await prisma.area.findFirst({ where: { name, id: { not: byCode.id } } }))) { await prisma.area.update({ where: { id: byCode.id }, data: { name } }); n++; } continue; }
+    const byName = await prisma.area.findFirst({ where: { name: { equals: name, mode: 'insensitive' }, code: null } });
+    if (byName) { await prisma.area.update({ where: { id: byName.id }, data: { code, source: 'RADIUS' } }); n++; continue; }
+    if (await prisma.area.findUnique({ where: { name } })) continue;
+    await prisma.area.create({ data: { code, name, source: 'RADIUS' } });
+    n++;
+  }
+  return n;
+}
+
 /** Paket yang dipakai pelanggan tetapi belum ada di master dibuat otomatis (agar form pelanggan valid). */
 async function ensureUsedPackages() {
   const used = await prisma.$queryRaw<{ n: string }[]>`SELECT DISTINCT "packageName" AS n FROM "Customer" WHERE "source" = 'RADIUS'`;
@@ -190,9 +210,13 @@ export async function runSync(trigger: 'MANUAL' | 'AUTO', userId?: string) {
     const cfg = await getRadius();
     const prof = await radiusGet(cfg, 'databilling/profile');
     const packages = await applyPackages(rowsOf(prof.data));
-    await sleep(trigger === 'MANUAL' ? 7_000 : 8_000); // jeda di bawah batas 10 request/60 dtk
+    await sleep(7_500); // jeda di bawah batas 10 request/60 dtk
+    const areaRes = await radiusGet(cfg, 'masterdata/area/list');
+    const areas = await applyAreas(areaRes.data);
+    await sleep(7_500);
     const cust = await radiusGet(cfg, 'databilling/data');
-    const stats = await applyCustomers(rowsOf(cust.data), cfg.prettyName);
+    const stats = await applyCustomers(rowsOf(cust.data), true);
+    stats.areas = areas;
     stats.packages = packages + (await ensureUsedPackages());
     await prisma.syncRun.update({ where: { id: run.id }, data: { status: 'OK', finishedAt: new Date(), ...stats } });
     return { id: run.id, ...stats };
@@ -211,7 +235,7 @@ export async function pullOne(code: string) {
   const rows = rowsOf(cust.data);
   const row = rows.find((r) => str(r?.kode) === code);
   if (!row) return null;
-  const stats = await applyCustomers([row], cfg.prettyName, { onlyCode: code });
+  const stats = await applyCustomers([row], true, { onlyCode: code });
   await ensureUsedPackages();
   return stats;
 }

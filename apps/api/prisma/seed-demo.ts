@@ -21,6 +21,7 @@ const DAY = 86400_000;
 const A: Record<string, Actor> = {};
 let ID: Record<string, string> = {}; // sku → itemId
 let WH: Record<string, string> = {}; // code → warehouseId
+let AR: Record<string, string> = {}; // nama area → areaId
 const closedWos: string[] = [];
 
 const tx = <T>(fn: (fx: Effects) => Promise<T>) => prisma.$transaction((t) => fn(new Effects(t)), { timeout: 60_000 });
@@ -69,7 +70,7 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   const tech = o.tech ?? (i % 2 ? 'budi' : 'andi');
   const wo = await create('NEW_INSTALL', 'mkt', {
     name, phone: `08121${String(100000 + i * 137).slice(0, 6)}`, email: `${name.toLowerCase().replace(/[^a-z]/g, '')}@contoh.id`,
-    address: `${STREETS[i % STREETS.length]} No. ${10 + i}, Jakarta`, lat, lng, packageName: PACKAGES[i % 4], warehouseId: wh, notes: 'Data demo',
+    address: `${STREETS[i % STREETS.length]} No. ${10 + i}, Jakarta`, lat, lng, packageName: PACKAGES[i % 4], areaId: o.cab ? AR['Cabang A'] : AR['Pusat'], notes: 'Data demo',
   });
   const cust = (await prisma.workOrder.findUniqueOrThrow({ where: { id: wo.id } })).customerId!;
   if (!at('ready')) return { ...wo, customerId: cust };
@@ -222,6 +223,7 @@ async function main() {
   }
   ID = Object.fromEntries((await prisma.item.findMany()).map((i) => [i.sku, i.id]));
   WH = Object.fromEntries((await prisma.warehouse.findMany()).map((w) => [w.code, w.id]));
+  AR = Object.fromEntries((await prisma.area.findMany()).map((a) => [a.name, a.id]));
   technicianUnused('budi');
 
   // bahan baku: ONT tambahan di gudang pusat, stok cabang A dibuat tipis agar memicu Permintaan Barang otomatis
@@ -302,6 +304,17 @@ async function main() {
   });
   // fast connector pusat dibuat di bawah minimum → muncul "menipis" di dashboard
   await prisma.stockLevel.updateMany({ where: { warehouseId: WH['WH-PUSAT'], itemId: ID.FASTCONN }, data: { qty: 60 } });
+
+  console.log('• Formulir Berlangganan');
+  const y3 = String(new Date().getFullYear() % 1000).padStart(3, '0');
+  const pk = await prisma.package.findMany({ orderBy: { sortOrder: 'asc' }, take: 3 });
+  const subs = [
+    { n: '0001', name: 'Hendra Gunawan', phone: '081211112222', address: 'Jl. Merdeka No. 12, Bandung', email: 'hendra@contoh.id', referral: 'Walk-in', pkg: pk[1] },
+    { n: '0002', name: 'CV Karya Utama', phone: '081233334444', address: 'Jl. Soekarno-Hatta No. 88, Bandung', email: null, referral: 'Sales Lapangan', pkg: pk[2] },
+    { n: '0003', name: null, phone: null, address: null, email: null, referral: null, pkg: null }, // contoh isian minimal (semua opsional)
+  ];
+  for (const x of subs)
+    await prisma.subscription.create({ data: { regNo: `SM${y3}${x.n}`, name: x.name, phone: x.phone, address: x.address, email: x.email, referral: x.referral, packageName: x.pkg?.name ?? null, installFee: x.pkg ? 500000 : null, monthlyFee: x.pkg ? Number(x.pkg.priceSell ?? 250000) : null, payment: 'TRANSFER', marketingName: 'Marketing', managerName: 'M Gugi Granada', createdById: A.mkt.id } });
 
   console.log('• Merapikan waktu (umur WO untuk dashboard) & notifikasi');
   for (const [k, id] of aged.entries()) await prisma.workOrder.update({ where: { id }, data: { createdAt: new Date(Date.now() - (9 + k * 3) * DAY) } });

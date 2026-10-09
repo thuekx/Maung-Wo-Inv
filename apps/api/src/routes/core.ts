@@ -148,6 +148,7 @@ core.get('/customers/:id', async (req, res, next) => {
     where: { id: String(req.params.id) },
     include: {
       warehouse: true,
+      area: true,
       assets: { include: { item: true } },
       workOrders: { orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, number: true, type: true, status: true, title: true, createdAt: true } },
     },

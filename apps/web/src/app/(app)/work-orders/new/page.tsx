@@ -13,11 +13,13 @@ function NewWo() {
   const { user } = useAuth();
   const { data: meta, error } = useFetch<any[]>('/work-orders/meta');
   const type = sp.get('type');
+  const fromForm = sp.get('fromForm');
+  const { data: sub } = useFetch<any>(fromForm ? `/subscriptions/${fromForm}` : null);
   const allowed = (meta ?? []).filter((m) => user?.role === 'ADMIN' || m.createRoles.includes(user?.role));
   const wf = allowed.find((m) => m.type === type);
 
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
-  if (!meta) return <p className="text-slate-500">Memuat…</p>;
+  if (!meta || (fromForm && !sub)) return <p className="text-slate-500">Memuat…</p>;
 
   if (!wf)
     return (
@@ -41,9 +43,10 @@ function NewWo() {
       <div className="card max-w-2xl">
         <DynamicForm
           fields={wf.createFields}
+          initial={sub ? { name: sub.name ?? '', phone: sub.phone ?? '', email: sub.email ?? '', address: sub.address ?? '', packageName: sub.packageName ?? '', notes: `Dari formulir berlangganan ${sub.regNo}` } : undefined}
           submitLabel="Ajukan WO"
           onSubmit={async (input) => {
-            const r = await api<{ id: string }>('/work-orders', { body: { type: wf.type, input } });
+            const r = await api<{ id: string }>('/work-orders', { body: { type: wf.type, input: fromForm ? { ...input, subscriptionId: fromForm } : input } });
             router.push(`/work-orders/${r.id}`);
           }}
         />

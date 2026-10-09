@@ -1,8 +1,8 @@
 'use client';
-import { toast } from '@/lib/dialog';
+import { confirmDialog, toast } from '@/lib/dialog';
 import { useRef, useState } from 'react';
 import Link from 'next/link';
-import { API, api, download, fmtDate, getToken, useFetch } from '@/lib/api';
+import { API, api, ApiError, download, fmtDate, getToken, useFetch } from '@/lib/api';
 import { Column, DataTable } from '@/components/DataTable';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
@@ -22,7 +22,7 @@ export const customerFields = (canStatus: boolean, withCode = true): Field[] => 
   { name: 'lng', label: 'Longitude', type: 'number' },
   { name: 'packageName', label: 'Paket langganan', type: 'package', required: true },
   ...(canStatus ? [{ name: 'status', label: 'Status', type: 'select', options: CUSTOMER_STATUS, required: true }] : []),
-  { name: 'warehouseId', label: 'Gudang / cabang terkait', type: 'warehouse' },
+  { name: 'areaId', label: 'Area', type: 'area', help: 'Area layanan (dari MSRadius / Master Area). Gudang penyuplai mengikuti area.' },
   { name: 'odp', label: 'ODP / Node', type: 'text', help: 'Maks. 40 karakter' },
   { name: 'port', label: 'Port ODP', type: 'text', help: 'Maks. 20 karakter' },
   { name: 'vlan', label: 'VLAN', type: 'text', help: 'Angka 1–4094' },
@@ -123,7 +123,13 @@ export default function Customers() {
         </>} />
       {add && (
         <Modal title="Tambah pelanggan (input manual)" onClose={() => setAdd(false)}>
-          <DynamicForm fields={customerFields(true)} initial={{ status: 'ACTIVE' }} submitLabel="Simpan pelanggan" onSubmit={async (v) => { await api('/customers', { body: v }); setAdd(false); setRk((x) => x + 1); }} />
+          <DynamicForm fields={customerFields(true)} initial={{ status: 'ACTIVE' }} submitLabel="Simpan pelanggan" onSubmit={async (v) => {
+            try { await api('/customers', { body: v }); } catch (e) {
+              const err = e as ApiError;
+              if (err.status === 409 && err.message.startsWith('Kemungkinan duplikat') && (await confirmDialog(`${err.message}.\nTetap simpan sebagai pelanggan baru?`))) await api('/customers', { body: { ...v, allowDuplicate: true } });
+              else throw e;
+            }
+            setAdd(false); setRk((x) => x + 1); }} />
         </Modal>
       )}
       {imp && <ImportPanel onDone={() => setRk((x) => x + 1)} onClose={() => setImp(false)} />}
