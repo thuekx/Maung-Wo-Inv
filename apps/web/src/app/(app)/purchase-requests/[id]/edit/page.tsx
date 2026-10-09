@@ -13,15 +13,15 @@ export default function EditPr({ params }: { params: Promise<{ id: string }> }) 
   if (!pr) return <p className="text-slate-500">Memuat…</p>;
   return (
     <>
-      <PageHeader pretitle="Pengadaan" title="Ubah draft PR" />
+      <PageHeader pretitle="Pengadaan" title="Ubah Purchase Request" />
       <PrEditor
         prId={id}
         minVendors={pr.docs.minVendors}
         initial={{
-          subject: pr.subject, note: pr.note ?? '', taxPct: Number(pr.taxPct),
+          subject: pr.subject, note: pr.note ?? '', taxPct: Number(pr.taxPct), areaId: pr.areaId ?? '',
           lines: pr.lines.map((l: any) => ({ description: l.description, qty: l.qty, unit: l.unit, itemId: l.itemId ?? '', note: l.note ?? '', quotes: [...l.quotes.map((q: any) => ({ vendorId: q.vendorId, unitPrice: Number(q.unitPrice), note: q.note ?? '', chosen: q.chosen })), ...Array.from({ length: Math.max(0, pr.docs.minVendors - l.quotes.length) }, () => ({ vendorId: '', unitPrice: '' as number | string, note: '', chosen: false }))] })),
         }}
-        onSaved={() => router.replace(`/purchase-requests/${id}`)}
+        onSaved={(_i, o) => router.replace(`/purchase-requests/${id}${o?.issue ? '?issue=1' : ''}`)}
       />
     </>
   );

@@ -446,9 +446,9 @@ function DocsCard() {
   return (
     <div className="card space-y-3">
       <h2 className="font-semibold">Dokumen (Purchase Request)</h2>
-      <p className="text-sm text-slate-500">Nomor surat berformat <b>{cur.seqStart}/{cur.codePrefix}/X/{new Date().getFullYear()}</b> (nomor urut / kode / bulan romawi / tahun). Nomor urut berjalan per tahun.</p>
+      <p className="text-sm text-slate-500">Nomor surat berformat <b>{cur.seqStart}/{String(cur.codePrefix).replace('{ALIAS}', 'BDG')}/X/{new Date().getFullYear()}</b> (nomor urut / kode / bulan romawi / tahun). Nomor urut berjalan per tahun.</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        {f('codePrefix', 'Kode surat', 'mis. L1V/PNJ-BDG')}
+        {f('codePrefix', 'Kode surat', 'Gunakan {ALIAS} untuk singkatan area PR, mis. L1V/PNJ-{ALIAS} → L1V/PNJ-BDG. Atur singkatan di Master Data → Area.')}
         {f('city', 'Kota penandatanganan')}
         {f('seqStart', 'Nomor urut pertama tahun ini', 'Isi bila perlu melanjutkan nomor dari dokumen lama (mis. 251)', 'number')}
         {f('taxPct', 'PPN bawaan (%)', undefined, 'number')}

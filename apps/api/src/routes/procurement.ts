@@ -7,6 +7,7 @@ import { isLead } from '../wf-types';
 import { auditedDelete, auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { countIf, pageParams, sendPage } from '../paging';
 import { DOCS_DEFAULTS, getDocs, getSetting, putSetting } from '../settings';
+import { areaAlias } from '../docnum';
 
 /** Pengadaan: master vendor, Purchase Request (perbandingan harga ≥ N vendor, PDF), pencatatan PO dari Accurate. */
 export const procurementRoutes = Router();
@@ -20,7 +21,7 @@ const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'
 procurementRoutes.get('/settings/docs', async (_req, res) => res.json(await getDocs()));
 procurementRoutes.put('/admin/settings/docs', requireRole('ADMIN'), async (req, res) => {
   const b = z.object({
-    codePrefix: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9/.-]+$/, 'Hanya huruf, angka, / . -'),
+    codePrefix: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9/.{}-]+$/, 'Hanya huruf, angka, / . - dan {ALIAS}'),
     city: z.string().trim().min(2).max(60),
     taxPct: z.coerce.number().min(0).max(100),
     seqStart: z.coerce.number().int().min(1).max(999999),
@@ -93,6 +94,7 @@ const prBody = z.object({
   taxPct: z.coerce.number().min(0).max(100).optional(),
   note: z.preprocess(nul, z.string().trim().max(500).nullable().optional()),
   woId: z.preprocess(nul, z.string().nullable().optional()),
+  areaId: z.preprocess(nul, z.string().nullable().optional()),
   lines: z.array(lineBody).min(1, 'Minimal 1 baris').max(100),
 });
 
@@ -102,6 +104,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const prInclude = {
   createdBy: { select: { id: true, name: true, role: true, subRole: true } },
   wo: { select: { id: true, number: true } },
+  area: { select: { id: true, name: true, alias: true } },
   lines: { orderBy: { sort: 'asc' as const }, include: { quotes: { include: { vendor: { select: { id: true, name: true } } } }, item: { select: { id: true, name: true, unit: true } } } },
   pos: { select: { id: true, number: true, status: true, vendor: true } },
 };
@@ -163,9 +166,12 @@ procurementRoutes.post('/purchase-requests', async (req, res) => {
   const b = prBody.parse(req.body);
   const docs = await getDocs();
   const who = whoOf(req);
+  const ga = isGa(u);
+  if (b.areaId && !(await prisma.area.findUnique({ where: { id: b.areaId } }))) throw fieldError('areaId', 'Area tidak ditemukan');
   const out = await transact(async (fx) => {
-    const pr = await fx.tx.purchaseRequest.create({ data: { subject: b.subject, city: docs.city, taxPct: b.taxPct ?? docs.taxPct, note: b.note ?? null, woId: b.woId ?? null, createdById: u.id } });
-    await writeLines(fx.tx, pr.id, b.lines);
+    const pr = await fx.tx.purchaseRequest.create({ data: { subject: b.subject, city: docs.city, taxPct: ga ? b.taxPct ?? docs.taxPct : docs.taxPct, note: b.note ?? null, woId: b.woId ?? null, areaId: b.areaId ?? null, createdById: u.id } });
+    // perbandingan vendor & PPN adalah ranah GA/Procurement: pengaju lain hanya mengisi barang
+    await writeLines(fx.tx, pr.id, ga ? b.lines : b.lines.map((l) => ({ ...l, quotes: [] })));
     await writeAudit(fx, who, { action: 'CREATE', entity: 'purchase request', entityId: pr.id, summary: `${who.name} membuat draft PR "${b.subject}"` });
     return pr;
   });
@@ -180,10 +186,14 @@ procurementRoutes.put('/purchase-requests/:id', async (req, res) => {
   const mine = cur.createdById === u.id && cur.status === 'DRAFT';
   const ga = isGa(u) && ['DRAFT', 'SUBMITTED'].includes(cur.status);
   if (!mine && !ga) throw new AppError(403, cur.status === 'DRAFT' || cur.status === 'SUBMITTED' ? 'Hanya pembuat (saat draft) atau GA yang dapat mengubah PR' : 'PR yang sudah diterbitkan tidak dapat diubah');
+  if (b.areaId && !(await prisma.area.findUnique({ where: { id: b.areaId } }))) throw fieldError('areaId', 'Area tidak ditemukan');
+  const ga2 = isGa(u);
   await transact(async (fx) => {
-    await fx.tx.purchaseRequest.update({ where: { id }, data: { subject: b.subject, taxPct: b.taxPct ?? undefined, note: b.note ?? null } });
+    await fx.tx.purchaseRequest.update({ where: { id }, data: { subject: b.subject, taxPct: ga2 ? b.taxPct ?? undefined : undefined, note: b.note ?? null, ...(b.areaId !== undefined ? { areaId: b.areaId } : {}) } });
+    // pengaju non-GA tidak mengubah perbandingan vendor yang mungkin sudah diisi GA: pertahankan penawaran per baris yang sama
+    const keep = ga2 ? null : new Map(cur.lines.map((l) => [`${l.description}|${l.qty}`, l.quotes]));
     await fx.tx.prLine.deleteMany({ where: { prId: id } });
-    await writeLines(fx.tx, id, b.lines);
+    await writeLines(fx.tx, id, b.lines.map((l) => (ga2 ? l : { ...l, quotes: (keep!.get(`${l.description}|${l.qty}`) ?? []).map((q) => ({ vendorId: q.vendorId, unitPrice: Number(q.unitPrice), note: q.note, chosen: q.chosen })) })));
   });
   res.json({ ok: true });
 });
@@ -215,7 +225,6 @@ procurementRoutes.post('/purchase-requests/:id/submit', async (req, res) => {
   const pr = await loadPr(id);
   if (pr.status !== 'DRAFT') throw new AppError(409, 'Hanya draft yang dapat diajukan');
   if (pr.createdById !== u.id && !isGa(u)) throw new AppError(403, 'Hanya pembuat yang dapat mengajukan');
-  await assertComplete(pr);
   await transact(async (fx) => {
     await fx.tx.purchaseRequest.update({ where: { id }, data: { status: 'SUBMITTED' } });
     await fx.notify({ roles: ['GA'], subject: `[PR] Pengajuan baru: ${pr.subject}`, body: `${u.name} mengajukan Purchase Request "${pr.subject}".\nSilakan periksa, lalu terbitkan PDF-nya.` });
@@ -237,6 +246,8 @@ procurementRoutes.post('/purchase-requests/:id/issue', gaOnly, async (req, res) 
   if (!['DRAFT', 'SUBMITTED', 'ISSUED'].includes(pr.status)) throw new AppError(409, 'PR ini sudah diproses lebih lanjut');
   await assertComplete(pr);
   const docs = await getDocs();
+  if (!pr.number && docs.codePrefix.includes('{ALIAS}') && !pr.areaId) throw fieldError('areaId', 'Pilih area PR dulu (menu Ubah → Area) — singkatan area dipakai pada nomor surat');
+  const prefix = docs.codePrefix.replace('{ALIAS}', areaAlias(pr.area));
   const who = whoOf(req);
   await transact(async (fx) => {
     let number = pr.number;
@@ -244,7 +255,7 @@ procurementRoutes.post('/purchase-requests/:id/issue', gaOnly, async (req, res) 
     if (!number) {
       const key = `PRDOC-${date.getFullYear()}`;
       const c = await fx.tx.counter.upsert({ where: { key }, create: { key, value: docs.seqStart }, update: { value: { increment: 1 } } });
-      number = `${c.value}/${docs.codePrefix}/${ROMAN[date.getMonth()]}/${date.getFullYear()}`;
+      number = `${c.value}/${prefix}/${ROMAN[date.getMonth()]}/${date.getFullYear()}`;
     }
     await fx.tx.purchaseRequest.update({ where: { id }, data: { number, status: 'ISSUED', docDate: date, issuedAt: pr.issuedAt ?? new Date(), city: docs.city, signRequester: b.signRequester, signRequesterTitle: b.signRequesterTitle ?? null, signKnow: b.signKnow, signApprove: b.signApprove } });
     if (pr.status !== 'ISSUED') {

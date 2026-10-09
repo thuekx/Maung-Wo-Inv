@@ -113,7 +113,7 @@ export async function getBranding() {
 
 /* ── Pengaturan dokumen (nomor surat, kota, PPN) ── */
 export interface DocsCfg { codePrefix: string; city: string; taxPct: number; seqStart: number; minVendors: number }
-export const DOCS_DEFAULTS: DocsCfg = { codePrefix: 'L1V/PNJ-BDG', city: 'Bandung', taxPct: 11, seqStart: 1, minVendors: 2 };
+export const DOCS_DEFAULTS: DocsCfg = { codePrefix: 'L1V/PNJ-{ALIAS}', city: 'Bandung', taxPct: 11, seqStart: 1, minVendors: 2 };
 export async function getDocs(): Promise<DocsCfg> {
   const d = (await getSetting<any>('docs')) ?? {};
   return {

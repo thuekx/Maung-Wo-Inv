@@ -4,8 +4,20 @@ import { api, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/dialog';
 import { ErrorMsg } from './ui';
+import { Select } from '@/components/Select';
 
 export interface SubDraft { formDate: string; regSuffix: string; name: string; address: string; phone: string; email: string; referral: string; packageName: string; serviceNote: string; installFee: string; monthlyFee: string; picName: string; picPhone: string; payment: string; marketingName: string; managerName: string }
+
+/** Angka kecepatan di akhir nama paket (SM-BB-BDG-BASIC-100 → 100) dan awalan tanpa angka itu. */
+const split = (name: string) => { const m = /^(.*?)[-_ ]?(\d+(?:[.,]\d+)?)\s*(?:m|mb|mbps)?$/i.exec(name.trim()); return m ? { base: m[1].toLowerCase(), n: Number(m[2].replace(',', '.')) } : { base: name.toLowerCase(), n: NaN }; };
+/** Paket yang dipilih + maksimal 3 varian yang mirip (awalan sama, beda angka belakang), diurutkan terdekat. */
+function shortlist(all: any[], selected: string, max = 3) {
+  const cur = all.find((p) => p.name === selected);
+  if (!cur) return [];
+  const a = split(cur.name);
+  const near = all.filter((p) => p.name !== cur.name && split(p.name).base === a.base).sort((x, y) => Math.abs(split(x.name).n - a.n) - Math.abs(split(y.name).n - a.n) || x.name.localeCompare(y.name)).slice(0, max);
+  return [cur, ...near];
+}
 
 const rp = (n: unknown) => (n === null || n === undefined || n === '' ? '' : `Rp. ${Math.round(Number(n)).toLocaleString('id-ID')}`);
 
@@ -58,16 +70,31 @@ export function SubForm({ initial, id, onSaved }: { initial: SubDraft; id?: stri
       </div>
       <div className="card space-y-3">
         <h2 className="font-semibold">Jenis layanan <span className="text-xs font-normal text-slate-500">— paket & harga dari Master Paket (MSRadius)</span></h2>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {pkgs?.map((p) => (
-            <label key={p.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${v.packageName === p.name ? 'border-brand-600 bg-brand-50' : ''}`}>
-              <input type="radio" name="pkg" checked={v.packageName === p.name} onChange={() => pickPkg(p)} />
-              <span className="min-w-0 flex-1"><b>{p.name}</b>{p.speed ? <span className="text-slate-500"> · {p.speed}</span> : null}</span>
-              {p.priceSell != null && <span className="shrink-0 text-xs text-slate-600">{rp(p.priceSell)}</span>}
-            </label>
-          ))}
-          {pkgs && !pkgs.length && <p className="text-sm text-slate-500">Belum ada paket — tarik data MSRadius atau tambah di Master Data.</p>}
-        </div>
+        {(() => {
+          const shown = shortlist(pkgs ?? [], v.packageName);
+          return (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {shown.map((p) => (
+                  <label key={p.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${v.packageName === p.name ? 'border-brand-600 bg-brand-50 dark:bg-slate-700' : ''}`}>
+                    <input type="radio" name="pkg" checked={v.packageName === p.name} onChange={() => pickPkg(p)} />
+                    <span className="min-w-0 flex-1"><b>{p.name}</b>{p.speed ? <span className="text-slate-500"> · {p.speed}</span> : null}</span>
+                    {p.priceSell != null && <span className="shrink-0 text-xs text-slate-600">{rp(p.priceSell)}</span>}
+                  </label>
+                ))}
+                {pkgs && !pkgs.length && <p className="text-sm text-slate-500">Belum ada paket — tarik data MSRadius atau tambah di Master Data.</p>}
+              </div>
+              {pkgs && pkgs.length > 0 && (
+                <div><label className="mb-1 block text-xs font-medium text-slate-600">{shown.length ? 'Pilih paket lain' : 'Pilih paket'}</label>
+                  <Select className="input" value="" onChange={(e) => { const p = pkgs.find((x) => x.name === e.target.value); if (p) pickPkg(p); }}>
+                    <option value="">— cari / pilih paket —</option>
+                    {pkgs.filter((p) => !shown.some((x) => x.id === p.id)).map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  </Select>
+                  {shown.length > 0 && <p className="mt-0.5 text-xs text-slate-500">Yang tampil hanya paket terpilih dan varian yang mirip (maks. 3); paket lain ada di pilihan ini.</p>}</div>
+              )}
+            </>
+          );
+        })()}
         {v.packageName && <button type="button" className="text-xs text-slate-500 underline" onClick={() => set('packageName', '')}>Kosongkan pilihan paket</button>}
         {field('serviceNote', 'Note', { maxLength: 200 })}
       </div>

@@ -38,6 +38,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
       <PageHeader title={`${wo.number} · ${wo.title}`} sub={`${TYPE_LABEL[wo.type]} · dibuat ${fmtDate(wo.createdAt)} oleh ${createdBy.name}${wo.source === 'BILLING' ? ' (otomatis dari Billing)' : ''}`}>
         <Badge tone={statusTone(wo.final, wo.status)}>{wo.statusLabel}</Badge>
         {wo.type === 'NEW_INSTALL' && data?.activation && ['MKT', 'ADMIN'].includes(user?.role ?? '') && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
+        {wo.docs?.reportNumber && <Link href={`/doc/report/${wo.id}`} className="btn-ghost">📄 {wo.docs.reportKind === 'INS' ? 'Laporan Instalasi (PDF)' : 'Laporan Troubleshooting (PDF)'}</Link>}
         {!wo.closedAt && (user?.role === 'ADMIN' || wo.createdById === user?.id) && <button className="btn-ghost" onClick={() => setEditWo(true)}>✎ Edit</button>}
         {user?.role === 'ADMIN' && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/work-orders/${wo.id}`, `WO ${wo.number}`)) router.replace('/work-orders'); }}>🗑 Hapus</button>}
       </PageHeader>

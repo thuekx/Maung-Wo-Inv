@@ -1,7 +1,7 @@
 'use client';
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, doDelete, fmtDate, roleText, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/dialog';
@@ -15,9 +15,12 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
   const { id } = use(params);
   const router = useRouter();
   const { user } = useAuth();
+  const sp = useSearchParams();
   const { data: pr, error, reload } = useFetch<any>(`/purchase-requests/${id}`);
   const [modal, setModal] = useState<'issue' | 'decision' | 'po' | 'cancel' | null>(null);
   const [err, setErr] = useState('');
+  const wantIssue = sp.get('issue') === '1';
+  useEffect(() => { if (wantIssue && pr && ['DRAFT', 'SUBMITTED'].includes(pr.status) && (user?.role === 'GA' || user?.role === 'ADMIN')) { setModal('issue'); router.replace(`/purchase-requests/${id}`); } }, [wantIssue, pr?.status, user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!pr) return <p className="text-slate-500">Memuat…</p>;
   const ga = user?.role === 'ADMIN' || user?.role === 'GA';
@@ -31,9 +34,9 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
     <div className="space-y-4">
       <PageHeader pretitle="Pengadaan" title={pr.number ? `PR ${pr.number}` : 'Purchase Request (draft)'} sub={`${pr.subject} · dibuat ${fmtDate(pr.createdAt)} oleh ${pr.createdBy.name} (${roleText(pr.createdBy)})`}>
         <Badge tone={st.tone}>{st.label}</Badge>
-        {editable && <Link href={`/purchase-requests/${id}/edit`} className="btn-ghost">✎ Ubah</Link>}
-        {pr.status === 'DRAFT' && (mine || ga) && <button className="btn" onClick={() => run(() => api(`/purchase-requests/${id}/submit`, { body: {} }), 'PR diajukan ke GA/Procurement.')}>Ajukan ke GA</button>}
-        {ga && ['DRAFT', 'SUBMITTED', 'ISSUED'].includes(pr.status) && <button className={pr.status === 'ISSUED' ? 'btn-ghost' : 'btn'} onClick={() => setModal('issue')}>{pr.status === 'ISSUED' ? 'Ubah penandatangan' : 'Terbitkan PDF'}</button>}
+        {editable && <Link href={`/purchase-requests/${id}/edit`} className="btn-ghost">✎ {ga && pr.lines.some((l: any) => !l.quotes.length) ? 'Input Perbandingan Harga' : 'Ubah'}</Link>}
+        {pr.status === 'DRAFT' && mine && !ga && <button className="btn" onClick={() => run(() => api(`/purchase-requests/${id}/submit`, { body: {} }), 'PR diajukan ke GA/Procurement.')}>Ajukan ke GA</button>}
+        {ga && ['DRAFT', 'SUBMITTED', 'ISSUED'].includes(pr.status) && <button className={pr.status === 'ISSUED' ? 'btn-ghost' : 'btn'} onClick={() => setModal('issue')}>{pr.status === 'ISSUED' ? 'Ubah penandatangan' : 'Terbitkan PR'}</button>}
         <Link href={`/doc/pr/${id}`} className="btn-ghost">📄 {pr.number ? 'Cetak PDF' : 'Pratinjau'}</Link>
         {ga && pr.status === 'ISSUED' && <button className="btn" onClick={() => setModal('decision')}>Catat keputusan</button>}
         {ga && pr.status === 'APPROVED' && <button className="btn" onClick={() => setModal('po')}>Catat PO dari Accurate</button>}
@@ -47,8 +50,9 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
       {pr.pos.length > 0 && <p className="text-sm">PO tercatat: {pr.pos.map((p: any) => <Link key={p.id} className="mr-2 text-brand-700 hover:underline" href={`/purchase-orders/${p.id}`}>{p.number} ({p.vendor})</Link>)}</p>}
 
       <div className="card">
-        <h2 className="mb-2 font-semibold">Rincian & perbandingan vendor</h2>
-        <Table head={['No', 'Deskripsi', 'Qty', 'Vendor (harga satuan)', 'Dipilih', 'Total', 'PO']}>
+        <h2 className="mb-2 font-semibold">{ga ? 'Rincian & perbandingan vendor' : 'Rincian item'}</h2>
+        {pr.area && <p className="mb-2 text-sm text-slate-600">Area: <b>{pr.area.name}</b>{pr.area.alias ? ` (${pr.area.alias})` : ''}</p>}
+        <Table head={ga ? ['No', 'Deskripsi', 'Qty', 'Vendor (harga satuan)', 'Dipilih', 'Total', 'PO'] : ['No', 'Deskripsi', 'Qty', 'PO']}>
           {pr.lines.map((l: any, i: number) => {
             const c = chosen(l);
             return (
@@ -56,15 +60,17 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
                 <td className="td">{i + 1}</td>
                 <td className="td">{l.description}{l.itemId ? <div className="text-xs text-slate-500">Barang stok: {l.item?.name}</div> : <div className="text-xs text-slate-400">Non-stok / jasa</div>}</td>
                 <td className="td whitespace-nowrap">{l.qty} {l.unit}</td>
+                {ga && <>
                 <td className="td text-sm">{l.quotes.map((q: any) => <div key={q.id} className={q.chosen ? 'font-semibold text-green-700' : ''}>{q.chosen ? '✓ ' : ''}{q.vendor.name} — {rupiah(q.unitPrice)}</div>)}{!l.quotes.length && <span className="text-amber-600">belum ada</span>}</td>
                 <td className="td text-sm">{c?.vendor.name ?? '-'}</td>
                 <td className="td whitespace-nowrap text-right">{c ? rupiah(l.qty * Number(c.unitPrice)) : '-'}</td>
+                </>}
                 <td className="td text-xs">{l.poLineId ? <Badge tone="green">tercatat</Badge> : '-'}</td>
               </tr>
             );
           })}
         </Table>
-        <div className="mt-3 space-y-0.5 text-right text-sm"><div>Subtotal {rupiah(pr.totals.subtotal)}</div><div>PPN {Number(pr.taxPct)}% {rupiah(pr.totals.tax)}</div><div className="font-semibold">Grand Total {rupiah(pr.totals.grandTotal)}</div></div>
+        {ga && <div className="mt-3 space-y-0.5 text-right text-sm"><div>Subtotal {rupiah(pr.totals.subtotal)}</div><div>PPN {Number(pr.taxPct)}% {rupiah(pr.totals.tax)}</div><div className="font-semibold">Grand Total {rupiah(pr.totals.grandTotal)}</div></div>}
       </div>
 
       {pr.signRequester && <p className="text-sm text-slate-600">Mengajukan: <b>{pr.signRequester}</b>{pr.signRequesterTitle ? ` (${pr.signRequesterTitle})` : ''} · Mengetahui: <b>{pr.signKnow}</b> · Menyetujui: <b>{pr.signApprove}</b></p>}

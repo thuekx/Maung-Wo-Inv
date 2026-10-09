@@ -486,6 +486,7 @@ model PurchaseRequest {
   taxPct             Decimal   @default(11) @db.Decimal(5, 2)
   note               String?
   woId               String? // Permintaan Barang (WO) asal, bila ada
+  areaId             String? // area pengaju: singkatan area dipakai pada nomor surat (L1V/PNJ-{ALIAS})
   createdById        String
   signRequester      String? // Mengajukan (diisi procurement saat menerbitkan PDF)
   signRequesterTitle String?
@@ -500,6 +501,7 @@ model PurchaseRequest {
 
   createdBy User            @relation(fields: [createdById], references: [id])
   wo        WorkOrder?      @relation(fields: [woId], references: [id])
+  area      Area?           @relation(fields: [areaId], references: [id])
   lines     PrLine[]
   pos       PurchaseOrder[]
 
@@ -573,6 +575,7 @@ model Area {
 
   warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
   customers Customer[]
+  prs       PurchaseRequest[]
 }
 
 /// Formulir Berlangganan digital (diterbitkan Marketing, dicetak untuk ditandatangani pelanggan)
