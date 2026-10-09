@@ -21,10 +21,11 @@ export const customerFields = (canStatus: boolean, withCode = true): Field[] => 
   { name: 'packageName', label: 'Paket langganan', type: 'package', required: true },
   ...(canStatus ? [{ name: 'status', label: 'Status', type: 'select', options: CUSTOMER_STATUS, required: true }] : []),
   { name: 'warehouseId', label: 'Gudang / cabang terkait', type: 'warehouse' },
-  { name: 'odp', label: 'ODP / Node', type: 'text' },
-  { name: 'port', label: 'Port ODP', type: 'text' },
-  { name: 'vlan', label: 'VLAN', type: 'text' },
-  { name: 'ip', label: 'IP / Subnet', type: 'text' },
+  { name: 'odp', label: 'ODP / Node', type: 'text', help: 'Maks. 40 karakter' },
+  { name: 'port', label: 'Port ODP', type: 'text', help: 'Maks. 20 karakter' },
+  { name: 'vlan', label: 'VLAN', type: 'text', help: 'Angka 1–4094' },
+  { name: 'ip', label: 'IP internal / Subnet', type: 'text', help: 'Harus IP privat (RFC 1918): 10.x.x.x, 172.16–31.x.x, 192.168.x.x' },
+  { name: 'publicIp', label: 'IP Publik (opsional)', type: 'text', help: 'Dicek duplikat hanya jika diisi' },
 ];
 
 function ImportPanel({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {

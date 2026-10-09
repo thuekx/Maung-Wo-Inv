@@ -3,6 +3,7 @@ import { WoType } from './orm';
 import { AppError, fieldError } from './db';
 import { config } from './config';
 import { AVAILABLE, installAvailability, mobileWarehouse, moveAsset, moveStock, mustAsset, nextNumber, normSn, qcAssets } from './inventory';
+import { assertNetworkFree, internalIp, odpName, portName, publicIp, vlanId } from './network';
 import type { ActionDef, Ctx, Field, Workflow } from './wf-types';
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -22,7 +23,7 @@ const materials = z
   .array(z.object({ itemId: z.string().min(1), qty: z.coerce.number().int().positive() }))
   .default([]);
 const yes = (msg: string) => z.literal(true, { errorMap: () => ({ message: msg }) });
-const optNote = z.string().optional();
+const optNote = z.string().max(1000, 'Maksimal 1000 karakter').optional();
 
 async function customerOf(ctx: Ctx) {
   if (!ctx.wo.customerId) throw new AppError(400, 'WO tidak terhubung ke pelanggan');
@@ -49,17 +50,36 @@ async function pickup(ctx: Ctx, input: unknown) {
   ctx.data.pickup = { serials: i.serials, materials: i.materials, at: new Date() };
 }
 
-/** Pakai material habis pakai dari Stok Berjalan (kabel dihitung per meter dari item SKU DROPCORE). */
-async function consume(ctx: Ctx, cableMeters: number, lines: { itemId: string; qty: number }[]) {
+/**
+ * Pakai material habis pakai dari Stok Berjalan. Kabel (item ber-core) harus lewat daftar material seperti barang lain;
+ * parameter `cableMeters` hanya dipertahankan untuk klien API lama (dipetakan ke item DROPCORE).
+ * `pickedOnly`: hanya boleh memakai item & jumlah yang diambil teknisi saat "Mulai & ambil material" (laporan instalasi).
+ */
+async function consume(ctx: Ctx, cableMeters: number, lines: { itemId: string; qty: number }[], opts: { pickedOnly?: boolean } = {}) {
   const mob = await mobileWarehouse(ctx.tx, ctx.wo.assigneeId ?? ctx.actor.id);
-  const all = [...lines];
+  const used = new Map<string, number>();
+  for (const l of lines) used.set(l.itemId, (used.get(l.itemId) ?? 0) + l.qty);
   if (cableMeters > 0) {
     const cable = await ctx.tx.item.findUnique({ where: { sku: 'DROPCORE' } });
     if (!cable) throw new AppError(500, 'Item DROPCORE belum ada di master item');
-    all.push({ itemId: cable.id, qty: cableMeters });
+    used.set(cable.id, (used.get(cable.id) ?? 0) + cableMeters);
   }
-  for (const l of all)
-    await moveStock(ctx.tx, { itemId: l.itemId, qty: l.qty, from: mob.id, to: null, reason: `Terpakai – ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
+  if (opts.pickedOnly) {
+    const picked = new Map<string, number>();
+    for (const m of ((ctx.wo.data as any)?.pickup?.materials ?? []) as { itemId: string; qty: number }[]) picked.set(m.itemId, (picked.get(m.itemId) ?? 0) + m.qty);
+    for (const [itemId, qty] of used) {
+      const it = await ctx.tx.item.findUnique({ where: { id: itemId } });
+      const have = picked.get(itemId);
+      if (have === undefined) throw fieldError('materials', `${it?.name ?? itemId} tidak diambil saat "Mulai & ambil material" — hanya material yang sudah diambil yang bisa dilaporkan terpakai`, 409);
+      if (qty > have) throw fieldError('materials', `${it?.name ?? itemId}: dilaporkan ${qty} ${it?.unit ?? ''}, tetapi yang diambil hanya ${have}`, 409);
+    }
+    ctx.data.reconciliation = {
+      items: [...picked].map(([itemId, qty]) => ({ itemId, picked: qty, used: used.get(itemId) ?? 0, leftover: qty - (used.get(itemId) ?? 0) })),
+      note: 'Sisa tetap tercatat di Stok Berjalan teknisi (menjadi tanggung jawab peminta) sampai dikembalikan dan diterima gudang',
+    };
+  }
+  for (const [itemId, qty] of used)
+    await moveStock(ctx.tx, { itemId, qty, from: mob.id, to: null, reason: `Terpakai – ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
   return mob;
 }
 
@@ -136,10 +156,10 @@ const newInstall: Workflow = {
   async create(tx, input) {
     const i = z
       .object({
-        name: z.string().min(2),
-        phone: z.string().min(6),
-        email: z.string().email().optional().or(z.literal('')),
-        address: z.string().min(5),
+        name: z.string().trim().min(2).max(120, 'Maksimal 120 karakter'),
+        phone: z.string().trim().min(6).max(20, 'Maksimal 20 karakter').regex(/^[0-9+][0-9 +()-]*$/, 'Hanya angka, spasi, + ( ) -'),
+        email: z.string().email('Format email tidak valid').max(120).optional().or(z.literal('')),
+        address: z.string().trim().min(5).max(300, 'Maksimal 300 karakter'),
         lat: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().min(-90).max(90).optional()),
         lng: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.coerce.number().min(-180).max(180).optional()),
         packageName: z.string().min(1),
@@ -166,20 +186,18 @@ const newInstall: Workflow = {
           roles: ['NOC'],
           to: 'STOCK_CHECK',
           fields: [
-            { name: 'odp', label: 'ODP / Node', type: 'text', required: true },
-            { name: 'port', label: 'Port ODP', type: 'text', required: true },
-            { name: 'vlan', label: 'VLAN', type: 'text', required: true },
-            { name: 'ip', label: 'IP / Subnet', type: 'text', required: true },
+            { name: 'odp', label: 'ODP / Node', type: 'text', required: true, help: 'Maks. 40 karakter. FOC boleh mengoreksi ODP/port di lapangan; IP & VLAN tetap dari NOC' },
+            { name: 'port', label: 'Port ODP', type: 'text', required: true, help: 'Maks. 20 karakter' },
+            { name: 'vlan', label: 'VLAN', type: 'text', required: true, help: 'Angka 1–4094' },
+            { name: 'ip', label: 'IP internal / Subnet', type: 'text', required: true, help: 'Wajib IP privat RFC 1918 (10.x.x.x, 172.16–31.x.x, 192.168.x.x), mis. 10.20.30.40 atau 10.20.30.0/30' },
+            { name: 'publicIp', label: 'IP Publik (opsional)', type: 'text', help: 'Hanya bila pelanggan memakai IP publik; dicek duplikat hanya jika diisi' },
             note(),
           ],
           run: async (ctx, input) => {
-            const i = z.object({ odp: z.string().min(1), port: z.string().min(1), vlan: z.string().min(1), ip: z.string().min(7), note: optNote }).parse(input);
-            const dup = await ctx.tx.customer.findFirst({ where: { ip: i.ip, id: { not: ctx.wo.customerId! }, status: { not: 'TERMINATED' }, archivedAt: null } });
-            if (dup) throw fieldError('ip', `IP ${i.ip} sudah dipakai ${dup.name}`, 409);
-            const portDup = await ctx.tx.customer.findFirst({ where: { odp: i.odp, port: i.port, id: { not: ctx.wo.customerId! }, status: { not: 'TERMINATED' }, archivedAt: null } });
-            if (portDup) throw fieldError('port', `Port ${i.odp}/${i.port} sudah dipakai ${portDup.name}`, 409);
-            await setCustomer(ctx, { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip });
-            ctx.data.validation = { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip };
+            const i = z.object({ odp: odpName.pipe(z.string()), port: portName.pipe(z.string()), vlan: vlanId.pipe(z.string()), ip: internalIp.pipe(z.string()), publicIp, note: optNote }).parse(input);
+            await assertNetworkFree(ctx.tx, i, ctx.wo.customerId!);
+            await setCustomer(ctx, { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip, publicIp: i.publicIp ?? null });
+            ctx.data.validation = { odp: i.odp, port: i.port, vlan: i.vlan, ip: i.ip, ...(i.publicIp ? { publicIp: i.publicIp } : {}) };
           },
         },
         { key: 'reject', label: 'Tolak (tidak ada coverage/port)', roles: ['NOC'], to: 'REJECTED', danger: true, fields: [note(true)] },
@@ -229,19 +247,31 @@ const newInstall: Workflow = {
           to: 'PHYSICAL_DONE',
           fields: [
             { name: 'serials', label: 'Scan SN ONT / Router terpasang', type: 'serials', required: true },
-            { name: 'cableMeters', label: 'Kabel terpakai (meter)', type: 'number', required: true },
-            { name: 'materials', label: 'Material habis pakai (fast connector, sleeve, dll)', type: 'materials', itemCategory: 'CONSUMABLE' },
+            { name: 'materials', label: 'Material terpakai (kabel dalam meter, fast connector, sleeve, dll)', type: 'materials', required: true, pickedOnly: true, help: 'Hanya material yang diambil saat "Mulai & ambil material". Sisa otomatis tetap di Stok Berjalan Anda.' },
+            { name: 'odp', label: 'ODP aktual (isi hanya bila berbeda dari rencana NOC)', type: 'text' },
+            { name: 'port', label: 'Port ODP aktual (isi hanya bila berbeda)', type: 'text', help: 'Dicek duplikat; IP & VLAN tidak dapat diubah teknisi' },
             { name: 'opmDbm', label: 'Redaman OPM (dBm)', type: 'number', required: true, help: 'contoh: -19.5' },
             photosF,
             note(),
           ],
           run: async (ctx, input) => {
             const i = z
-              .object({ serials: sn.pipe(z.array(z.string()).min(1, 'Scan minimal 1 SN perangkat')), cableMeters: z.coerce.number().int().min(0), materials, opmDbm: z.coerce.number().min(-40).max(0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote })
+              .object({ serials: sn.pipe(z.array(z.string()).min(1, 'Scan minimal 1 SN perangkat')), cableMeters: z.coerce.number().int().min(0).default(0), materials, odp: odpName, port: portName, opmDbm: z.coerce.number().min(-40).max(0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote })
               .parse(input);
-            const mob = await consume(ctx, i.cableMeters, i.materials);
+            const cur = ctx.wo.customer!;
+            const newOdp = i.odp ?? cur.odp ?? undefined, newPort = i.port ?? cur.port ?? undefined;
+            if ((i.odp && i.odp !== cur.odp) || (i.port && i.port !== cur.port)) {
+              await assertNetworkFree(ctx.tx, { odp: newOdp, port: newPort }, cur.id);
+              await setCustomer(ctx, { odp: newOdp, port: newPort });
+              ctx.data.fieldChange = { from: { odp: cur.odp, port: cur.port }, to: { odp: newOdp, port: newPort }, by: ctx.actor.id, at: new Date() };
+              await ctx.fx.notify({ roles: ['NOC'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] ODP/port dikoreksi teknisi`, body: `Pelanggan ${cname(ctx)}\nRencana: ${cur.odp ?? '-'}/${cur.port ?? '-'} → Aktual: ${newOdp ?? '-'}/${newPort ?? '-'}\n${link(ctx)}` });
+            }
+            const mob = await consume(ctx, i.cableMeters, i.materials, { pickedOnly: true });
             await installSerials(ctx, i.serials, mob.id);
-            ctx.data.report = { ...i, at: new Date() };
+            const pk = ((ctx.wo.data as any)?.pickup?.serials ?? []) as string[];
+            if (ctx.data.reconciliation) (ctx.data.reconciliation as any).serials = { picked: pk, installed: i.serials, leftover: pk.filter((x) => !i.serials.includes(x)) };
+            const { odp: _o, port: _p, ...rest } = i;
+            ctx.data.report = { ...rest, at: new Date() };
           },
         },
       ],
@@ -397,8 +427,7 @@ const trouble: Workflow = {
           fields: [
             { name: 'serialsNew', label: 'SN perangkat BARU terpasang', type: 'serials' },
             { name: 'serialsOld', label: 'SN perangkat LAMA yang diambil', type: 'serials' },
-            { name: 'cableMeters', label: 'Kabel terpakai (meter)', type: 'number' },
-            { name: 'materials', label: 'Material habis pakai', type: 'materials', itemCategory: 'CONSUMABLE' },
+            { name: 'materials', label: 'Material terpakai (kabel dalam meter, dll)', type: 'materials', help: 'Diambil dari Stok Berjalan Anda; kabel yang belum diambil/diminta tidak bisa dipakai.' },
             { name: 'opmDbm', label: 'Redaman OPM setelah perbaikan (dBm)', type: 'number' },
             photosF,
             note(true),

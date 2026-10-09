@@ -98,6 +98,7 @@ model Customer {
   port        String?
   vlan        String?
   ip          String?
+  publicIp    String? // IP publik (opsional); dicek duplikat hanya bila terisi
   activatedAt DateTime?
   createdAt   DateTime       @default(now())
   archivedAt  DateTime? // diarsipkan (dihapus dari daftar tetapi riwayat WO tetap utuh); Admin dapat memulihkan
@@ -108,6 +109,7 @@ model Customer {
 
   @@index([status])
   @@index([archivedAt])
+  @@index([publicIp])
   @@index([createdAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_name_trgm")
   @@index([code(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_code_trgm")
@@ -208,6 +210,8 @@ model Item {
   tracked           Boolean      @default(false) // true = per serial number
   installDefaultQty Int? // kebutuhan standar 1x pasang baru (untuk cek stok otomatis)
   minStock          Int          @default(0)
+  coreCount         Int? // khusus kabel: jumlah core (terisi = item kabel, satuan meter)
+  isVehicle         Boolean      @default(false) // kendaraan: form aset menampilkan plat & no. rangka
 
   stock  StockLevel[]
   assets Asset[]
@@ -237,6 +241,10 @@ model Asset {
   woId               String?
   condition          String?
   notes              String?
+  needsMaintenance   Boolean     @default(false) // aset yang perlu perawatan berkala (muncul di dasbor)
+  maintenanceIntervalDays Int?
+  plateNumber        String?
+  chassisNumber      String?
   nextMaintenanceAt  DateTime?
   lastMaintenanceAt  DateTime?
   createdAt          DateTime    @default(now())

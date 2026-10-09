@@ -15,12 +15,14 @@ export interface Field {
   help?: string;
   itemCategory?: string;
   customerStatus?: string[];
+  pickedOnly?: boolean;
 }
 
 /* ───────── input khusus ───────── */
 
-export function SerialInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const [text, setText] = useState('');
+export function SerialInput({ value, onChange, onPending }: { value: string[]; onChange: (v: string[]) => void; onPending?: (text: string) => void }) {
+  const [text, setTextRaw] = useState('');
+  const setText = (t: string) => { setTextRaw(t); onPending?.(t.trim()); };
   const [scanning, setScanning] = useState(false);
   const [info, setInfo] = useState<Record<string, string>>({});
   const valueRef = useRef(value);
@@ -58,11 +60,12 @@ export function SerialInput({ value, onChange }: { value: string[]; onChange: (v
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <input className="input font-mono" placeholder="Ketik / scan barcode lalu Enter" value={text} onChange={(e) => setText(e.target.value)}
+        <input className={`input font-mono ${text.trim() ? 'border-amber-400' : ''}`} placeholder="Ketik / scan barcode lalu Enter" value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(text); setText(''); } }} />
         <button type="button" className="btn-ghost" onClick={() => { add(text); setText(''); }}>Tambah</button>
         <button type="button" className="btn-ghost" onClick={() => setScanning(!scanning)}>{scanning ? 'Tutup kamera' : '📷 Scan'}</button>
       </div>
+      {text.trim() && <p className="text-xs font-medium text-amber-700">⚠ SN &quot;{text.trim().toUpperCase()}&quot; belum ditambahkan — tekan <b>Tambah</b> atau Enter, jika tidak SN ini tidak ikut tersimpan.</p>}
       {scanning && <div id="qr-reader" className="max-w-xs overflow-hidden rounded-lg border" />}
       <ul className="space-y-1">
         {value.map((s) => (
@@ -76,27 +79,36 @@ export function SerialInput({ value, onChange }: { value: string[]; onChange: (v
   );
 }
 
-export function MaterialsInput({ value, onChange, category }: { value: { itemId: string; qty: number | string }[]; onChange: (v: any[]) => void; category?: string }) {
+const itemLabel = (x: any) => `${x.name}${x.coreCount ? ` · ${x.coreCount} core` : ''} (${x.unit})`;
+
+export function MaterialsInput({ value, onChange, category, woId, pickedOnly }: { value: { itemId: string; qty: number | string }[]; onChange: (v: any[]) => void; category?: string; woId?: string; pickedOnly?: boolean }) {
   const { data: items } = useFetch<any[]>('/items');
-  const list = (items ?? []).filter((i) => !category || i.category === category);
+  const { data: wo } = useFetch<any>(pickedOnly && woId ? `/work-orders/${woId}` : null);
+  const picked: Record<string, number> = {};
+  for (const m of wo?.data?.pickup?.materials ?? []) picked[m.itemId] = (picked[m.itemId] ?? 0) + Number(m.qty);
+  const list = (items ?? []).filter((i) => (!category || i.category === category) && (!pickedOnly || picked[i.id] !== undefined));
   const set = (idx: number, patch: object) => onChange(value.map((v, i) => (i === idx ? { ...v, ...patch } : v)));
+  const usedBy = (id: string, except: number) => value.reduce((n, v, k) => n + (k !== except && v.itemId === id ? Number(v.qty) || 0 : 0), 0);
   return (
     <div className="space-y-2">
+      {pickedOnly && wo && list.length === 0 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">Belum ada material yang diambil di WO ini. Material hanya bisa dilaporkan terpakai bila diambil saat &quot;Mulai &amp; ambil material&quot;.</p>}
       {value.map((row, i) => {
         const it = list.find((x) => x.id === row.itemId);
+        const max = it && pickedOnly ? picked[it.id] - usedBy(it.id, i) : undefined;
         return (
           <div key={i} className="flex gap-2">
             <select className="input" value={row.itemId} onChange={(e) => set(i, { itemId: e.target.value })}>
               <option value="">— pilih item —</option>
-              {list.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.unit})</option>)}
+              {list.map((x) => <option key={x.id} value={x.id}>{itemLabel(x)}{pickedOnly ? ` — diambil ${picked[x.id]}` : ''}</option>)}
             </select>
-            <input className="input w-28" type="number" min={1} placeholder="Qty" value={row.qty} onChange={(e) => set(i, { qty: e.target.value })} />
-            <span className="self-center text-xs text-slate-500">{it?.unit}</span>
+            <input className="input w-28" type="number" min={1} max={max} placeholder="Qty" value={row.qty} onChange={(e) => set(i, { qty: e.target.value })} />
+            <span className="self-center text-xs text-slate-500">{it?.unit}{max !== undefined ? ` (maks ${max})` : ''}</span>
             <button type="button" className="text-red-600" onClick={() => onChange(value.filter((_, k) => k !== i))}>✕</button>
           </div>
         );
       })}
       <button type="button" className="btn-ghost" onClick={() => onChange([...value, { itemId: '', qty: '' }])}>+ Tambah baris</button>
+      {pickedOnly && list.length > 0 && <p className="text-xs text-slate-500">Sisa yang tidak dipakai tetap tercatat di Stok Berjalan Anda.</p>}
     </div>
   );
 }
@@ -237,6 +249,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   });
   const [err, setErr] = useState('');
   const [fe, setFe] = useState<Record<string, string>>({});
+  const [pending, setPending] = useState<Record<string, string>>({});
   const { data: techs } = useFetch<any[]>(fields.some((f) => f.type === 'technician') ? '/users/lookup?role=FOC' : null);
   const { data: whs } = useFetch<any[]>(fields.some((f) => f.type === 'warehouse') ? '/warehouses' : null);
   const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
@@ -251,6 +264,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
       const empty = Array.isArray(x) ? x.length === 0 : f.type === 'bool' ? x !== true : x === '' || x == null;
       if (f.required && empty) miss[f.name] = `${f.label} wajib diisi`;
     }
+    for (const f of fields) if (f.type === 'serials' && pending[f.name]) miss[f.name] = `SN "${pending[f.name].toUpperCase()}" sudah diketik tetapi belum ditambahkan — tekan Tambah dulu (atau hapus teksnya)`;
     setFe(miss);
     if (Object.keys(miss).length) {
       setErr('Lengkapi isian yang ditandai merah.');
@@ -308,8 +322,8 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
               </select>)
             : f.type === 'brandmodel' ? <BrandModelInput value={v[f.name] ?? {}} onChange={(x) => set(f.name, x)} canCreate={user?.role === 'GA' || user?.role === 'ADMIN'} />
             : f.type === 'customer' ? <CustomerSelect value={v[f.name]} onChange={(x) => set(f.name, x)} statuses={f.customerStatus} />
-            : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} />
-            : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} />
+            : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} onPending={(t) => setPending((p) => ({ ...p, [f.name]: t }))} />
+            : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} woId={woId} pickedOnly={f.pickedOnly} />
             : f.type === 'photos' ? <PhotosInput value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
             : f.type === 'qc' ? <QcInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}

@@ -36,21 +36,22 @@ async function main() {
   const cabA = await wh('WH-CAB-A', 'Gudang Cabang A', 'BRANCH');
   await wh('WH-TRANSIT', 'Gudang Transit', 'TRANSIT');
 
-  const item = (sku: string, name: string, category: ItemCategory, extra: { unit?: string; installDefaultQty?: number; minStock?: number } = {}) =>
+  const item = (sku: string, name: string, category: ItemCategory, extra: { unit?: string; installDefaultQty?: number; minStock?: number; coreCount?: number; isVehicle?: boolean } = {}) =>
     prisma.item.upsert({
       where: { sku },
       update: {},
-      create: { sku, name, category, tracked: category !== 'CONSUMABLE', unit: extra.unit ?? 'pcs', installDefaultQty: extra.installDefaultQty, minStock: extra.minStock ?? 0 },
+      create: { sku, name, category, tracked: category !== 'CONSUMABLE', unit: extra.unit ?? 'pcs', installDefaultQty: extra.installDefaultQty, minStock: extra.minStock ?? 0, coreCount: extra.coreCount, isVehicle: extra.isVehicle ?? false },
     });
 
-  const dropcore = await item('DROPCORE', 'Kabel Dropcore', 'CONSUMABLE', { unit: 'meter', installDefaultQty: 100, minStock: 2000 });
+  const dropcore = await item('DROPCORE', 'Kabel Dropcore', 'CONSUMABLE', { unit: 'meter', installDefaultQty: 100, minStock: 2000, coreCount: 1 });
+  await item('DROPCORE2', 'Kabel Dropcore 2 Core', 'CONSUMABLE', { unit: 'meter', minStock: 500, coreCount: 2 });
   const fast = await item('FASTCONN', 'Fast Connector', 'CONSUMABLE', { installDefaultQty: 2, minStock: 100 });
   const sleeve = await item('SLEEVE', 'Protection Sleeve', 'CONSUMABLE', { installDefaultQty: 2, minStock: 100 });
   await item('PIGTAIL', 'Pigtail', 'CONSUMABLE', { minStock: 20 });
   const ont = await item('ONT', 'ONT', 'NETWORK', { installDefaultQty: 1, minStock: 5 });
   await item('ROUTER', 'Router WiFi', 'NETWORK');
   for (const [sku, name] of [['OLT', 'OLT'], ['SFP', 'SFP Module'], ['SWITCH', 'Switch'], ['SPLICER', 'Splicer'], ['OTDR', 'OTDR']] as const) await item(sku, name, 'NETWORK');
-  for (const [sku, name] of [['CAR', 'Mobil Operasional'], ['MOTOR', 'Motor Operasional'], ['LAPTOP', 'Laptop Kantor'], ['AC', 'AC'], ['FURN', 'Meja/Kursi'], ['TOOLS', 'Alat Pertukangan']] as const) await item(sku, name, 'GA');
+  for (const [sku, name] of [['CAR', 'Mobil Operasional'], ['MOTOR', 'Motor Operasional'], ['LAPTOP', 'Laptop Kantor'], ['AC', 'AC'], ['FURN', 'Meja/Kursi'], ['TOOLS', 'Alat Pertukangan']] as const) await item(sku, name, 'GA', { isVehicle: sku === 'CAR' || sku === 'MOTOR' });
 
   // Demo stok awal (hanya jika masih kosong)
   if ((await prisma.stockLevel.count()) === 0) {

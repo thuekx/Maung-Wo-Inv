@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { AssetStatus } from '../orm';
-import { AppError, prisma, Tx } from '../db';
+import { AppError, fieldError, prisma, Tx } from '../db';
 import { authenticate, requireRole } from '../auth';
 import { transact } from '../effects';
 import { applyAction, systemActor } from '../engine';
@@ -55,16 +55,23 @@ const itemBody = z.object({
   unit: z.string().default('pcs'),
   installDefaultQty: z.coerce.number().int().min(0).nullable().optional(),
   minStock: z.coerce.number().int().min(0).default(0),
+  coreCount: z.preprocess((v) => (v === '' ? null : v), z.coerce.number().int().min(1, 'Minimal 1 core').max(288, 'Maksimal 288 core').nullable().optional()),
+  isVehicle: z.boolean().optional(),
 });
 inventoryRoutes.post('/items', stockRoles, async (req, res) => {
   const b = itemBody.parse(req.body);
-  res.status(201).json(await prisma.item.create({ data: { ...b, tracked: b.category !== 'CONSUMABLE' } }));
+  if (b.coreCount && b.category !== 'CONSUMABLE') throw fieldError('coreCount', 'Jumlah core hanya untuk item kabel (kategori Habis pakai)');
+  if (b.isVehicle && b.category !== 'GA') throw fieldError('isVehicle', 'Kendaraan harus kategori Aset GA');
+  res.status(201).json(await prisma.item.create({ data: { ...b, unit: b.coreCount ? 'meter' : b.unit, tracked: b.category !== 'CONSUMABLE' } }));
 });
 inventoryRoutes.patch('/items/:id', stockRoles, async (req, res) => {
   const id = String(req.params.id);
   const b = itemBody.partial().omit({ category: true }).parse(req.body);
   const cur = await prisma.item.findUnique({ where: { id } });
   if (!cur) throw new AppError(404, 'Item tidak ditemukan');
+  if (b.coreCount && cur.category !== 'CONSUMABLE') throw fieldError('coreCount', 'Jumlah core hanya untuk item kabel (kategori Habis pakai)');
+  if (b.isVehicle && cur.category !== 'GA') throw fieldError('isVehicle', 'Kendaraan harus kategori Aset GA');
+  if (b.coreCount) b.unit = 'meter';
   res.json(await auditedUpdate(whoOf(req), 'item', id, `${cur.sku} ${cur.name}`, changes(cur, b), (fx) => fx.tx.item.update({ where: { id }, data: b })));
 });
 inventoryRoutes.delete('/items/:id', stockRoles, async (req, res) => {
@@ -161,7 +168,9 @@ inventoryRoutes.get('/assets/by-serial/:sn', async (req, res) => {
   res.json(a);
 });
 
-export async function createAsset(tx: Tx, p: { itemId: string; serial?: string; warehouseId: string; status?: AssetStatus; actorId: string; reason: string; woId?: string; nextMaintenanceAt?: Date; notes?: string; brandId?: string; modelId?: string }) {
+export type MaintOpts = { needsMaintenance?: boolean; maintenanceIntervalDays?: number; plateNumber?: string; chassisNumber?: string };
+
+export async function createAsset(tx: Tx, p: { itemId: string; serial?: string; warehouseId: string; status?: AssetStatus; actorId: string; reason: string; woId?: string; nextMaintenanceAt?: Date; notes?: string; brandId?: string; modelId?: string } & MaintOpts) {
   const item = await tx.item.findUnique({ where: { id: p.itemId } });
   if (!item || !item.tracked) throw new AppError(400, 'Item harus bertipe ber-SN (Perangkat Jaringan / Aset GA)');
   if (p.modelId) {
@@ -175,7 +184,10 @@ export async function createAsset(tx: Tx, p: { itemId: string; serial?: string; 
   if (!serialNumber) throw new AppError(400, 'Serial number wajib diisi');
   if (await tx.asset.findUnique({ where: { serialNumber } })) throw new AppError(409, `SN ${serialNumber} sudah terdaftar`);
   const asset = await tx.asset.create({
-    data: { itemId: item.id, serialNumber, assetCode, warehouseId: p.warehouseId, status: p.status ?? 'IN_STOCK', nextMaintenanceAt: p.nextMaintenanceAt, notes: p.notes, brandId: p.brandId ?? null, modelId: p.modelId ?? null },
+    data: { itemId: item.id, serialNumber, assetCode, warehouseId: p.warehouseId, status: p.status ?? 'IN_STOCK', needsMaintenance: !!p.needsMaintenance, maintenanceIntervalDays: p.needsMaintenance ? p.maintenanceIntervalDays ?? null : null,
+      nextMaintenanceAt: p.nextMaintenanceAt ?? (p.needsMaintenance && p.maintenanceIntervalDays ? new Date(Date.now() + p.maintenanceIntervalDays * 86_400_000) : undefined),
+      plateNumber: item.isVehicle ? p.plateNumber?.trim().toUpperCase() || null : null, chassisNumber: item.isVehicle ? p.chassisNumber?.trim().toUpperCase() || null : null,
+      notes: p.notes, brandId: p.brandId ?? null, modelId: p.modelId ?? null },
   });
   await tx.stockMovement.create({ data: { itemId: item.id, assetId: asset.id, qty: 1, toWarehouseId: p.warehouseId, reason: p.reason, woId: p.woId, actorId: p.actorId } });
   return asset;
@@ -191,7 +203,11 @@ inventoryRoutes.post('/assets/register', stockRoles, async (req, res) => {
       count: z.coerce.number().int().min(1).max(50).default(1), // GA tanpa SN: jumlah unit
       status: z.enum(['IN_STOCK', 'IN_USE']).optional(),
       nextMaintenanceAt: z.coerce.date().optional(),
-      notes: z.string().optional(),
+      needsMaintenance: z.boolean().optional(),
+      maintenanceIntervalDays: z.coerce.number().int().min(1, 'Minimal 1 hari').max(3650, 'Maksimal 3650 hari').optional(),
+      plateNumber: z.string().trim().max(15, 'Maksimal 15 karakter').optional(),
+      chassisNumber: z.string().trim().max(30, 'Maksimal 30 karakter').optional(),
+      notes: z.string().max(500, 'Maksimal 500 karakter').optional(),
       brandId: z.string().optional(),
       modelId: z.string().optional(),
     })
@@ -202,8 +218,14 @@ inventoryRoutes.post('/assets/register', stockRoles, async (req, res) => {
     if (!item) throw new AppError(404, 'Item tidak ditemukan');
     const serials: (string | undefined)[] = b.serials.length ? b.serials : item.category === 'GA' ? Array.from({ length: b.count }, () => undefined) : [];
     if (!serials.length) throw new AppError(400, 'Isi minimal 1 serial number');
+    if (item.isVehicle) {
+      if (serials.length > 1) throw fieldError('count', 'Kendaraan didaftarkan satu per satu (plat & no. rangka unik)');
+      if (!b.plateNumber) throw fieldError('plateNumber', 'Plat nomor wajib untuk kendaraan');
+      if (await fx.tx.asset.findFirst({ where: { plateNumber: b.plateNumber.toUpperCase() } })) throw fieldError('plateNumber', `Plat ${b.plateNumber.toUpperCase()} sudah terdaftar`, 409);
+      if (b.chassisNumber && (await fx.tx.asset.findFirst({ where: { chassisNumber: b.chassisNumber.toUpperCase() } }))) throw fieldError('chassisNumber', `No. rangka ${b.chassisNumber.toUpperCase()} sudah terdaftar`, 409);
+    }
     const out = [];
-    for (const s of serials) out.push(await createAsset(fx.tx, { itemId: b.itemId, serial: s, warehouseId: b.warehouseId, status: b.status, actorId: u.id, reason: 'Registrasi aset', nextMaintenanceAt: b.nextMaintenanceAt, notes: b.notes, brandId: b.brandId, modelId: b.modelId }));
+    for (const s of serials) out.push(await createAsset(fx.tx, { itemId: b.itemId, serial: s, warehouseId: b.warehouseId, status: b.status, actorId: u.id, reason: 'Registrasi aset', nextMaintenanceAt: b.nextMaintenanceAt, needsMaintenance: b.needsMaintenance, maintenanceIntervalDays: b.maintenanceIntervalDays, plateNumber: b.plateNumber, chassisNumber: b.chassisNumber, notes: b.notes, brandId: b.brandId, modelId: b.modelId }));
     return out;
   });
   res.status(201).json(created);
@@ -212,7 +234,7 @@ inventoryRoutes.post('/assets/register', stockRoles, async (req, res) => {
 inventoryRoutes.patch('/assets/:id', stockRoles, async (req, res) => {
   const id = String(req.params.id);
   const b = z
-    .object({ serialNumber: z.string().min(2).transform(normSn), assetCode: z.string().min(2).nullable(), nextMaintenanceAt: z.coerce.date().nullable(), lastMaintenanceAt: z.coerce.date().nullable(), notes: z.string().nullable(), condition: z.string().nullable(), status: z.enum(['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP']), warehouseId: z.string(), brandId: z.string().nullable(), modelId: z.string().nullable() })
+    .object({ serialNumber: z.string().min(2).transform(normSn), assetCode: z.string().min(2).nullable(), nextMaintenanceAt: z.coerce.date().nullable(), lastMaintenanceAt: z.coerce.date().nullable(), needsMaintenance: z.boolean(), maintenanceIntervalDays: z.coerce.number().int().min(1).max(3650).nullable(), plateNumber: z.string().trim().max(15).nullable(), chassisNumber: z.string().trim().max(30).nullable(), notes: z.string().max(500).nullable(), condition: z.string().nullable(), status: z.enum(['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP']), warehouseId: z.string(), brandId: z.string().nullable(), modelId: z.string().nullable() })
     .partial()
     .parse(req.body);
   const cur = await prisma.asset.findUnique({ where: { id } });
@@ -261,7 +283,7 @@ inventoryRoutes.get('/purchase-orders/:id', async (req, res) => {
 
 // Penerimaan barang: QC lolos saja yang dimasukkan; item ber-SN wajib input SN → label QR
 inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res) => {
-  const b = z.object({ lines: z.array(z.object({ lineId: z.string(), qty: z.coerce.number().int().min(0), serials: z.array(z.string()).default([]), brandId: z.string().optional(), modelId: z.string().optional() })) }).parse(req.body);
+  const b = z.object({ lines: z.array(z.object({ lineId: z.string(), qty: z.coerce.number().int().min(0), serials: z.array(z.string()).default([]), brandId: z.string().optional(), modelId: z.string().optional(), needsMaintenance: z.boolean().optional(), maintenanceIntervalDays: z.coerce.number().int().min(1).max(3650).optional() })) }).parse(req.body);
   const u = req.user!;
   const result = await transact(async (fx) => {
     const po = await fx.tx.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } } } });
@@ -277,7 +299,7 @@ inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res
         const needSerial = line.item.category !== 'GA';
         if (needSerial && r.serials.length !== r.qty) throw new AppError(400, `${line.item.name}: isi ${r.qty} serial number`);
         for (let k = 0; k < r.qty; k++)
-          assets.push(await createAsset(fx.tx, { itemId: line.itemId, serial: r.serials[k], warehouseId: po.toWarehouseId, actorId: u.id, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, status: line.item.category === 'GA' ? 'IN_USE' : 'IN_STOCK', brandId: r.brandId, modelId: r.modelId }));
+          assets.push(await createAsset(fx.tx, { itemId: line.itemId, serial: r.serials[k], warehouseId: po.toWarehouseId, actorId: u.id, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, status: line.item.category === 'GA' ? 'IN_USE' : 'IN_STOCK', brandId: r.brandId, modelId: r.modelId, needsMaintenance: r.needsMaintenance, maintenanceIntervalDays: r.maintenanceIntervalDays }));
       } else {
         await moveStock(fx.tx, { itemId: line.itemId, qty: r.qty, to: po.toWarehouseId, reason: `Penerimaan ${po.number}`, woId: po.woId ?? undefined, actorId: u.id });
       }

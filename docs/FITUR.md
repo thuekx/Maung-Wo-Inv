@@ -55,3 +55,9 @@ Dashboard: KPI merah, panel dengan rincian **per divisi penanggung jawab**, dan 
 - Tombol **Lihat semua notifikasi** membuka halaman `/notifications` (paginasi, cari, filter belum dibaca, "Tandai semua dibaca"). Tombol **WO saya** membuka daftar tugas Anda.
 - Setiap notifikasi tahap WO tersimpan per pengguna di tabel `Inbox` (terpisah dari email/Telegram; tetap muncul walau pengiriman gagal). Disegarkan tiap 60 detik dan saat tab kembali aktif; dibersihkan otomatis setelah 90 hari. Notifikasi sebelum fitur ini tidak ikut (hanya yang baru).
 - Pilihan tema di top bar kini tiga ikon yang langsung terlihat (terang / ikuti sistem / gelap) dengan tooltip saat hover dan sorotan pada pilihan aktif; di layar kecil menjadi satu tombol siklus.
+
+## Pembaruan batch C (jaringan, kabel, aset)
+- **IP internal wajib privat (RFC 1918)**; kolom **IP Publik** opsional (cek duplikat hanya bila diisi). VLAN 1–4094; ODP ≤ 40 & port ≤ 20 karakter. FOC boleh mengoreksi ODP/port di laporan instalasi (dicek duplikat, NOC diberi tahu); IP & VLAN tetap dari NOC.
+- **Kabel** = item master dengan atribut *jumlah core* (satuan meter). Laporan instalasi hanya menerima material yang diambil saat "Mulai & ambil material" (jumlah ≤ yang diambil). Hasil rekonsiliasi (diambil/terpakai/sisa) tersimpan di detail WO; sisa tetap di Stok Berjalan teknisi.
+- Peringatan bila SN sudah diketik tetapi belum ditekan **Tambah**.
+- Aset: tanda **perlu perawatan berkala** (+ interval hari), juga saat penerimaan PO; dasbor menampilkan aset jatuh tempo/lewat jadwal. Item **kendaraan**: plat nomor & no. rangka.

@@ -37,7 +37,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           <div className="card-header"><h2 className="font-semibold">Jaringan</h2></div>
           <DataGrid items={[
             { label: 'ODP / Port', value: `${c.odp ?? '-'} / ${c.port ?? '-'}` }, { label: 'VLAN', value: c.vlan },
-            { label: 'IP', value: <span className="font-mono">{c.ip ?? '-'}</span> }, { label: 'Aktif sejak', value: fmtDate(c.activatedAt) },
+            { label: 'IP', value: <span className="font-mono">{c.ip ?? '-'}</span> }, ...(c.publicIp ? [{ label: 'IP Publik', value: <span className="font-mono">{c.publicIp}</span> }] : []), { label: 'Aktif sejak', value: fmtDate(c.activatedAt) },
           ]} />
         </div>
       </div>

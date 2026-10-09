@@ -82,11 +82,11 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
   };
   const cols: Column<any>[] = [
     { key: 'serialNumber', header: 'Serial / Kode', sort: 'serialNumber', className: 'font-mono', render: (a) => <>{a.serialNumber}{a.assetCode && a.assetCode !== a.serialNumber && <div className="text-xs text-slate-500">{a.assetCode}</div>}</> },
-    { key: 'item', header: 'Item', sort: 'item', render: (a) => a.item.name },
+    { key: 'item', header: 'Item', sort: 'item', render: (a) => <>{a.item.name}{a.plateNumber && <div className="text-xs text-slate-500">{a.plateNumber}{a.chassisNumber ? ` · Rangka ${a.chassisNumber}` : ''}</div>}</> },
     { key: 'brand', header: 'Merk / tipe', className: 'text-sm', render: (a) => [a.brand?.name, a.model?.name].filter(Boolean).join(' · ') || <span className="text-slate-400">-</span> },
     { key: 'status', header: 'Status', sort: 'status', render: (a) => <Badge tone={ST_TONE[a.status]}>{a.status}</Badge> },
     { key: 'loc', header: 'Lokasi', render: (a) => (a.customer ? `Pelanggan: ${a.customer.name}` : a.warehouse?.name ?? '-') },
-    { key: 'maint', header: 'Maintenance', sort: 'nextMaintenanceAt', render: (a) => (a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : '-') },
+    { key: 'maint', header: 'Maintenance', sort: 'nextMaintenanceAt', render: (a) => (a.needsMaintenance ? (a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID') : <span className="text-amber-600">Perlu — belum dijadwalkan</span>) : '-') },
     { key: 'act', header: '', className: 'whitespace-nowrap', render: (a) => <><LinkBtn onClick={() => setQr(a)}>QR</LinkBtn>{canManage && <> · <LinkBtn onClick={() => setEdit(a)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/assets/${a.id}`, `aset ${a.serialNumber}`)) { setSel((x) => x.filter((i) => i !== a.id)); reload(); } }}>Hapus</LinkBtn></>}</> },
   ];
   const printSel = (ids: string[]) => { try { sessionStorage.setItem('qr_print_ids', JSON.stringify(ids)); } catch { /* ignore */ } window.open('/qr-print', '_blank'); };
@@ -95,8 +95,19 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
     { name: 'warehouseId', label: 'Gudang', type: 'warehouse', required: true },
     { name: 'brandmodel', label: 'Merk & tipe', type: 'brandmodel' },
     ...(sel1?.category === 'GA'
-      ? [{ name: 'count', label: 'Jumlah unit (kode aset dibuat otomatis)', type: 'number' }, { name: 'nextMaintenanceAt', label: 'Jadwal maintenance berikutnya', type: 'datetime' }, { name: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'IN_USE'] }]
+      ? [
+          ...(sel1?.isVehicle
+            ? [
+                { name: 'plateNumber', label: 'Plat nomor', type: 'text', required: true, help: 'Mis. D 1234 ABC (maks. 15 karakter)' },
+                { name: 'chassisNumber', label: 'No. rangka', type: 'text', help: 'Maks. 30 karakter' },
+              ]
+            : [{ name: 'count', label: 'Jumlah unit (kode aset dibuat otomatis)', type: 'number' }]),
+          { name: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'IN_USE'] },
+        ]
       : [{ name: 'serials', label: 'Serial number (scan / ketik, bisa banyak)', type: 'serials', required: true }]),
+    { name: 'needsMaintenance', label: 'Perlu perawatan berkala?', type: 'bool', help: 'Bila Ya, aset muncul di dasbor "perlu perawatan" saat jadwalnya dekat/lewat' },
+    { name: 'maintenanceIntervalDays', label: 'Interval perawatan (hari)', type: 'number', help: 'Mis. 90. Jadwal pertama = hari ini + interval, bila jadwal di bawah kosong' },
+    { name: 'nextMaintenanceAt', label: 'Jadwal perawatan berikutnya (opsional)', type: 'datetime' },
     { name: 'notes', label: 'Catatan', type: 'textarea' },
   ];
   const editFields: Field[] = [
@@ -104,6 +115,9 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
     { name: 'brandmodel', label: 'Merk & tipe', type: 'brandmodel' },
     { name: 'status', label: 'Status', type: 'select', options: ['IN_STOCK', 'IN_USE', 'DAMAGED', 'SCRAP'], help: 'Status INSTALLED/QC diatur otomatis oleh WO' },
     { name: 'warehouseId', label: 'Gudang', type: 'warehouse' },
+    ...(edit?.item?.isVehicle ? [{ name: 'plateNumber', label: 'Plat nomor', type: 'text' }, { name: 'chassisNumber', label: 'No. rangka', type: 'text' }] : []),
+    { name: 'needsMaintenance', label: 'Perlu perawatan berkala?', type: 'bool' },
+    { name: 'maintenanceIntervalDays', label: 'Interval perawatan (hari)', type: 'number' },
     { name: 'nextMaintenanceAt', label: 'Maintenance berikutnya', type: 'datetime' },
     { name: 'condition', label: 'Kondisi', type: 'text' },
     { name: 'notes', label: 'Catatan', type: 'textarea' },
@@ -213,7 +227,9 @@ function ItemsTab({ canManage }: { canManage: boolean }) {
     { name: 'sku', label: 'SKU', type: 'text', required: true },
     { name: 'name', label: 'Nama item', type: 'text', required: true },
     ...(edit?.id ? [] : [{ name: 'category', label: 'Kategori', type: 'select', options: ['CONSUMABLE', 'NETWORK', 'GA'], required: true, help: 'CONSUMABLE = qty/meter · NETWORK = wajib serial number · GA = kode aset + maintenance' }]),
-    { name: 'unit', label: 'Satuan', type: 'text', help: 'pcs / meter / unit' },
+    { name: 'unit', label: 'Satuan', type: 'text', help: 'pcs / meter / unit (kabel otomatis "meter")' },
+    { name: 'coreCount', label: 'Jumlah core (khusus kabel)', type: 'number', help: 'Isi untuk item kabel (mis. 1, 2, 4, 12). Kabel dihitung per meter dan harus diminta/diambil teknisi dulu' },
+    ...(edit?.id ? [] : [{ name: 'isVehicle', label: 'Kendaraan?', type: 'bool', help: 'Hanya kategori GA: form aset menampilkan plat nomor & no. rangka' }]),
     { name: 'installDefaultQty', label: 'Kebutuhan standar per pasang baru (untuk cek stok otomatis)', type: 'number' },
     { name: 'minStock', label: 'Stok minimum (alert dashboard)', type: 'number' },
   ];
@@ -222,7 +238,7 @@ function ItemsTab({ canManage }: { canManage: boolean }) {
       {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah item</button>}
       <Table head={['SKU', 'Nama', 'Kategori', 'Satuan', 'Std. pasang baru', 'Min. stok', '']}>
         {data?.map((i) => (
-          <tr key={i.id}><td className="td font-mono">{i.sku}</td><td className="td">{i.name}</td><td className="td text-xs">{CAT[i.category]}</td><td className="td">{i.unit}</td><td className="td">{i.installDefaultQty ?? '-'}</td><td className="td">{i.minStock || '-'}</td>
+          <tr key={i.id}><td className="td font-mono">{i.sku}</td><td className="td">{i.name}</td><td className="td text-xs">{CAT[i.category]}</td><td className="td">{i.unit}{i.coreCount ? <span className="ml-1 text-xs text-slate-500">· {i.coreCount} core</span> : null}{i.isVehicle ? <span className="ml-1 text-xs text-slate-500">· kendaraan</span> : null}</td><td className="td">{i.installDefaultQty ?? '-'}</td><td className="td">{i.minStock || '-'}</td>
             <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(i)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/items/${i.id}`, `item ${i.name}`)) reload(); }}>Hapus</LinkBtn></>}</td></tr>
         ))}
       </Table>

@@ -16,6 +16,8 @@ export interface Field {
   help?: string;
   itemCategory?: 'CONSUMABLE' | 'NETWORK' | 'GA';
   customerStatus?: CustomerStatus[];
+  /** materials: hanya item yang diambil teknisi di WO ini (laporan instalasi) */
+  pickedOnly?: boolean;
 }
 
 export type WoFull = Prisma.WorkOrderGetPayload<{ include: { customer: true } }>;

@@ -12,6 +12,7 @@ import { nextNumber } from '../inventory';
 import { auditedDelete, auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { config } from '../config';
 import { countIf, pageParams, sendPage } from '../paging';
+import { assertNetworkFree, internalIp, odpName, portName, publicIp, vlanId } from '../network';
 
 /** Master & data pendukung: pelanggan (manual/impor/ekspor Excel), paket, merk/tipe, reset password, hapus/edit, audit. */
 export const masterRoutes = Router();
@@ -25,32 +26,22 @@ const CUST_STATUS = ['PROSPECT', 'INSTALLING', 'ACTIVE', 'SUSPENDED', 'TERMINATI
 /* ═════════════ Pelanggan: input manual ═════════════ */
 const customerBody = z.object({
   code: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().trim().min(3).max(40).optional()),
-  name: z.string().trim().min(2),
-  phone: z.string().trim().min(6),
+  name: z.string().trim().min(2).max(120, 'Maksimal 120 karakter'),
+  phone: z.string().trim().min(6).max(20, 'Maksimal 20 karakter').regex(/^[0-9+][0-9 +()-]*$/, 'Hanya angka, spasi, + ( ) -'),
   email: z.preprocess(nul, z.string().email().nullable().optional()),
-  address: z.string().trim().min(3),
+  address: z.string().trim().min(3).max(300, 'Maksimal 300 karakter'),
   lat: optNum(-90, 90),
   lng: optNum(-180, 180),
   packageName: z.string().trim().min(1),
   status: z.enum(CUST_STATUS).default('ACTIVE'),
   warehouseId: optStr,
-  odp: optStr,
-  port: optStr,
-  vlan: optStr,
-  ip: optStr,
+  odp: z.preprocess(nul, odpName.nullable()),
+  port: z.preprocess(nul, portName.nullable()),
+  vlan: z.preprocess(nul, vlanId.nullable()),
+  ip: z.preprocess(nul, internalIp.nullable()),
+  publicIp: z.preprocess(nul, publicIp.nullable()),
   activatedAt: z.preprocess(nul, z.coerce.date().nullable().optional()),
 });
-
-async function assertNetworkFree(tx: Effects['tx'], d: { ip?: string | null; odp?: string | null; port?: string | null }, selfId?: string) {
-  if (d.ip) {
-    const dup = await tx.customer.findFirst({ where: { ip: d.ip, id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' }, archivedAt: null } });
-    if (dup) throw fieldError('ip', `IP ${d.ip} sudah dipakai ${dup.name}`, 409);
-  }
-  if (d.odp && d.port) {
-    const dup = await tx.customer.findFirst({ where: { odp: d.odp, port: d.port, id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' }, archivedAt: null } });
-    if (dup) throw fieldError('port', `Port ${d.odp}/${d.port} sudah dipakai ${dup.name}`, 409);
-  }
-}
 
 masterRoutes.post('/customers', requireRole('MKT', 'NOC'), async (req, res) => {
   const b = customerBody.parse(req.body);
@@ -77,7 +68,7 @@ masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res)
   const ch = changes(cur, b);
   const updated = await auditedUpdate(who, 'pelanggan', id, `${cur.code} ${cur.name}`, ch, async (fx) => {
     if (b.code && b.code !== cur.code && (await fx.tx.customer.findUnique({ where: { code: b.code } }))) throw fieldError('code', `Kode ${b.code} sudah ada`, 409);
-    await assertNetworkFree(fx.tx, { ip: b.ip === undefined ? undefined : b.ip, odp: b.odp ?? cur.odp, port: b.port ?? cur.port }, id);
+    await assertNetworkFree(fx.tx, { ip: b.ip === undefined ? undefined : b.ip, publicIp: b.publicIp === undefined ? undefined : b.publicIp, odp: b.odp ?? cur.odp, port: b.port ?? cur.port }, id);
     return fx.tx.customer.update({ where: { id }, data: b as any });
   });
   res.json(updated);
@@ -290,6 +281,8 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
       if (code && seenCodes.has(code.toLowerCase())) throw new Error(`Kode ${code} muncul dua kali di file`);
       if (code) seenCodes.add(code.toLowerCase());
       const ip = str(raw.ip) || null, odp = str(raw.odp) || null, port = str(raw.port) || null;
+      if (ip) { const v = internalIp.safeParse(ip); if (!v.success) throw new Error(`IP: ${v.error.issues[0].message}`); }
+      if (str(raw.vlan)) { const v = vlanId.safeParse(str(raw.vlan)); if (!v.success) throw new Error(`VLAN: ${v.error.issues[0].message}`); }
       if (ip) { const o = ipOwner.get(ip); if (o && o !== hit?.id) throw new Error(`IP ${ip} sudah dipakai pelanggan lain`); }
       if (odp && port) { const o = portOwner.get(`${odp}/${port}`); if (o && o !== hit?.id) throw new Error(`Port ${odp}/${port} sudah dipakai pelanggan lain`); }
       if (status !== 'TERMINATED') { if (ip) ipOwner.set(ip, hit?.id ?? `new${row}`); if (odp && port) portOwner.set(`${odp}/${port}`, hit?.id ?? `new${row}`); }

@@ -17,6 +17,7 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
   const [err, setErr] = useState('');
   const [labels, setLabels] = useState<any[]>([]);
   const [bm, setBm] = useState<Record<string, { brandId?: string; modelId?: string }>>({});
+  const [mt, setMt] = useState<Record<string, { on: boolean; days: string }>>({});
   const [edit, setEdit] = useState(false);
   const router = useRouter();
   const canReceive = ['ADMIN', 'GA'].includes(user?.role ?? '');
@@ -27,10 +28,10 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
   async function receive() {
     setErr('');
     try {
-      const lines = po.lines.map((l: any) => ({ lineId: l.id, qty: Number(qty[l.id] || 0), serials: serials[l.id] ?? [], brandId: bm[l.id]?.brandId, modelId: bm[l.id]?.modelId })).filter((l: any) => l.qty > 0);
+      const lines = po.lines.map((l: any) => ({ lineId: l.id, qty: Number(qty[l.id] || 0), serials: serials[l.id] ?? [], brandId: bm[l.id]?.brandId, modelId: bm[l.id]?.modelId, ...(mt[l.id]?.on ? { needsMaintenance: true, maintenanceIntervalDays: mt[l.id].days ? Number(mt[l.id].days) : undefined } : {}) })).filter((l: any) => l.qty > 0);
       if (!lines.length) return setErr('Isi qty yang diterima (hanya yang lolos QC)');
       const r = await api<{ assets: any[] }>(`/purchase-orders/${po.id}/receive`, { body: { lines } });
-      setLabels(r.assets); setQty({}); setSerials({}); await reload();
+      setLabels(r.assets); setQty({}); setSerials({}); setMt({}); await reload();
     } catch (e) { setErr((e as Error).message); }
   }
 
@@ -56,6 +57,12 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
               {canReceive && remain > 0 && l.item.category === 'NETWORK' && (
                 <div className="mt-2 space-y-2"><div className="max-w-md"><div className="mb-1 text-xs text-slate-500">Merk & tipe (opsional, berlaku untuk unit yang diterima sekarang)</div><BrandModelInput value={bm[l.id] ?? {}} onChange={(v) => setBm({ ...bm, [l.id]: v })} canCreate /></div><div className="mb-1 text-xs text-slate-500">Scan SN tiap unit yang diterima</div>
                   <SerialInput value={serials[l.id] ?? []} onChange={(v) => setSerials({ ...serials, [l.id]: v })} /></div>
+              )}
+              {canReceive && remain > 0 && l.item.tracked && (
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={!!mt[l.id]?.on} onChange={(e) => setMt({ ...mt, [l.id]: { on: e.target.checked, days: mt[l.id]?.days ?? '' } })} /> Perlu perawatan berkala</label>
+                  {mt[l.id]?.on && <input className="input w-44" type="number" min={1} placeholder="Interval (hari), mis. 90" value={mt[l.id]?.days ?? ''} onChange={(e) => setMt({ ...mt, [l.id]: { on: true, days: e.target.value } })} />}
+                </div>
               )}
             </div>
           );

@@ -132,10 +132,14 @@ export default function Dashboard() {
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Panel title="Maintenance aset ≤ 14 hari">
+        <Panel title="Aset perlu perawatan (≤ 14 hari / lewat jadwal)">
           {data.maintenanceDue.length === 0 ? <p className="text-sm text-slate-400">Tidak ada</p> : (
             <ul className="space-y-1 text-sm">
-              {data.maintenanceDue.map((a: any) => <li key={a.id} className="flex justify-between"><span>{a.assetCode ?? a.serialNumber} · {a.item.name}</span><span>{new Date(a.nextMaintenanceAt).toLocaleDateString('id-ID')}</span></li>)}
+              {data.maintenanceDue.map((a: any) => {
+                const d = a.nextMaintenanceAt ? new Date(a.nextMaintenanceAt) : null;
+                const late = d && d.getTime() < Date.now();
+                return <li key={a.id} className="flex justify-between gap-2"><span className="truncate">{a.assetCode ?? a.serialNumber} · {a.item.name}{a.plateNumber ? ` (${a.plateNumber})` : ''}</span><span className={`shrink-0 ${late || !d ? 'font-semibold text-red-600' : ''}`}>{d ? `${late ? 'Lewat ' : ''}${d.toLocaleDateString('id-ID')}` : 'Belum dijadwalkan'}</span></li>;
+              })}
             </ul>
           )}
         </Panel>

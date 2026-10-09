@@ -58,7 +58,7 @@ export async function buildDashboard(user: Pick<User, 'id' | 'role'>) {
     prisma.item.findMany({ where: { minStock: { gt: 0 } }, orderBy: { name: 'asc' } }),
     prisma.asset.groupBy({ by: ['itemId'], where: { status: { in: ['IN_STOCK', 'REFURBISHED'] }, warehouse: { kind: { not: 'MOBILE' } } }, _count: { _all: true } }),
     prisma.stockLevel.groupBy({ by: ['itemId'], where: { warehouse: { kind: { not: 'MOBILE' } } }, _sum: { qty: true } }),
-    prisma.asset.findMany({ where: { item: { category: 'GA' }, nextMaintenanceAt: { lte: new Date(now + 14 * DAY) } }, include: { item: true }, orderBy: { nextMaintenanceAt: 'asc' }, take: 20 }),
+    prisma.asset.findMany({ where: { needsMaintenance: true, status: { notIn: ['SCRAP'] }, OR: [{ nextMaintenanceAt: null }, { nextMaintenanceAt: { lte: new Date(now + 14 * DAY) } }] }, include: { item: true }, orderBy: { nextMaintenanceAt: { sort: 'asc', nulls: 'first' } }, take: 20 }),
     prisma.asset.count({ where: { status: 'RETURNED_PENDING_QC' } }),
     prisma.customer.groupBy({ by: ['status'], where: { archivedAt: null }, _count: true }),
   ]);
