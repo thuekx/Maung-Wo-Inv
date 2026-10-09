@@ -179,24 +179,48 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
   );
 }
 
+const BRAND_KEY: Record<string, string> = { horizontal: 'logoUrl', stacked: 'logoStackedUrl', mark: 'logoMarkUrl', loginbg: 'loginBgUrl', gps: 'gpsLogoUrl', kop: 'kopUrl', formlogo: 'formLogoUrl', mgrsign: 'mgrSignUrl' };
+
 function UploadBox({ title, hint, url, dark, variant, onDone }: { title: string; hint: string; url: string | null; dark?: boolean; variant: string; onDone: () => void }) {
   const a = useAction();
-  const upload = (f: File | undefined) => {
+  const [bg, setBg] = useState<'light' | 'dark'>(dark ? 'dark' : 'light');
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const [last, setLast] = useState<{ name: string; kb: number; at: string } | null>(null);
+  const shown = url ? `${fileUrl(url)}${last ? `?v=${encodeURIComponent(last.at)}` : ''}` : null;
+  const broken = !!shown && brokenUrl === shown;
+  const upload = (input: HTMLInputElement) => {
+    const f = input.files?.[0];
     if (!f) return;
     a.run(async () => {
       const fd = new FormData(); fd.append('file', f);
       const res = await fetch(`${API}/api/admin/settings/branding/logo?variant=${variant}`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
       const j = await res.json().catch(() => ({})); if (!res.ok) throw new Error(j.error ?? 'Upload gagal');
+      // pastikan file yang baru tersimpan benar-benar bisa dibaca dari server (bukan hanya tercatat)
+      const saved: string | null = j.branding?.[BRAND_KEY[variant]] ?? null;
+      if (!saved) throw new Error('Server tidak mengembalikan alamat file baru');
+      const ok = await new Promise<boolean>((resolve) => { const im = new Image(); im.onload = () => resolve(true); im.onerror = () => resolve(false); im.src = fileUrl(saved); });
+      if (!ok) throw new Error('File tercatat tetapi tidak dapat dibaca dari server (cek volume uploads / alamat API)');
+      setBrokenUrl(null); setLast({ name: f.name, kb: Math.round(f.size / 1024), at: new Date().toLocaleTimeString('id-ID') });
+      input.value = '';
       await loadBranding(true); onDone();
     }, 'Tersimpan');
   };
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium">{title}</div>
-      <div className={`flex h-24 items-center justify-center rounded-lg border ${dark ? 'bg-brand-900' : 'bg-white'}`}>{url ? <img src={fileUrl(url)} alt={title} className="max-h-20 max-w-[85%] object-contain" /> : <span className="text-xs text-slate-400">Belum ada</span>}</div>
-      <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e.target.files?.[0])} className="w-full text-xs" />
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">{title}</div>
+        <div className="flex shrink-0 overflow-hidden rounded border border-slate-300 text-[10px]" role="group" aria-label="Latar pratinjau">
+          <button type="button" className={`px-1.5 py-0.5 ${bg === 'light' ? 'bg-slate-200 font-semibold' : 'bg-white'}`} onClick={() => setBg('light')}>Terang</button>
+          <button type="button" className={`px-1.5 py-0.5 ${bg === 'dark' ? 'bg-brand-900 font-semibold text-white' : 'bg-white'}`} onClick={() => setBg('dark')}>Gelap</button>
+        </div>
+      </div>
+      <div className={`flex h-24 items-center justify-center rounded-lg border ${bg === 'dark' ? 'bg-brand-900' : 'bg-white'}`}>
+        {shown && !broken ? <img key={shown} src={shown} alt={title} onError={() => setBrokenUrl(shown)} className="max-h-20 max-w-[85%] object-contain" /> : broken ? <span className="px-2 text-center text-xs text-red-600">Gambar tidak dapat dimuat dari server</span> : <span className="text-xs text-slate-400">Belum ada</span>}
+      </div>
+      {url && <p className="truncate text-[11px] text-slate-500" title={url}>{last ? `Baru diunggah ${last.at}: ${last.name} (${last.kb} KB)` : 'Berkas aktif'} · <a className="text-brand-700 hover:underline" href={fileUrl(url)} target="_blank" rel="noreferrer">buka</a></p>}
+      <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e.target)} className="w-full text-xs" />
       <p className="text-xs text-slate-500">{hint}</p>
-      {url && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); await loadBranding(true); onDone(); }, 'Dihapus')}>Hapus</button>}
+      {url && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); setLast(null); await loadBranding(true); onDone(); }, 'Dihapus')}>Hapus</button>}
       <Msg m={a.msg} />
     </div>
   );
