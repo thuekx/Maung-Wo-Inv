@@ -61,11 +61,11 @@ export const portName = z.preprocess(blank, z.string().min(1).max(20, 'Maksimal 
 export async function assertNetworkFree(tx: Tx, d: { ip?: string | null; publicIp?: string | null; odp?: string | null; port?: string | null }, selfId?: string) {
   const base = { id: selfId ? { not: selfId } : undefined, status: { not: 'TERMINATED' as const }, archivedAt: null };
   if (d.ip) {
-    const dup = await tx.customer.findFirst({ where: { ip: d.ip, ...base } });
+    const dup = await tx.customer.findFirst({ where: { OR: [{ ip: d.ip }, { radiusIp: d.ip }], ...base } });
     if (dup) throw fieldError('ip', `IP ${d.ip} sudah dipakai ${dup.name} (${dup.code})`, 409);
   }
   if (d.publicIp) {
-    const dup = await tx.customer.findFirst({ where: { publicIp: d.publicIp, ...base } });
+    const dup = await tx.customer.findFirst({ where: { OR: [{ publicIp: d.publicIp }, { radiusIp: d.publicIp }], ...base } });
     if (dup) throw fieldError('publicIp', `IP publik ${d.publicIp} sudah dipakai ${dup.name} (${dup.code})`, 409);
   }
   if (d.odp && d.port) {

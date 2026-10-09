@@ -66,7 +66,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
                   </div>
                   {current && (
                     <div className="rounded-lg border bg-slate-50 p-3">
-                      <DynamicForm key={current.key} fields={current.fields} woId={wo.id} woNumber={wo.number} danger={current.danger} submitLabel={current.label}
+                      <DynamicForm key={current.key} fields={current.fields} initial={wo.prefill?.[current.key]} woId={wo.id} woNumber={wo.number} danger={current.danger} submitLabel={current.label}
                         onSubmit={async (input) => { await api(`/work-orders/${wo.id}/actions/${current.key}`, { body: input }); setActive(null); toast.success(`${current.label} berhasil.`); await reload(); }} />
                     </div>
                   )}

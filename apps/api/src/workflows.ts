@@ -143,6 +143,7 @@ const newInstall: Workflow = {
   description: 'Registrasi → validasi NOC → cek stok → instalasi FOC → aktivasi NOC → BA Digital & trigger invoice.',
   createRoles: ['MKT'],
   createFields: [
+    { name: 'customerCode', label: 'ID pelanggan MSRadius (opsional)', type: 'text', help: 'Isi bila ID/kode sudah dibuat di MSRadius; kosong = dibuat otomatis. Setelah akun aktif di MSRadius, tarik datanya dari halaman pelanggan (tombol "Tarik dari MSRadius").' },
     { name: 'name', label: 'Nama pelanggan', type: 'text', required: true },
     { name: 'phone', label: 'No. telepon / WA', type: 'text', required: true },
     { name: 'email', label: 'Email pelanggan', type: 'text' },
@@ -157,6 +158,7 @@ const newInstall: Workflow = {
   async create(tx, input) {
     const i = z
       .object({
+        customerCode: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9._/-]+$/, 'Hanya huruf, angka, . _ / -').optional()),
         name: z.string().trim().min(2).max(120, 'Maksimal 120 karakter'),
         phone: z.string().trim().min(6).max(20, 'Maksimal 20 karakter').regex(/^[0-9+][0-9 +()-]*$/, 'Hanya angka, spasi, + ( ) -'),
         email: z.string().email('Format email tidak valid').max(120).optional().or(z.literal('')),
@@ -171,8 +173,10 @@ const newInstall: Workflow = {
     const wh = await tx.warehouse.findFirst({ where: { id: i.warehouseId, kind: { not: 'MOBILE' }, active: true } });
     if (!wh) throw new AppError(400, 'Gudang tidak valid');
     if (!(await tx.package.findFirst({ where: { name: i.packageName, active: true } }))) throw new AppError(400, `Paket "${i.packageName}" tidak ada di Master Paket / sudah nonaktif`);
+    const code = i.customerCode ?? (await nextNumber(tx, 'CUST'));
+    if (i.customerCode && (await tx.customer.findUnique({ where: { code } }))) throw fieldError('customerCode', `Kode pelanggan ${code} sudah ada — cari di menu Pelanggan`, 409);
     const customer = await tx.customer.create({
-      data: { code: await nextNumber(tx, 'CUST'), name: i.name, phone: i.phone, email: i.email || null, address: i.address, lat: i.lat, lng: i.lng, packageName: i.packageName, warehouseId: wh.id },
+      data: { code: code, name: i.name, phone: i.phone, email: i.email || null, address: i.address, lat: i.lat, lng: i.lng, packageName: i.packageName, warehouseId: wh.id },
     });
     return { title: `Pasang baru – ${i.name}`, customerId: customer.id, data: { packageName: i.packageName, notes: i.notes } };
   },

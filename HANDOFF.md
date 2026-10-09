@@ -43,7 +43,15 @@ Dokumen: `README.md`, `docs/{API,BRANDING,DEMO,FITUR,MIGRATIONS,NOTIFIKASI,RADIU
 - **Export API** baca-saja `/api/export/*` (`EXPORT_API_KEY`), `docs/API.md`.
 - Peta file penting: `apps/api/src/{workflows,engine,inventory,dashboard,paging,settings,audit,effects,worker}.ts`, `routes/{core,wo,inventory,masters,admin,export,integrations}.ts`, `prisma/{schema.prisma,seed.ts,seed-demo.ts,reconcile-migrations.ts}`; web: `apps/web/src/app/(app)/*`, `components/{DataTable,DynamicForm,ui,icons,SearchBox,NotificationBell,Tip}.tsx`, `lib/{api,auth,brand,theme,photo}.ts`.
 
-## 3. BACKLOG — 36 butir dari pemilik (belum dikerjakan kecuali ditandai)
+### Tambahan sesi 2026-10-09 (batch B–E)
+- **Peran**: sub-role MANAGER/SUPERVISOR/STAFF (`User.subRole`; hanya FOC yang dibedakan: jadwal = supervisor/manager). Admin bisa **bertindak sebagai** peran+sub-role lain (header `X-Act-As`/`X-Act-Sub`, banner kuning). Menu & API per peran (NOC tanpa inventori/master/tambah pelanggan; FOC hanya "Stok Saya"). Jejak WO menyimpan nama+peran+sub-role pelaku.
+- **Serah-terima sisa material**: WO `STOCK_RETURN` (FOC mengajukan → GA terima semua/sebagian/tolak; yang belum diterima tetap di Stok Berjalan teknisi).
+- **Pengadaan**: master Vendor; Purchase Request (≥2 vendor per baris, PPN, nomor surat `n/L1V/PNJ-BDG/ROMAWI/tahun`, status DRAFT→SUBMITTED→ISSUED→APPROVED→PO_ENTERED); PDF berkop (`/doc/pr/:id`, kop A4 bisa diganti di Admin → Branding); PO dari Accurate dicatat ulang (nomor PO Accurate = nomor PO) lalu penerimaan/QC; BA Digital pratinjau/cetak (`/doc/ba/:id`). Pembuat PR: GA atau supervisor/manager mana pun.
+- **MSRadius** (baca-saja): `src/radius.ts`, `routes/radius.ts`, worker cron; lihat `docs/RADIUS-API.md`.
+- **Demo baru**: akun `citra@` (FOC manager), `budi@` (supervisor), `andi@` (staff), NOC/MKT supervisor, GA/FIN manager; PR di tiap tahap, PO dari PR, serah-terima sisa, aset GA berflag perawatan + kendaraan berplat.
+- Uji di sandbox: DB baru (migrate + seed + seed-demo) OK, `next build` OK, API/Playwright untuk alur utama; **belum** diuji dengan Docker penuh dan token MSRadius asli.
+
+## 3. BACKLOG — 36 butir dari pemilik (SEMUA sudah dikerjakan: batch A–E)
 Status: ✅ selesai · ◑ sebagian · ☐ belum · ⛔ menunggu keputusan/berkas. Batch = urutan kerja yang disarankan (A→E).
 
 | # | Butir | Status | Catatan analisis / rencana |
@@ -51,39 +59,59 @@ Status: ✅ selesai · ◑ sebagian · ☐ belum · ⛔ menunggu keputusan/berka
 | 1 | Alert modal → flash/toast | ✅ A | Buat `Toast` (provider + `useToast`), ganti `window.alert/confirm` (mis. `doDelete`, prompt merk) dengan toast + dialog konfirmasi kustom |
 | 2 | Error isian form inline di bawah field | ✅ A | Backend: ubah `ZodError` handler agar mengembalikan `{error, fields:{path:msg}}`; `DynamicForm` tampilkan per-field; `api()` lempar error ber-`fields` |
 | 3 | Lat/lng pelanggan tidak wajib | ✅ A | `NEW_INSTALL.createFields` + zod `lat/lng` → opsional; form pelanggan sudah opsional |
-| 4 | Customer ID dari API radius | ☐ E | `Customer.code` = `kode` MSRadius; WO Pasang Baru: pilih dari hasil sinkron atau ketik manual (butir 28). Butuh butir 35 |
-| 5 | PR (Purchase Request) → PO oleh sistem lain (Accurate) → PO diinput ulang dengan detail barang riil | ☐ D | Ganti alur `create_po`: PR di Maung; PO dicatat Procurement (nomor Accurate, vendor, baris barang riil ≠ pengajuan); lalu QC + penerimaan. Lihat butir 23/27 |
-| 6 | Superadmin bisa "act as" NOC/FOC/GA/MKT | ☐ B | ADMIN sudah lolos semua cek peran; "act as" = pemilih peran efektif di top bar (klaim `actAs` di JWT/sesi), menu & aksi mengikuti peran itu, jejak "Admin (sebagai NOC)" |
+| 4 | Customer ID dari API radius | ✅ | `Customer.code` = `kode` MSRadius; WO Pasang Baru: pilih dari hasil sinkron atau ketik manual (butir 28). Butuh butir 35 |
+| 5 | PR (Purchase Request) → PO oleh sistem lain (Accurate) → PO diinput ulang dengan detail barang riil | ✅ | Ganti alur `create_po`: PR di Maung; PO dicatat Procurement (nomor Accurate, vendor, baris barang riil ≠ pengajuan); lalu QC + penerimaan. Lihat butir 23/27 |
+| 6 | Superadmin bisa "act as" NOC/FOC/GA/MKT | ✅ | ADMIN sudah lolos semua cek peran; "act as" = pemilih peran efektif di top bar (klaim `actAs` di JWT/sesi), menu & aksi mengikuti peran itu, jejak "Admin (sebagai NOC)" |
 | 7 | Sidebar: "Selamat datang, nama/role" | ✅ A | Profil kini di menu akun top bar; tambahkan sapaan di top bar/sidebar |
 | 8 | Pilihan terang/gelap/sistem di kanan atas | ✅ | selesai (segmented control + tooltip) |
 | 9 | Ikon notif kanan atas per peran + show all ke daftar tindakan | ✅ A | Lonceng + `Inbox` + `/notifications` ada; tambahkan bagian "Butuh tindakan (N)" per peran dan "Lihat semua" → daftar WO yang harus ditindak |
 | 10 | itemId/warehouseId tampil kode, bukan nama | ✅ A | Sumber: `DataView` pada "Detail & laporan" menampilkan JSON mentah. Perbaiki: resolver referensi di backend (`itemId`, `warehouseId`, `technicianId`, `serials` → nama) atau simpan nama saat transisi |
-| 11 | Sembunyikan menu & tab yang tak relevan per peran | ☐ B | Matriks izin tunggal (server + web); contoh FOC tidak melihat Inventori & Aset |
-| 12 | Teknisi punya riwayat permintaan barang | ☐ B | Halaman "Permintaan saya" (WO STOCK_REQUEST/PR milik pembuat + status + penerimaan/pengembalian) |
+| 11 | Sembunyikan menu & tab yang tak relevan per peran | ✅ | Matriks izin tunggal (server + web); contoh FOC tidak melihat Inventori & Aset |
+| 12 | Teknisi punya riwayat permintaan barang | ✅ | Halaman "Permintaan saya" (WO STOCK_REQUEST/PR milik pembuat + status + penerimaan/pengembalian) |
 | 13 | Galat XML `demo-photo-041.svg` (`&` tak di-escape) | ✅ A | Escape label di `seed-demo.ts` (`&amp;`); file di volume VM sudah rusak → skrip perbaikan sekali jalan (`&` → `&amp;` pada `uploads/demo-photo-*.svg`) |
-| 14 | Pratinjau BA Digital pelanggan | ☐ D | Halaman/preview BA (logo, data pelanggan, paket, tanggal, nomor BA) sebelum "Kirim BA"; cetak/PDF |
-| 15 | NOC tidak boleh tambah pelanggan, lihat inventori, master data | ☐ B | Bagian matriks izin (butir 11) |
-| 16 | Sub-role (manager/supervisor/staff); penjadwalan FOC hanya supervisor/manager | ☐ B | `User.subRole` (MANAGER/SUPERVISOR/STAFF); untuk sekarang hanya FOC yang dibedakan; peran lain tetap bisa diberi sub-role tapi fungsi sama |
-| 17 | FOC staff: hanya minta material + laporan survei/instalasi/troubleshooting; manager/supervisor semua | ☐ B | Hak aksi `schedule/start/…` per sub-role di definisi workflow (`ActionDef.subRoles`) |
+| 14 | Pratinjau BA Digital pelanggan | ✅ | Halaman/preview BA (logo, data pelanggan, paket, tanggal, nomor BA) sebelum "Kirim BA"; cetak/PDF |
+| 15 | NOC tidak boleh tambah pelanggan, lihat inventori, master data | ✅ | Bagian matriks izin (butir 11) |
+| 16 | Sub-role (manager/supervisor/staff); penjadwalan FOC hanya supervisor/manager | ✅ | `User.subRole` (MANAGER/SUPERVISOR/STAFF); untuk sekarang hanya FOC yang dibedakan; peran lain tetap bisa diberi sub-role tapi fungsi sama |
+| 17 | FOC staff: hanya minta material + laporan survei/instalasi/troubleshooting; manager/supervisor semua | ✅ | Hak aksi `schedule/start/…` per sub-role di definisi workflow (`ActionDef.subRoles`) |
 | 18 | Laporan instalasi: material habis pakai hanya yang diajukan di awal; rekonsiliasi sisa; belum dikembalikan/diterima GA tetap atas nama teknisi | ✅ C | Perlu daftar "material dibawa" per WO (dari pickup/permintaan); laporan membatasi pilihan; langkah pengembalian sisa diterima GA; selisih tercatat |
 | 19 | Celah pemakaian kabel tanpa catatan pengambilan | ✅ C | Hapus `cableMeters` hardcode DROPCORE; kabel = item master dengan atribut **jumlah core**; harus diminta di pengajuan/pickup; pemakaian hanya dari yang dibawa |
 | 20 | Input SN di kantor: peringatan jika teks belum "Tambah" | ✅ C | `SerialInput`: deteksi teks tertunda + pesan inline; info jika nilai sudah ditambahkan |
 | 21 | Hapus pelanggan: pesan muncul tapi data masih ada | ✅ A | Reproduksi dulu: kemungkinan daftar tidak segar, atau pelanggan berstatus TERMINATED/ber-WO (dihapus diblokir). Cek `DELETE /customers/:id`, cache `DataTable`, dan "penumpukan data" (arsip/sembunyikan TERMINATED?) |
 | 22 | Cegah IP sama pada VLAN sama; batasi isian IP & VLAN | ✅ C | Kebijakan: format IPv4, rentang VLAN valid, subnet per VLAN (master), unik `(ip, vlan)` aktif, bukan network/broadcast; perlu rencana VLAN/subnet pemilik |
-| 23 | Form Purchase Request sesuai PDF pengajuan + perbandingan harga vendor (master vendor) | ⛔ D | **Berkas PDF/gambar form PR tidak terlampir di sesi ini** → minta ulang. Perlu master Vendor, form PR, perbandingan ≥ 2–3 vendor, persetujuan |
+| 23 | Form Purchase Request sesuai PDF pengajuan + perbandingan harga vendor (master vendor) | ✅ | **Berkas PDF/gambar form PR tidak terlampir di sesi ini** → minta ulang. Perlu master Vendor, form PR, perbandingan ≥ 2–3 vendor, persetujuan |
 | 24 | Registrasi aset: perlu maintenance atau tidak (juga dari penerimaan PR); dashboard item jatuh tempo | ✅ C | `Asset.maintenanceRequired`, interval; dashboard "maintenance jatuh tempo" sudah ada untuk GA → perluas |
 | 25 | Kendaraan: nomor plat, nomor rangka, catatan | ✅ C | Atribut tambahan aset GA (plat, rangka, mesin, STNK/pajak) bila item bertipe kendaraan |
-| 26 | Riwayat: tampilkan nama + role + sub-role pelaku | ☐ A/B | `WoEvent` simpan snapshot `actorRole`, `actorSubRole`; tampilkan di timeline |
-| 27 | Permintaan pembelian hanya supervisor/manager + GA/Procurement | ☐ B/D | Izin aksi PR berdasarkan sub-role (butir 16) |
-| 28 | Pelanggan existing dari API; yang baru bisa kode manual + info "tarik data API" bila otomatis gagal | ☐ E | Form Pasang Baru: pilih dari hasil sinkron atau ketik kode; pesan inline + tombol tarik data |
-| 29 | Tentukan field/master dari API | ⛔ E | **Menunggu konfirmasi pemilik** — usulan di `docs/RADIUS-API.md` |
-| 30 | Tombol tarik data (MKT & Admin) + otomatis; IP dari API dipakai cek/isi saat NOC isi VLAN+IP | ☐ E | Cron BullMQ + tombol; `SyncRun`; upsert by `kode`; lihat rancangan di `docs/RADIUS-API.md` |
+| 26 | Riwayat: tampilkan nama + role + sub-role pelaku | ✅ | `WoEvent` simpan snapshot `actorRole`, `actorSubRole`; tampilkan di timeline |
+| 27 | Permintaan pembelian hanya supervisor/manager + GA/Procurement | ✅ | Izin aksi PR berdasarkan sub-role (butir 16) |
+| 28 | Pelanggan existing dari API; yang baru bisa kode manual + info "tarik data API" bila otomatis gagal | ✅ | Form Pasang Baru: pilih dari hasil sinkron atau ketik kode; pesan inline + tombol tarik data |
+| 29 | Tentukan field/master dari API | ✅ | **Menunggu konfirmasi pemilik** — usulan di `docs/RADIUS-API.md` |
+| 30 | Tombol tarik data (MKT & Admin) + otomatis; IP dari API dipakai cek/isi saat NOC isi VLAN+IP | ✅ | Cron BullMQ + tombol; `SyncRun`; upsert by `kode`; lihat rancangan di `docs/RADIUS-API.md` |
 | 31 | ODP/port diisi NOC tetapi FOC boleh ubah di lapangan (cek duplikat); IP & VLAN tetap | ✅ C | Aksi/field FOC di laporan instalasi; validasi unik ODP+port |
 | 32 | Log notifikasi: jangan "SENT" bila belum diset; status Failed/Not sent + alasan + tombol kirim ulang | ✅ A | Sekarang dry-run mencatat SENT. Ubah: `NOT_SENT` (alasan "SMTP/Telegram belum diatur"), tombol kirim ulang (endpoint + antre ulang) |
 | 33 | "Stock mobile" → "Stok berjalan" | ✅ A | Ganti label di UI & dokumen (kode `MOBILE` boleh tetap) |
 | 34 | Logo GPS (banner foto) terpisah dari logo aplikasi | ✅ A | Varian branding baru `gpsLogoUrl` (logo perusahaan); `photo.ts` memakainya; fallback logo horizontal |
-| 35 | Admin: menu token API + form lain | ☐ E | Kartu "Integrasi MSRadius" di Admin → Pengaturan (URL, token terenkripsi, sakelar auto-sync, interval, uji koneksi, riwayat) |
+| 35 | Admin: menu token API + form lain | ✅ | Kartu "Integrasi MSRadius" di Admin → Pengaturan (URL, token terenkripsi, sakelar auto-sync, interval, uji koneksi, riwayat) |
 | 36 | Daftar data/fitur Maung vs data API yang bisa dipakai | ✅ | `docs/RADIUS-API.md` (menunggu persetujuan butir 29) |
+
+### Urutan batch yang disarankan
+- **A (cepat, UX/infra)**: 1, 2, 3, 7, 9, 10, 13, 21, 26(sebagian), 32, 33, 34.
+- **B (peran & izin)**: 16 → 17, 6, 11, 15, 12, 27(sebagian), 26. *Sub-role dulu karena menjadi dasar izin.*
+- **C (logika lapangan & aset)**: 19 → 18, 20, 22, 31, 24, 25.
+- **D (pengadaan)**: 23, 5, 27, 14 — butuh berkas form PR dan keputusan master Vendor.
+- **E (integrasi MSRadius)**: 35 → 29 (konfirmasi) → 30 → 4/28.
+
+## 4. Keputusan pemilik & pertanyaan terbuka
+**Keputusan (sesi 2026-10-09):**
+- **Sub-role (16/17)**: akun demo langsung diberi supervisor/manager agar bisa diuji (mis. satu FOC supervisor, satu FOC staff, satu manager); Admin menetapkan sub-role.
+- **API MSRadius = BACA-SAJA.** Sistem ini tidak pernah menulis ke MSRadius; penghapusan pelanggan tidak dilakukan dari sini. Data pelanggan bersumber dari MSRadius (1 sumber). Akses lewat **HTTP polos**; token uji akan diberikan pemilik bila perlu.
+- **IP/VLAN (22)**: IP internal wajib privat RFC 1918; **IP Publik** kolom opsional (tidak wajib), dicek duplikat hanya bila diisi dan hanya dengan nilai sama (nanti digabung IPAM). Tidak ada master subnet per VLAN untuk saat ini.
+- **Form PR (23)**: file `Soft_Copy_pengajuan.pdf` sudah diterima (Pengajuan No. `250/L1V/PNJ-BDG/X/2026`, tabel No/Deskripsi/Qty/Satuan/Nominal/Total + PPN 11% + Grand Total, tanda tangan Mengajukan/Mengetahui/Menyetujui, halaman 2 tabel Perbandingan: No/Deskripsi/Vendor/Nominal/Total/Keterangan + Kebutuhan + Total). **Kop surat** A4 untuk semua dokumen laporan: `docs/branding/kop-surat-a4.jpg` (gambar latar penuh 2480×3508 px, dari `A4.docx`; margin 2,54 cm).
+
+**Masih terbuka / untuk diverifikasi pemilik di staging:**
+1. **Butir 29 (default sudah diterapkan)**: `databilling/data` → pelanggan, `databilling/profile` → Master Paket. Cek di data asli: field `name` berisi nama orang atau nama akun? (bila nama akun berformat `PANJI_AGUNG`, nyalakan opsi *Rapikan nama* di Admin → MSRadius).
+2. Uji dengan token asli MSRadius (HTTP polos) — semua uji sejauh ini memakai server tiruan lokal (2.320 pelanggan).
+3. Bagian *Perbandingan* di PR memakai kolom persis seperti PDF; periksa tampilan cetak (A4, "Grafik latar belakang" aktif) di printer/PDF nyata.
+4. Semua batch A–E sudah dikerjakan; VM belum di-update (menunggu pemilik), lalu **database baru + data demo** (`deploy.sh` fresh).
 
 ### Urutan batch yang disarankan
 - **A (cepat, UX/infra)**: 1, 2, 3, 7, 9, 10, 13, 21, 26(sebagian), 32, 33, 34.

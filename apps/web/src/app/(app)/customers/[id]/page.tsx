@@ -3,6 +3,7 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
+import { toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
 import { Badge, custTone, DataGrid, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
@@ -21,9 +22,12 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
     <div className="space-y-4">
       <PageHeader pretitle="Pelanggan" title={`${c.name}`} sub={c.code}>
         <Badge tone={custTone(c.status)}>{c.status}</Badge>
+        {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost" onClick={async () => { try { const r = await api<any>(`/customers/${c.id}/radius-pull`, { body: {} }); toast.success(`Data MSRadius ditarik (${r.updated ? 'diperbarui' : 'sudah sama'}).`); await reload(); } catch (e) { toast.error((e as Error).message); } }}>⟳ Tarik dari MSRadius</button>}
         {['ADMIN', 'MKT', 'NOC'].includes(role) && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}
         {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/customers/${c.id}`, `pelanggan ${c.name}`)) router.replace('/customers'); }}>🗑 Hapus</button>}
       </PageHeader>
+      {c.source === 'RADIUS' && <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900">Data pelanggan ini bersumber dari <b>MSRadius</b> (hanya dibaca): nama, telepon, alamat, dan paket diubah di MSRadius lalu ditarik ke sini{c.syncedAt ? ` (terakhir ${fmtDate(c.syncedAt)})` : ''}.{c.missingFromApi ? <b className="text-red-700"> Pelanggan ini sudah tidak ditemukan di MSRadius pada sinkron terakhir.</b> : ''}</p>}
+      {c.source !== 'RADIUS' && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Pelanggan input manual. Setelah akunnya dibuat di MSRadius dengan kode <b>{c.code}</b>, tekan <b>Tarik dari MSRadius</b> agar data tersinkron.</p>}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card">
           <div className="card-header"><h2 className="font-semibold">Kontak & layanan</h2></div>
@@ -37,7 +41,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           <div className="card-header"><h2 className="font-semibold">Jaringan</h2></div>
           <DataGrid items={[
             { label: 'ODP / Port', value: `${c.odp ?? '-'} / ${c.port ?? '-'}` }, { label: 'VLAN', value: c.vlan },
-            { label: 'IP', value: <span className="font-mono">{c.ip ?? '-'}</span> }, ...(c.publicIp ? [{ label: 'IP Publik', value: <span className="font-mono">{c.publicIp}</span> }] : []), { label: 'Aktif sejak', value: fmtDate(c.activatedAt) },
+            { label: 'IP', value: <span className="font-mono">{c.ip ?? '-'}</span> }, ...(c.radiusIp ? [{ label: 'IP dari MSRadius', value: <span className="font-mono">{c.radiusIp}</span> }] : []), ...(c.expiredAt ? [{ label: 'Jatuh tempo (MSRadius)', value: fmtDate(c.expiredAt) }] : []), ...(c.publicIp ? [{ label: 'IP Publik', value: <span className="font-mono">{c.publicIp}</span> }] : []), { label: 'Aktif sejak', value: fmtDate(c.activatedAt) },
           ]} />
         </div>
       </div>
@@ -60,7 +64,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
       </section>
       {edit && (
         <Modal title={`Edit pelanggan ${c.code}`} onClose={() => setEdit(false)}>
-          <DynamicForm fields={customerFields(['ADMIN', 'NOC'].includes(role), true).filter((f) => role !== 'NOC' || NETWORK_FIELDS.includes(f.name))} initial={c} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/customers/${c.id}`, { method: 'PATCH', body: v }); setEdit(false); await reload(); }} />
+          <DynamicForm fields={customerFields(['ADMIN', 'NOC'].includes(role), true).filter((f) => (role !== 'NOC' || NETWORK_FIELDS.includes(f.name)) && (c.source !== 'RADIUS' || !['name', 'phone', 'address', 'packageName', 'code'].includes(f.name)))} initial={c} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/customers/${c.id}`, { method: 'PATCH', body: v }); setEdit(false); await reload(); }} />
         </Modal>
       )}
     </div>

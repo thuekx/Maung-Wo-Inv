@@ -337,6 +337,46 @@ function TelegramCard({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
+function RadiusCard() {
+  const { data, reload } = useFetch<any>('/admin/radius');
+  const [v, setV] = useState<any>(null);
+  const [token, setToken] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const cur = v ?? data;
+  if (!cur) return null;
+  const upd = (k: string, val: unknown) => setV({ ...cur, [k]: val });
+  const save = async () => {
+    setErr(''); setBusy(true);
+    try { await api('/admin/radius', { method: 'PUT', body: { baseUrl: cur.baseUrl, token: token || undefined, enabled: cur.enabled, intervalMin: Number(cur.intervalMin), prettyName: cur.prettyName } }); toast.success('Pengaturan MSRadius disimpan'); setToken(''); setV(null); await reload(); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const test = async () => { setErr(''); setBusy(true); try { const r = await api<any>('/admin/radius/test', { body: {} }); toast.success(`Koneksi MSRadius OK (${r.users} user terdaftar di master).`); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Integrasi MSRadius (baca-saja)</h2>
+      <p className="text-sm text-slate-500">Maung hanya <b>membaca</b> data pelanggan &amp; paket dari MSRadius — tidak pernah menulis/menghapus di sana. Token dibuat di MSRadius (Setting → User → Panel). Alamat API memakai HTTP polos; sebaiknya diakses lewat jaringan internal/VPN.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">URL dasar API</label><input className="input" value={cur.baseUrl} onChange={(e) => upd('baseUrl', e.target.value)} /></div>
+        <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Token API {cur.tokenSet && <span className="text-xs font-normal text-slate-500">(tersimpan {cur.tokenHint} — kosongkan bila tidak diganti)</span>}</label><input className="input font-mono" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={cur.tokenSet ? '••••••••' : 'tempel token di sini'} /></div>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cur.enabled} onChange={(e) => upd('enabled', e.target.checked)} /> Sinkron otomatis</label>
+        <div><label className="mb-1 block text-sm font-medium">Interval otomatis (menit)</label><input className="input" type="number" min={5} max={1440} value={cur.intervalMin} onChange={(e) => upd('intervalMin', e.target.value)} /></div>
+        <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={cur.prettyName} onChange={(e) => upd('prettyName', e.target.checked)} /> Rapikan nama (PANJI_AGUNG → Panji Agung) — nyalakan bila field <code>name</code> di MSRadius berisi nama akun berformat huruf besar/garis bawah</label>
+      </div>
+      <ErrorMsg>{err}</ErrorMsg>
+      <div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={save}>Simpan</button><button className="btn-ghost" disabled={busy || !cur.tokenSet} onClick={test}>Uji koneksi</button></div>
+      {cur.runs.length > 0 && (
+        <div>
+          <h3 className="mb-1 text-sm font-semibold">Riwayat sinkron</h3>
+          <Table head={['Mulai', 'Pemicu', 'Status', 'Baru', 'Diperbarui', 'Tetap', 'Hilang di MSRadius', 'Paket']}>
+            {cur.runs.map((r: any) => <tr key={r.id}><td className="td text-xs">{fmtDate(r.startedAt)}</td><td className="td text-xs">{r.trigger}</td><td className="td"><Badge tone={r.status === 'OK' ? 'green' : r.status === 'ERROR' ? 'red' : 'blue'}>{r.status}</Badge>{r.error && <div className="text-xs text-red-600">{r.error}</div>}</td><td className="td">{r.created}</td><td className="td">{r.updated}</td><td className="td">{r.unchanged}</td><td className="td">{r.missing}</td><td className="td">{r.packages}</td></tr>)}
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocsCard() {
   const { data, reload } = useFetch<any>('/settings/docs');
   const [v, setV] = useState<any>(null);
@@ -370,6 +410,7 @@ function Settings() {
   return (
     <div className="max-w-4xl space-y-4">
       <BrandingCard d={data} reload={reload} />
+      <RadiusCard />
       <DocsCard />
       <SmtpCard d={data} reload={reload} />
       <TelegramCard d={data} reload={reload} />

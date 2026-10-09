@@ -11,6 +11,7 @@ import { core } from './routes/core';
 import { woRoutes } from './routes/wo';
 import { inventoryRoutes } from './routes/inventory';
 import { procurementRoutes } from './routes/procurement';
+import { radiusRoutes } from './routes/radius';
 import { integrationRoutes } from './routes/integrations';
 import { exportRoutes } from './routes/export';
 import { adminRoutes } from './routes/admin';
@@ -34,6 +35,7 @@ api.use(masterRoutes);
 api.use(woRoutes);
 api.use(inventoryRoutes);
 api.use(procurementRoutes);
+api.use(radiusRoutes);
 app.use('/api', api);
 
 /** Pesan validasi Zod → Indonesia (tampil inline di bawah kolom). */

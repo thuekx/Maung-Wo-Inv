@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { actorOf, authenticate } from '../auth';
+import { isPrivateIPv4 } from '../network';
 import { transact } from '../effects';
 import { mineWhere } from '../dashboard';
 import { countIf, pageParams, sendPage } from '../paging';
@@ -77,8 +78,13 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
   const st = workflows[wo.type].statuses[wo.status];
   const uploaders = await prisma.user.findMany({ where: { id: { in: [...new Set(wo.attachments.map((a) => a.uploadedBy))] } }, select: { id: true, name: true } });
   const attachments = wo.attachments.map((a) => ({ ...a, uploaderName: uploaders.find((x) => x.id === a.uploadedBy)?.name ?? '-' }));
-  const canProgress = !st?.final && wo.status !== 'CANCELLED' && st?.owner === 'FOC' && !!wo.assigneeId && (u.role === 'ADMIN' || wo.assigneeId === u.id);
+  const canProgress = !st?.final && wo.status !== 'CANCELLED' && st?.owner === 'FOC' && !!wo.assigneeId && (u.role === 'ADMIN' || !!req.realUser || wo.assigneeId === u.id);
+  // isian awal form aksi: NOC melihat IP dari MSRadius (bila ada) & data jaringan yang sudah tercatat
+  const c = wo.customer;
+  const radIp = c?.radiusIp ?? '';
+  const prefill = c ? { validate: { odp: c.odp ?? '', port: c.port ?? '', vlan: c.vlan ?? '', ip: c.ip ?? (isPrivateIPv4(radIp) ? radIp : ''), publicIp: c.publicIp ?? (radIp && !isPrivateIPv4(radIp) ? radIp : '') } } : {};
   res.json({
+    prefill,
     ...wo,
     attachments,
     canProgress,

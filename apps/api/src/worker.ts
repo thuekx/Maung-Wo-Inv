@@ -5,6 +5,8 @@ import { prisma } from './db';
 import { connection, cronQueue, enqueue, QueuedJob } from './queue';
 import { sendEmail, sendTelegram } from './senders';
 import { Effects } from './effects';
+import { getRadius, runSync } from './radius';
+import { putSetting, getSetting } from './settings';
 
 /** Kirim email / Telegram dari tabel Notification (outbox). */
 new Worker(
@@ -67,7 +69,7 @@ new Worker(
       // pembersihan rutin harian: notifikasi dalam aplikasi lebih dari 90 hari
       await prisma.inbox.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86400_000) } } }).catch((e) => console.error('bersihkan inbox gagal', e));
       const due = await prisma.asset.findMany({
-        where: { nextMaintenanceAt: { lte: new Date(Date.now() + 7 * 86400_000) }, item: { category: 'GA' }, status: { in: ['IN_USE', 'IN_STOCK'] } },
+        where: { needsMaintenance: true, nextMaintenanceAt: { lte: new Date(Date.now() + 7 * 86400_000) }, status: { in: ['IN_USE', 'IN_STOCK'] } },
         include: { item: true },
         orderBy: { nextMaintenanceAt: 'asc' },
       });
@@ -83,6 +85,18 @@ new Worker(
         jobs.push(...fx.jobs);
       });
       await enqueue(jobs);
+    }
+    if (job.name === 'radius-sync-now') {
+      try { const r = await runSync('MANUAL', job.data?.userId); console.log('[radius] sinkron manual selesai', r); } catch (e) { console.error('[radius] sinkron manual gagal:', (e as Error).message); }
+    }
+    if (job.name === 'radius-tick') {
+      // dipanggil tiap 5 menit: jalankan sinkron otomatis bila aktif dan sudah jatuh tempo
+      const cfg = await getRadius();
+      if (cfg.enabled && cfg.token && (!cfg.lastAutoAt || Date.now() - cfg.lastAutoAt >= cfg.intervalMin * 60_000)) {
+        const cur = (await getSetting<any>('radius')) ?? {};
+        await putSetting('radius', { ...cur, lastAutoAt: Date.now() });
+        try { const r = await runSync('AUTO'); console.log('[radius] sinkron otomatis selesai', r); } catch (e) { console.error('[radius] sinkron otomatis gagal:', (e as Error).message); }
+      }
     }
     if (job.name === 'sweep') {
       // re-enqueue outbox yang gagal ter-enqueue setelah commit (jobId mencegah duplikat)
@@ -102,6 +116,7 @@ new Worker(
 
 (async () => {
   await cronQueue.add('maintenance-reminder', {}, { repeat: { pattern: '0 8 * * *', tz: 'Asia/Jakarta' }, jobId: 'maintenance-reminder' });
+  await cronQueue.add('radius-tick', {}, { repeat: { every: 300_000 }, jobId: 'radius-tick' });
   await cronQueue.add('sweep', {}, { repeat: { every: 120_000 }, jobId: 'sweep' });
   console.log('Worker berjalan: notifications, billing-out, cron');
 })();

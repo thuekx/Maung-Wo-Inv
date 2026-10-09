@@ -29,7 +29,8 @@ Sumber: dokumen "Authentication API" (15 hal) dari pemilik proyek. **PDF tidak a
 
 **Tidak ada di API:** email, ODP, port, VLAN, cabang/gudang, area per pelanggan, status "aktif/isolir" eksplisit (hanya `disabled_username` dan `expired_at`), ID numerik stabil selain `kode`.
 
-## Pemetaan ke Maung (usulan — BELUM disetujui; butir 29 menunggu konfirmasi pemilik)
+## Pemetaan ke Maung (DITERAPKAN — default; dapat diubah bila pemilik mengoreksi)
+> Status: diimplementasikan di `apps/api/src/radius.ts`. Hanya **2 endpoint** yang dipakai: `databilling/data` (pelanggan) dan `databilling/profile` (paket); `masterdata/users/list` hanya untuk *Uji koneksi*. Keputusan pemilik: Maung **hanya membaca** MSRadius (tidak menulis/menghapus), data pelanggan **satu sumber** = MSRadius, akses HTTP polos.
 ### Data pelanggan (`databilling/data` → tabel `Customer`)
 | Field API | Field Maung | Catatan |
 |---|---|---|
@@ -63,3 +64,12 @@ Sumber: dokumen "Authentication API" (15 hal) dari pemilik proyek. **PDF tidak a
 - **Otomatis**: cron BullMQ (mis. tiap 30–60 mnt, dapat diatur) + tombol manual (MKT & Admin). Satu panggilan `databilling/data` sudah memberi semua pelanggan → 1–2 request per putaran, jauh di bawah rate limit (10/mnt). Kunci "satu sinkron berjalan", jeda ≥ 7 dtk antar-panggilan, hormati galat `code 500`.
 - **Upsert** berdasarkan `kode`; kolom milik Maung (ODP/port/VLAN/gudang/email) tidak ditimpa; pelanggan yang hilang dari API **tidak dihapus** (ditandai `missingFromApi`); tabel `SyncRun` mencatat waktu, jumlah baru/diubah/dilewati, galat.
 - Keamanan: HTTP polos → rekomendasikan VPN/allowlist; token tidak pernah ditampilkan ulang; semua panggilan dari server (bukan browser).
+
+
+## Implementasi (Batch E)
+- **Admin → Pengaturan → Integrasi MSRadius**: URL dasar, token (terenkripsi AES-GCM, tidak pernah ditampilkan ulang), sinkron otomatis + interval (min. 5 mnt), opsi "Rapikan nama", tombol **Uji koneksi**, riwayat sinkron (`SyncRun`).
+- **Sinkron**: worker menjalankan job `radius-tick` tiap 5 mnt (otomatis bila aktif & jatuh tempo) dan `radius-sync-now` (tombol **Tarik data MSRadius**, MKT & Admin). Satu putaran = 2 request (`databilling/profile` → jeda 7 dtk → `databilling/data`) dengan kunci Redis agar tidak ganda.
+- **Upsert by `kode`** → `Customer.code`. Bersumber API (tidak bisa diedit manual, diubah di MSRadius): nama, telepon (`whatsapp`), alamat, paket. Diisi bila kosong: lat/lng, tanggal aktif (dari `notess`). Selalu diperbarui: `radiusIp` (IP statis, rujukan NOC), `expiredAt`, reseller/sales, status ACTIVE↔SUSPENDED (`disabled_username`; tidak disentuh bila ada WO berjalan). **Milik Maung, tidak ditimpa**: email, ODP, port, VLAN, IP internal, IP publik, gudang.
+- Pelanggan yang hilang dari API hanya ditandai `missingFromApi` (tidak dihapus). Paket baru dari `databilling/profile` masuk Master Paket (tanpa harga modal/komisi); paket yang dipakai pelanggan otomatis dibuat bila belum ada.
+- **Pelanggan baru (belum ada di MSRadius)**: input manual dengan kode sendiri (juga di form WO Pasang Baru, kolom *ID pelanggan MSRadius*). Setelah akunnya dibuat di MSRadius dengan kode yang sama, tombol **Tarik dari MSRadius** di halaman pelanggan menautkan & mengisi datanya.
+- **NOC**: form validasi memprefill IP/VLAN/ODP; IP dari MSRadius yang privat → kolom IP internal, yang publik → IP Publik. Cek duplikat IP juga membandingkan IP dari MSRadius.

@@ -2,7 +2,7 @@
 import { toast } from '@/lib/dialog';
 import { useRef, useState } from 'react';
 import Link from 'next/link';
-import { API, api, download, getToken, useFetch } from '@/lib/api';
+import { API, api, download, fmtDate, getToken, useFetch } from '@/lib/api';
 import { Column, DataTable } from '@/components/DataTable';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
@@ -13,7 +13,7 @@ export const CUSTOMER_STATUS = ['ACTIVE', 'SUSPENDED', 'TERMINATED', 'PROSPECT',
 export const NETWORK_FIELDS = ['status', 'odp', 'port', 'vlan', 'ip', 'publicIp'];
 
 export const customerFields = (canStatus: boolean, withCode = true): Field[] => [
-  ...(withCode ? [{ name: 'code', label: 'Kode pelanggan (kosongkan = otomatis)', type: 'text', help: 'Isi bila memakai ID pelanggan yang sudah ada' }] : []),
+  ...(withCode ? [{ name: 'code', label: 'Kode pelanggan (kosongkan = otomatis)', type: 'text', help: 'Pelanggan yang sudah ada di MSRadius cukup ditarik lewat "Tarik data MSRadius". Untuk pelanggan baru: isi kode yang akan/telah dibuat di MSRadius, lalu setelah akunnya ada tekan "Tarik dari MSRadius" di halaman pelanggan.' }] : []),
   { name: 'name', label: 'Nama pelanggan', type: 'text', required: true },
   { name: 'phone', label: 'Telepon / WA', type: 'text', required: true },
   { name: 'email', label: 'Email', type: 'text' },
@@ -86,6 +86,8 @@ export default function Customers() {
   const [err, setErr] = useState('');
   const [rk, setRk] = useState(0);
   const [arch, setArch] = useState(false);
+  const { data: rs, reload: reloadRs } = useFetch<any>(['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(user?.role ?? '') ? '/radius/status' : null);
+  const pull = async () => { try { await api('/radius/sync', { body: {} }); toast.info('Sinkron MSRadius dimulai di latar belakang (±20 detik)…'); setTimeout(() => { reloadRs(); setRk((x) => x + 1); }, 22000); } catch (e) { toast.error((e as Error).message); } };
   const { data: pkgs } = useFetch<any[]>('/packages?all=1');
   const role = user?.role ?? '';
   const canEdit = ['ADMIN', 'MKT'].includes(role); // NOC tidak menambah/impor pelanggan (hanya data jaringan lewat WO / edit terbatas)
@@ -97,6 +99,7 @@ export default function Customers() {
     { key: 'phone', header: 'Telepon', sort: 'phone' },
     { key: 'packageName', header: 'Paket', sort: 'packageName' },
     { key: 'ip', header: 'IP', sort: 'ip', className: 'font-mono text-xs', render: (c) => c.ip ?? '-' },
+    { key: 'source', header: 'Sumber', className: 'text-xs', render: (c) => (c.source === 'RADIUS' ? <Badge tone="blue">MSRadius</Badge> : <Badge tone="slate">Manual</Badge>) },
     { key: 'status', header: 'Status', sort: 'status', render: (c) => <Badge tone={custTone(c.status)}>{c.status}</Badge> },
     ...(arch ? [{ key: 'act', header: '', render: (c: any) => <button className="text-xs text-brand-700 hover:underline" onClick={() => restore(c)}>Pulihkan</button> }] : []),
   ];
@@ -104,11 +107,13 @@ export default function Customers() {
   return (
     <>
       <PageHeader pretitle="Data" title="Pelanggan" sub="Pelanggan baru lewat WO Pasang Baru, atau input manual / impor Excel untuk data yang sudah ada">
+        {canEdit && <button className="btn-ghost" disabled={rs?.running} onClick={pull}>{rs?.running ? '⟳ Sinkron berjalan…' : '⟳ Tarik data MSRadius'}</button>}
         {canEdit && <button className="btn" onClick={() => setAdd(true)}>+ Tambah pelanggan</button>}
         {canEdit && <button className="btn-ghost" onClick={() => setImp(true)}>⬆ Impor Excel</button>}
         {canExport && <button className="btn-ghost" onClick={() => download(`/customers/export.xlsx${exportQs ? `?${exportQs}` : ''}`, 'pelanggan.xlsx').catch((e) => setErr(e.message))}>⬇ Ekspor Excel</button>}
       </PageHeader>
       <ErrorMsg>{err}</ErrorMsg>
+      {rs && <p className="mb-3 text-xs text-slate-500">{!rs.configured ? 'MSRadius belum dihubungkan (Admin → Pengaturan → MSRadius).' : rs.last ? <>Sinkron MSRadius terakhir {fmtDate(rs.last.startedAt)}: <b className={rs.last.status === 'ERROR' ? 'text-red-600' : ''}>{rs.last.status === 'OK' ? `${rs.last.created} baru, ${rs.last.updated} diperbarui, ${rs.last.unchanged} tetap` : rs.last.status === 'ERROR' ? `gagal — ${rs.last.error}` : 'berjalan'}</b>{rs.enabled ? ` · otomatis tiap ${rs.intervalMin} menit` : ' · otomatis mati'}</> : 'Belum pernah sinkron.'} Pelanggan MSRadius bersifat baca-saja; pelanggan baru yang belum ada di MSRadius diinput manual dengan kode sendiri.</p>}
       <DataTable<any> path="/customers" columns={cols} params={{ status, packageName: pkg, archived: arch ? '1' : undefined }} defaultSort="createdAt" refreshKey={rk}
         searchPlaceholder="Cari nama / kode / telepon / IP…" empty="Belum ada pelanggan — tambah manual atau impor dari Excel"
         filters={<>

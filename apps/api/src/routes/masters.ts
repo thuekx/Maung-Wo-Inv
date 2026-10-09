@@ -70,6 +70,10 @@ masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res)
   }
   const cur = await prisma.customer.findUnique({ where: { id } });
   if (!cur) throw new AppError(404, 'Pelanggan tidak ditemukan');
+  if (cur.source === 'RADIUS') {
+    const locked = (['name', 'phone', 'address', 'packageName'] as const).filter((k) => b[k] !== undefined && b[k] !== cur[k]);
+    if (locked.length) throw new AppError(409, `Pelanggan ini bersumber dari MSRadius (hanya dibaca): ubah ${locked.join(', ')} di MSRadius lalu tarik datanya`);
+  }
   const ch = changes(cur, b);
   const updated = await auditedUpdate(who, 'pelanggan', id, `${cur.code} ${cur.name}`, ch, async (fx) => {
     if (b.code && b.code !== cur.code && (await fx.tx.customer.findUnique({ where: { code: b.code } }))) throw fieldError('code', `Kode ${b.code} sudah ada`, 409);
@@ -240,7 +244,7 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
   const rows = await readSheet(req.file);
 
   const [existing, whs, pkgs] = await Promise.all([
-    prisma.customer.findMany({ select: { id: true, code: true, name: true, phone: true, ip: true, odp: true, port: true, status: true } }),
+    prisma.customer.findMany({ select: { id: true, code: true, name: true, phone: true, ip: true, odp: true, port: true, status: true, source: true } }),
     prisma.warehouse.findMany({ where: { kind: { not: 'MOBILE' } } }),
     prisma.package.findMany(),
   ]);
@@ -283,6 +287,7 @@ masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single(
       const packageName = str(raw.packageName) || 'Tidak diketahui';
       const code = str(raw.code);
       const hit = (code && byCode.get(code.toLowerCase())) || (!code ? byNamePhone.get(`${name.toLowerCase()}|${phone}`) : undefined);
+      if (hit && (hit as any).source === 'RADIUS') throw new Error('Pelanggan bersumber dari MSRadius (hanya dibaca) — data ditarik lewat sinkron, bukan impor Excel');
       if (code && seenCodes.has(code.toLowerCase())) throw new Error(`Kode ${code} muncul dua kali di file`);
       if (code) seenCodes.add(code.toLowerCase());
       const ip = str(raw.ip) || null, odp = str(raw.odp) || null, port = str(raw.port) || null;
