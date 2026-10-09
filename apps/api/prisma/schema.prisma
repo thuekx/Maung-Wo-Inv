@@ -19,6 +19,12 @@ enum Role {
   FIN
 }
 
+enum SubRole {
+  MANAGER
+  SUPERVISOR
+  STAFF
+}
+
 enum WoType {
   NEW_INSTALL
   TROUBLE
@@ -26,6 +32,7 @@ enum WoType {
   UNSUSPEND
   TERMINATE
   STOCK_REQUEST
+  STOCK_RETURN // serah-terima sisa material teknisi → gudang
 }
 
 enum CustomerStatus {
@@ -71,6 +78,7 @@ model User {
   email          String   @unique
   passwordHash   String
   role           Role
+  subRole        SubRole  @default(STAFF) // saat ini hanya membedakan hak FOC (jadwal = supervisor/manager)
   telegramChatId String?
   active         Boolean  @default(true)
   mustChangePassword Boolean @default(false)
@@ -160,6 +168,8 @@ model WoEvent {
   toStatus   String
   actorId    String?
   actorName  String?
+  actorRole  String?
+  actorSubRole String?
   note       String?
   payload    Json?
   createdAt  DateTime @default(now())

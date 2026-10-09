@@ -2,7 +2,7 @@
 import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, doDelete, fmtDate, ROLE_LABEL, TYPE_LABEL, useFetch } from '@/lib/api';
+import { api, doDelete, fmtDate, ROLE_LABEL, roleText, TYPE_LABEL, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
 import { toast } from '@/lib/dialog';
@@ -113,7 +113,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
               {events.map((e: any) => (
                 <li key={e.id} className="relative">
                   <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-accent-500" />
-                  <div className="text-sm"><b>{e.actorName ?? 'Sistem'}</b> · {e.action} → <span className="text-brand-700">{wf.statuses[e.toStatus]?.label ?? e.toStatus}</span></div>
+                  <div className="text-sm"><b>{e.actorName ?? 'Sistem'}</b>{e.actorRole && <span className="text-xs text-slate-500"> ({roleText({ role: e.actorRole, subRole: e.actorSubRole ?? undefined })})</span>} · {e.action} → <span className="text-brand-700">{wf.statuses[e.toStatus]?.label ?? e.toStatus}</span></div>
                   {e.note && <div className="text-sm text-slate-600">{e.note}</div>}
                   <div className="text-xs text-slate-400">{fmtDate(e.createdAt)}</div>
                 </li>

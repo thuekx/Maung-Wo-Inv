@@ -27,10 +27,20 @@ export class ApiError extends Error {
   constructor(message: string, public fields?: Record<string, string>, public status?: number) { super(message); }
 }
 
+/** Admin "bertindak sebagai" peran lain (untuk uji alur): disimpan di browser, dikirim sebagai header ke API. */
+const ACT = 'maung_act';
+export const getAct = (): { role: string; sub: string } | null => {
+  try { const v = localStorage.getItem(ACT); if (!v) return null; const [role, sub] = v.split(':'); return { role, sub: sub || 'SUPERVISOR' }; } catch { return null; }
+};
+export const setAct = (a: { role: string; sub: string } | null) => {
+  try { if (a) localStorage.setItem(ACT, `${a.role}:${a.sub}`); else localStorage.removeItem(ACT); } catch { /* ignore */ }
+};
+const actHeaders = (): Record<string, string> => { const a = getAct(); return a ? { 'x-act-as': a.role, 'x-act-sub': a.sub } : {}; };
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(`${API}/api${path}`, {
     method: opts.method ?? (opts.body !== undefined ? 'POST' : 'GET'),
-    headers: { 'content-type': 'application/json', ...(getToken() ? { authorization: `Bearer ${getToken()}` } : {}) },
+    headers: { 'content-type': 'application/json', ...(getToken() ? { authorization: `Bearer ${getToken()}` } : {}), ...actHeaders() },
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
   const json = await res.json().catch(() => ({}));
@@ -57,12 +67,17 @@ export function useFetch<T = any>(path: string | null) {
   return { data, error, loading, reload: load, setData };
 }
 
+export const SUBROLE_LABEL: Record<string, string> = { MANAGER: 'Manager', SUPERVISOR: 'Supervisor', STAFF: 'Staff' };
+
+/** "Marketing · Supervisor" (Admin tanpa sub-role). */
+export const roleText = (u: { role: string; subRole?: string }) => `${ROLE_LABEL[u.role] ?? u.role}${u.role !== 'ADMIN' && u.subRole ? ` · ${SUBROLE_LABEL[u.subRole] ?? u.subRole}` : ''}`;
+
 export const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Admin', MKT: 'Marketing', NOC: 'NOC', FOC: 'FOC (Teknisi)', GA: 'GA / Procurement', FIN: 'Finance',
 };
 
 export const TYPE_LABEL: Record<string, string> = {
-  NEW_INSTALL: 'Pasang Baru', TROUBLE: 'Trouble Ticket', SUSPEND: 'Suspend', UNSUSPEND: 'Unsuspend', TERMINATE: 'Terminate', STOCK_REQUEST: 'Permintaan Barang',
+  NEW_INSTALL: 'Pasang Baru', TROUBLE: 'Trouble Ticket', SUSPEND: 'Suspend', UNSUSPEND: 'Unsuspend', TERMINATE: 'Terminate', STOCK_REQUEST: 'Permintaan Barang', STOCK_RETURN: 'Serah-terima Sisa',
 };
 
 /** "5 mnt lalu", "kemarin", atau tanggal bila lebih dari seminggu. */
@@ -90,7 +105,7 @@ export async function doDelete(path: string, label: string): Promise<boolean> {
 
 /** Unduh file dari API (butuh header Authorization, jadi lewat fetch → blob). */
 export async function download(path: string, filename: string) {
-  const res = await fetch(`${API}/api${path}`, { headers: { authorization: `Bearer ${getToken()}` } });
+  const res = await fetch(`${API}/api${path}`, { headers: { authorization: `Bearer ${getToken()}`, ...actHeaders() } });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `Gagal mengunduh (${res.status})`);
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement('a');

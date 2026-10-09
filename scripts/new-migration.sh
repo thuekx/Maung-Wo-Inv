@@ -10,6 +10,7 @@ DIR="prisma/migrations/$(date -u +%Y%m%d%H%M%S)_$NAME"
 LAST="$(ls prisma/migrations | grep -E '^[0-9]{14}_' | sort | tail -1)"
 [[ "${DIR#prisma/migrations/}" > "$LAST" ]] || { echo "Stempel waktu ($DIR) tidak lebih baru dari migrasi terakhir ($LAST). Periksa jam sistem."; exit 1; }
 mkdir -p "$DIR"
+trap '[ -s "$DIR/migration.sql" ] || rm -rf "$DIR"' EXIT # jangan tinggalkan folder kosong bila gagal
 npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script > "$DIR/migration.sql"
 if [ ! -s "$DIR/migration.sql" ] || grep -q "^-- This is an empty migration" "$DIR/migration.sql"; then rm -rf "$DIR"; echo "Tidak ada perubahan schema."; exit 1; fi
 echo "Dibuat: apps/api/$DIR"

@@ -1,4 +1,4 @@
-import { Prisma, Role, WoType, CustomerStatus } from './orm';
+import { Prisma, Role, SubRole, WoType, CustomerStatus } from './orm';
 import { Tx } from './db';
 import { Effects } from './effects';
 
@@ -21,7 +21,10 @@ export interface Field {
 }
 
 export type WoFull = Prisma.WorkOrderGetPayload<{ include: { customer: true } }>;
-export interface Actor { id: string; name: string; role: Role }
+export interface Actor { id: string; name: string; role: Role; subRole?: SubRole | null; /** Admin yang bertindak sebagai peran lain */ acting?: boolean }
+
+/** Supervisor/manager (atau Admin asli). */
+export const isLead = (a: Actor) => a.role === 'ADMIN' || a.subRole === 'SUPERVISOR' || a.subRole === 'MANAGER';
 
 export interface Ctx {
   tx: Tx;
@@ -42,6 +45,7 @@ export interface ActionDef {
   to: string;
   fields: Field[];
   assigneeOnly?: boolean; // hanya teknisi yang ditugaskan (atau ADMIN)
+  leadOnly?: boolean; // hanya supervisor/manager (atau ADMIN) di divisi yang berhak
   system?: boolean; // hanya dipicu sistem, tidak tampil di UI
   danger?: boolean;
   /** boleh mengembalikan status tujuan lain untuk menimpa `to` */

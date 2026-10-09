@@ -87,7 +87,17 @@ inventoryRoutes.delete('/items/:id', stockRoles, async (req, res) => {
 });
 
 /* ── stok ── */
-inventoryRoutes.get('/stock', async (req, res) => {
+/** Stok Berjalan milik teknisi yang sedang login (material + perangkat ber-SN), untuk halaman "Stok Saya". */
+inventoryRoutes.get('/stock/mine', requireRole('FOC'), async (req, res) => {
+  const wh = await prisma.warehouse.findFirst({ where: { kind: 'MOBILE', ownerId: req.user!.id } });
+  if (!wh) return void res.json({ warehouse: null, stock: [], assets: [] });
+  const [stock, assets] = await Promise.all([
+    prisma.stockLevel.findMany({ where: { warehouseId: wh.id, qty: { gt: 0 } }, include: { item: true }, orderBy: { item: { name: 'asc' } } }),
+    prisma.asset.findMany({ where: { warehouseId: wh.id }, include: { item: true }, orderBy: { serialNumber: 'asc' }, take: 500 }),
+  ]);
+  res.json({ warehouse: wh, stock, assets });
+});
+inventoryRoutes.get('/stock', requireRole('GA'), async (req, res) => {
   const warehouseId = req.query.warehouseId ? String(req.query.warehouseId) : undefined;
   const [levels, assetGroups] = await Promise.all([
     prisma.stockLevel.findMany({ where: { ...(warehouseId ? { warehouseId } : {}), qty: { not: 0 } }, include: { item: true, warehouse: true } }),
@@ -101,7 +111,7 @@ inventoryRoutes.get('/stock', async (req, res) => {
   res.json(rows.sort((a, b) => a.warehouse.name.localeCompare(b.warehouse.name) || a.item.name.localeCompare(b.item.name)));
 });
 
-inventoryRoutes.get('/stock/movements', async (req, res) => {
+inventoryRoutes.get('/stock/movements', requireRole('GA'), async (req, res) => {
   res.json(await prisma.stockMovement.findMany({ where: req.query.itemId ? { itemId: String(req.query.itemId) } : {}, orderBy: { createdAt: 'desc' }, take: 100 }));
 });
 
@@ -125,7 +135,7 @@ inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
 });
 
 /* ── aset (ber-SN & GA) ── */
-inventoryRoutes.get('/assets', async (req, res) => {
+inventoryRoutes.get('/assets', requireRole('GA'), async (req, res) => {
   const q = z.object({ q: z.string().optional(), status: z.string().optional(), warehouseId: z.string().optional(), category: z.string().optional(), customerId: z.string().optional(), ids: z.string().optional(), idsOnly: z.string().optional(), limit: z.coerce.number().int().min(1).max(2000).default(200) }).parse(req.query);
   const term = q.q?.trim();
   // nama item/merk/tipe dicari di tabel kecil lebih dulu → filter ber-indeks (tanpa join per baris aset)
@@ -158,7 +168,7 @@ inventoryRoutes.get('/assets', async (req, res) => {
   sendPage(res, pp, rows, total);
 });
 
-inventoryRoutes.get('/assets/pending-qc', async (_req, res) => {
+inventoryRoutes.get('/assets/pending-qc', requireRole('GA'), async (_req, res) => {
   res.json(await prisma.asset.findMany({ where: { status: 'RETURNED_PENDING_QC' }, include: { item: true, warehouse: true }, orderBy: { createdAt: 'asc' } }));
 });
 
@@ -263,7 +273,7 @@ inventoryRoutes.post('/assets/qc', stockRoles, async (req, res) => {
 });
 
 /* ── purchase order & penerimaan ── */
-inventoryRoutes.get('/purchase-orders', async (req, res) => {
+inventoryRoutes.get('/purchase-orders', requireRole('GA', 'FIN'), async (req, res) => {
   const term = req.query.q ? String(req.query.q).trim() : '';
   const status = req.query.status ? String(req.query.status) : undefined;
   const pp = pageParams(req, { sorts: { number: (d) => ({ number: d }), vendor: (d) => ({ vendor: d }), status: (d) => ({ status: d }), createdAt: (d) => ({ createdAt: d }) }, defaultSort: { key: 'createdAt', dir: 'desc' }, legacyLimit: 100 });
@@ -274,7 +284,7 @@ inventoryRoutes.get('/purchase-orders', async (req, res) => {
   ]);
   sendPage(res, pp, rows, total);
 });
-inventoryRoutes.get('/purchase-orders/:id', async (req, res) => {
+inventoryRoutes.get('/purchase-orders/:id', requireRole('GA', 'FIN'), async (req, res) => {
   const po = await prisma.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } } });
   if (!po) throw new AppError(404, 'PO tidak ditemukan');
   const wh = await prisma.warehouse.findUnique({ where: { id: po.toWarehouseId } });

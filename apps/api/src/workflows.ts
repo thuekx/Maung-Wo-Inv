@@ -97,6 +97,7 @@ const scheduleAction = (key: string, label: string, to: string): ActionDef => ({
   key,
   label,
   roles: ['FOC'],
+  leadOnly: true,
   to,
   fields: [technicianF, scheduledF, note()],
   run: async (ctx, input) => {
@@ -772,6 +773,116 @@ const stockRequest: Workflow = {
   },
 };
 
+
+/* ───────────────────────── SERAH-TERIMA SISA MATERIAL (STOCK_RETURN) ───────────────────────── */
+
+/** Selisih (diajukan − diterima) untuk material & SN. */
+function outstandingOf(d: any) {
+  const recvQty = new Map<string, number>();
+  for (const r of (d.received?.items ?? []) as { itemId: string; qty: number }[]) recvQty.set(r.itemId, (recvQty.get(r.itemId) ?? 0) + r.qty);
+  const items = ((d.items ?? []) as { itemId: string; qty: number }[]).map((l) => ({ itemId: l.itemId, qty: l.qty - (recvQty.get(l.itemId) ?? 0) })).filter((l) => l.qty > 0);
+  const gotSn = new Set((d.received?.serials ?? []) as string[]);
+  const serials = ((d.serials ?? []) as string[]).filter((x) => !gotSn.has(x));
+  return { items, serials };
+}
+
+const stockReturn: Workflow = {
+  type: 'STOCK_RETURN',
+  prefix: 'WO-RT',
+  label: 'Serah-terima Sisa Material',
+  description: 'Teknisi mengembalikan sisa material/perangkat → GA menerima di gudang. Selama belum diterima, barang tetap atas nama teknisi (Stok Berjalan).',
+  createRoles: ['FOC'],
+  createFields: [
+    { name: 'toWarehouseId', label: 'Dikembalikan ke gudang', type: 'warehouse', required: true },
+    { name: 'items', label: 'Material habis pakai yang dikembalikan', type: 'materials' },
+    { name: 'serials', label: 'SN perangkat yang dikembalikan', type: 'serials' },
+    note(),
+  ],
+  initial: 'AWAITING_RECEIPT',
+  async create(tx, input, actor) {
+    const i = z.object({ toWarehouseId: z.string().min(1), items: materials, serials: sn.default([]), note: optNote }).parse(input);
+    if (!i.items.length && !i.serials.length) throw fieldError('items', 'Isi minimal satu material atau SN yang dikembalikan');
+    const wh = await tx.warehouse.findFirst({ where: { id: i.toWarehouseId, kind: { not: 'MOBILE' }, active: true } });
+    if (!wh) throw new AppError(400, 'Gudang tujuan tidak valid');
+    const mob = await mobileWarehouse(tx, actor.id);
+    const need = new Map<string, number>();
+    for (const l of i.items) need.set(l.itemId, (need.get(l.itemId) ?? 0) + l.qty);
+    for (const [itemId, qty] of need) {
+      const have = (await tx.stockLevel.findUnique({ where: { warehouseId_itemId: { warehouseId: mob.id, itemId } } }))?.qty ?? 0;
+      if (qty > have) {
+        const it = await tx.item.findUnique({ where: { id: itemId } });
+        throw fieldError('items', `${it?.name ?? itemId}: di Stok Berjalan Anda hanya ada ${have}, diajukan ${qty}`, 409);
+      }
+    }
+    for (const s of i.serials) {
+      const a = await mustAsset(tx, s);
+      if (a.warehouseId !== mob.id || !AVAILABLE.includes(a.status)) throw fieldError('serials', `SN ${a.serialNumber} tidak ada di Stok Berjalan Anda`, 409);
+    }
+    const items = [...need].map(([itemId, qty]) => ({ itemId, qty }));
+    return { title: `Serah-terima sisa material → ${wh.name}`, data: { toWarehouseId: wh.id, techId: actor.id, items, serials: i.serials, note: i.note }, note: i.note };
+  },
+  statuses: {
+    AWAITING_RECEIPT: {
+      label: 'Menunggu Penerimaan GA',
+      owner: 'GA',
+      actions: [
+        {
+          key: 'receive_all',
+          label: 'Terima semua sesuai daftar',
+          roles: ['GA'],
+          to: 'CLOSED',
+          fields: [note()],
+          run: async (ctx) => {
+            const o = outstandingOf(ctx.wo.data);
+            await receiveReturn(ctx, o.items, o.serials);
+          },
+        },
+        {
+          key: 'receive_partial',
+          label: 'Terima sebagian (sisanya tetap atas nama teknisi)',
+          roles: ['GA'],
+          to: 'AWAITING_RECEIPT',
+          fields: [
+            { name: 'items', label: 'Material yang diterima', type: 'materials' },
+            { name: 'serials', label: 'SN yang diterima', type: 'serials' },
+            note(true),
+          ],
+          run: async (ctx, input) => {
+            const i = z.object({ items: materials, serials: sn.default([]), note: z.string().min(2, 'Isi catatan (mengapa sebagian)') }).parse(input);
+            if (!i.items.length && !i.serials.length) throw fieldError('items', 'Isi material atau SN yang diterima');
+            const o = outstandingOf(ctx.wo.data);
+            for (const l of i.items) {
+              const left = o.items.find((x) => x.itemId === l.itemId)?.qty ?? 0;
+              if (l.qty > left) throw fieldError('items', `Melebihi sisa yang belum diterima (${left})`, 400);
+            }
+            for (const s of i.serials) if (!o.serials.includes(s)) throw fieldError('serials', `SN ${s} tidak ada dalam daftar / sudah diterima`, 400);
+            await receiveReturn(ctx, i.items, i.serials);
+            const d2 = { ...(ctx.wo.data as any), received: ctx.data.received };
+            const left = outstandingOf(d2);
+            if (!left.items.length && !left.serials.length) return 'CLOSED';
+          },
+        },
+        { key: 'reject', label: 'Tolak (tidak diterima)', roles: ['GA'], to: 'REJECTED', danger: true, fields: [note(true)] },
+      ],
+    },
+    CLOSED: { label: 'Selesai – Diterima Gudang', owner: 'GA', final: true, actions: [] },
+    REJECTED: { label: 'Ditolak – Tetap di Stok Berjalan Teknisi', owner: 'GA', final: true, actions: [] },
+  },
+};
+
+/** Pindahkan barang yang benar-benar diterima dari Stok Berjalan teknisi ke gudang tujuan; catat akumulasi di data WO. */
+async function receiveReturn(ctx: Ctx, items: { itemId: string; qty: number }[], serials: string[]) {
+  const d = ctx.wo.data as any;
+  const mob = await mobileWarehouse(ctx.tx, d.techId);
+  for (const l of items) await moveStock(ctx.tx, { itemId: l.itemId, qty: l.qty, from: mob.id, to: d.toWarehouseId, reason: `Serah-terima ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
+  for (const x of serials) {
+    const a = await mustAsset(ctx.tx, x);
+    if (a.warehouseId !== mob.id) throw new AppError(409, `SN ${a.serialNumber} sudah tidak di Stok Berjalan teknisi`);
+    await moveAsset(ctx.tx, a, { status: 'IN_STOCK', toWarehouseId: d.toWarehouseId, reason: `Serah-terima ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
+  }
+  ctx.data.received = { items: [...(d.received?.items ?? []), ...items], serials: [...(d.received?.serials ?? []), ...serials], at: new Date() };
+}
+
 export const workflows: Record<WoType, Workflow> = {
   NEW_INSTALL: newInstall,
   TROUBLE: trouble,
@@ -779,6 +890,7 @@ export const workflows: Record<WoType, Workflow> = {
   UNSUSPEND: unsuspend,
   TERMINATE: terminate,
   STOCK_REQUEST: stockRequest,
+  STOCK_RETURN: stockReturn,
 };
 
 /** Versi serializable untuk frontend. */

@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, useFetch } from '@/lib/api';
+import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { loadBranding } from '@/lib/brand';
 import { useAuth } from '@/lib/auth';
@@ -31,6 +31,7 @@ const userFields: FormField[] = [
   { name: 'name', label: 'Nama', type: 'text', required: true },
   { name: 'email', label: 'Email', type: 'text', required: true },
   { name: 'role', label: 'Divisi', type: 'select', required: true, options: Object.keys(ROLE_LABEL) },
+  { name: 'subRole', label: 'Sub-role', type: 'select', required: true, options: ['STAFF', 'SUPERVISOR', 'MANAGER'], help: 'Saat ini hanya FOC yang dibedakan: penjadwalan teknisi hanya untuk SUPERVISOR/MANAGER; STAFF = minta material & isi laporan' },
   { name: 'telegramChatId', label: 'Telegram chat ID (opsional)', type: 'text' },
 ];
 
@@ -62,11 +63,11 @@ function Users() {
         <button className="btn" onClick={() => setShow(true)}>+ Tambah user</button>
         <button className="btn-ghost" disabled={!sel.length} onClick={() => { setErr(''); setPw({ ids: sel }); }}>🔑 Reset password terpilih ({sel.length})</button>
       </div>
-      <Table head={['', 'Nama', 'Email', 'Divisi', 'Telegram', 'Status', '']}>
+      <Table head={['', 'Nama', 'Email', 'Divisi', 'Sub-role', 'Telegram', 'Status', '']}>
         {users.map((u) => (
           <tr key={u.id}>
             <td className="td"><input type="checkbox" checked={sel.includes(u.id)} onChange={() => toggle(u.id)} aria-label={`pilih ${u.name}`} /></td>
-            <td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td"><Badge>{ROLE_LABEL[u.role] ?? u.role}</Badge></td>
+            <td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td"><Badge>{ROLE_LABEL[u.role] ?? u.role}</Badge></td><td className="td text-sm">{u.role === 'ADMIN' ? '-' : SUBROLE_LABEL[u.subRole] ?? u.subRole}</td>
             <td className="td">{u.telegramChatId ? '✓ terhubung' : '-'}</td>
             <td className="td"><button className="text-brand-700 hover:underline" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', body: { active: !u.active } }).catch((e) => toast.error(e.message)); reload(); }}>{u.active ? 'Aktif' : 'Nonaktif'}</button>{u.mustChangePassword && <div><Badge tone="amber">wajib ganti password</Badge></div>}</td>
             <td className="td whitespace-nowrap"><LinkBtn onClick={() => setEdit(u)}>Edit</LinkBtn> · <LinkBtn onClick={() => { setErr(''); setPw({ ids: [u.id] }); }}>Reset PW</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/users/${u.id}`, `user ${u.email}`)) reload(); }}>Hapus</LinkBtn></td>
@@ -75,7 +76,7 @@ function Users() {
       </Table>
       {show && (
         <Modal title="Tambah user" onClose={() => setShow(false)}>
-          <DynamicForm submitLabel="Buat user" onSubmit={async (v) => { await api('/users', { body: v }); setShow(false); await reload(); }} fields={[...userFields.slice(0, 3), { name: 'password', label: 'Password awal (min 8)', type: 'password', required: true }, userFields[3]]} />
+          <DynamicForm submitLabel="Buat user" onSubmit={async (v) => { await api('/users', { body: v }); setShow(false); await reload(); }} fields={[...userFields.slice(0, 4), { name: 'password', label: 'Password awal (min 8)', type: 'password', required: true }, userFields[4]]} />
         </Modal>
       )}
       {edit && (

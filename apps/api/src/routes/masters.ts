@@ -43,7 +43,7 @@ const customerBody = z.object({
   activatedAt: z.preprocess(nul, z.coerce.date().nullable().optional()),
 });
 
-masterRoutes.post('/customers', requireRole('MKT', 'NOC'), async (req, res) => {
+masterRoutes.post('/customers', requireRole('MKT'), async (req, res) => {
   const b = customerBody.parse(req.body);
   const who = whoOf(req);
   const c = await transact(async (fx) => {
@@ -63,6 +63,11 @@ masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res)
   const b = customerBody.partial().parse(req.body);
   const who = whoOf(req);
   if (b.status && who.role !== 'ADMIN' && who.role !== 'NOC') throw new AppError(403, 'Status pelanggan hanya diubah NOC/Admin (lewat WO untuk alur normal)');
+  if (who.role === 'NOC') {
+    const NOC_KEYS = ['odp', 'port', 'vlan', 'ip', 'publicIp', 'status'];
+    const bad = Object.keys(b).filter((k) => !NOC_KEYS.includes(k));
+    if (bad.length) throw new AppError(403, `NOC hanya boleh mengubah data jaringan (ODP, port, VLAN, IP, status), bukan: ${bad.join(', ')}`);
+  }
   const cur = await prisma.customer.findUnique({ where: { id } });
   if (!cur) throw new AppError(404, 'Pelanggan tidak ditemukan');
   const ch = changes(cur, b);

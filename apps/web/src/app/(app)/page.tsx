@@ -7,8 +7,8 @@ import { useBranding } from '@/lib/brand';
 import type { IconName } from '@/components/icons';
 import { Donut, Legend, ProgressBar, StackedBars, TrendChart } from '@/components/charts';
 
-const TYPE_KEYS = ['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST'];
-const TYPE_ICON: Record<string, IconName> = { NEW_INSTALL: 'users', TROUBLE: 'alert', SUSPEND: 'clock', UNSUSPEND: 'check', TERMINATE: 'logout', STOCK_REQUEST: 'box' };
+const TYPE_KEYS = ['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST', 'STOCK_RETURN'];
+const TYPE_ICON: Record<string, IconName> = { NEW_INSTALL: 'users', TROUBLE: 'alert', SUSPEND: 'clock', UNSUSPEND: 'check', TERMINATE: 'logout', STOCK_REQUEST: 'box', STOCK_RETURN: 'box' };
 // warna status tetap (semantik); warna jenis WO mengikuti palet grafik brand dari Admin
 const C = { done: '#10b981', cancel: '#94a3b8', out: '#ef4444', low: '#f59e0b', ok: '#10b981', warn: '#f97316' };
 

@@ -10,6 +10,8 @@ import { Badge, custTone, ErrorMsg, Modal, PageHeader, Table } from '@/component
 
 export const CUSTOMER_STATUS = ['ACTIVE', 'SUSPENDED', 'TERMINATED', 'PROSPECT', 'INSTALLING', 'TERMINATING'];
 
+export const NETWORK_FIELDS = ['status', 'odp', 'port', 'vlan', 'ip', 'publicIp'];
+
 export const customerFields = (canStatus: boolean, withCode = true): Field[] => [
   ...(withCode ? [{ name: 'code', label: 'Kode pelanggan (kosongkan = otomatis)', type: 'text', help: 'Isi bila memakai ID pelanggan yang sudah ada' }] : []),
   { name: 'name', label: 'Nama pelanggan', type: 'text', required: true },
@@ -86,7 +88,7 @@ export default function Customers() {
   const [arch, setArch] = useState(false);
   const { data: pkgs } = useFetch<any[]>('/packages?all=1');
   const role = user?.role ?? '';
-  const canEdit = ['ADMIN', 'MKT', 'NOC'].includes(role);
+  const canEdit = ['ADMIN', 'MKT'].includes(role); // NOC tidak menambah/impor pelanggan (hanya data jaringan lewat WO / edit terbatas)
   const canExport = ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(role);
   const restore = async (c: any) => { try { await api(`/customers/${c.id}/restore`, { body: {} }); toast.success(`${c.name} dipulihkan dari arsip.`); setRk((x) => x + 1); } catch (e) { toast.error((e as Error).message); } };
   const cols: Column<any>[] = [

@@ -4,7 +4,7 @@ import { Effects } from './effects';
 import { config } from './config';
 import { nextNumber } from './inventory';
 import { workflows } from './workflows';
-import type { Actor, Ctx, WoFull } from './wf-types';
+import { isLead, type Actor, type Ctx, type WoFull } from './wf-types';
 
 const CANCELLED = 'CANCELLED';
 
@@ -113,6 +113,8 @@ async function enterStatus(fx: Effects, woId: string, actor: Actor, to: string, 
         toStatus: current,
         actorId: actor.id,
         actorName: actor.name,
+        actorRole: actor.role,
+        actorSubRole: actor.subRole ?? null,
         note: m.note,
         payload: m.payload === undefined ? undefined : (JSON.parse(JSON.stringify(m.payload)) as Prisma.InputJsonValue),
       },
@@ -173,7 +175,8 @@ export async function applyAction(fx: Effects, woId: string, key: string, actor:
   if (!system) {
     if (action.system) throw new AppError(403, 'Aksi hanya dapat dipicu sistem');
     if (actor.role !== 'ADMIN' && !action.roles.includes(actor.role)) throw new AppError(403, `Aksi ini khusus divisi ${action.roles.join('/')}`);
-    if (action.assigneeOnly && actor.role !== 'ADMIN' && wo.assigneeId !== actor.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan yang dapat melakukan ini');
+    if (action.leadOnly && !isLead(actor)) throw new AppError(403, 'Aksi ini hanya untuk supervisor/manager');
+    if (action.assigneeOnly && actor.role !== 'ADMIN' && !actor.acting && wo.assigneeId !== actor.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan yang dapat melakukan ini');
   }
 
   await bindPhotos(fx.tx, woId, actor, input.photos, 'REPORT');
@@ -193,7 +196,7 @@ export function allowedActions(wo: { type: WoType; status: string; assigneeId: s
   if (!isOpen(wo.status, wo.type)) return [];
   const st = workflows[wo.type].statuses[wo.status];
   const keys = st.actions
-    .filter((a) => !a.system && (actor.role === 'ADMIN' || a.roles.includes(actor.role)) && (!a.assigneeOnly || actor.role === 'ADMIN' || wo.assigneeId === actor.id))
+    .filter((a) => !a.system && (actor.role === 'ADMIN' || a.roles.includes(actor.role)) && (!a.leadOnly || isLead(actor)) && (!a.assigneeOnly || actor.role === 'ADMIN' || actor.acting || wo.assigneeId === actor.id))
     .map((a) => a.key);
   if (!st.noCancel && (actor.role === 'ADMIN' || actor.id === wo.createdById)) keys.push('cancel');
   return keys;

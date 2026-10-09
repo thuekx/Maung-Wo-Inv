@@ -1,4 +1,4 @@
-import type { Role, ItemCategory } from '../src/orm';
+import type { Role, SubRole, ItemCategory } from '../src/orm';
 import { prisma } from '../src/db';
 import bcrypt from 'bcryptjs';
 import { PACKAGES } from '../src/workflows';
@@ -15,17 +15,19 @@ async function main() {
     create: { name: 'Sistem', email: 'system@l1v.local', passwordHash: await bcrypt.hash(Math.random().toString(36), 10), role: 'ADMIN', active: false },
   });
 
-  const users: [string, string, Role][] = [
-    ['Admin', 'admin@l1v.local', 'ADMIN'],
-    ['Marketing', 'mkt@l1v.local', 'MKT'],
-    ['NOC Engineer', 'noc@l1v.local', 'NOC'],
-    ['Teknisi Budi', 'budi@l1v.local', 'FOC'],
-    ['Teknisi Andi', 'andi@l1v.local', 'FOC'],
-    ['GA / Procurement', 'ga@l1v.local', 'GA'],
-    ['Finance', 'fin@l1v.local', 'FIN'],
+  // Sub-role demo: FOC Citra = manager, Budi = supervisor (boleh menjadwalkan), Andi = staff (hanya minta material & isi laporan)
+  const users: [string, string, Role, SubRole][] = [
+    ['Admin', 'admin@l1v.local', 'ADMIN', 'MANAGER'],
+    ['Marketing', 'mkt@l1v.local', 'MKT', 'SUPERVISOR'],
+    ['NOC Engineer', 'noc@l1v.local', 'NOC', 'SUPERVISOR'],
+    ['Teknisi Citra (Manager FOC)', 'citra@l1v.local', 'FOC', 'MANAGER'],
+    ['Teknisi Budi (Supervisor FOC)', 'budi@l1v.local', 'FOC', 'SUPERVISOR'],
+    ['Teknisi Andi', 'andi@l1v.local', 'FOC', 'STAFF'],
+    ['GA / Procurement', 'ga@l1v.local', 'GA', 'MANAGER'],
+    ['Finance', 'fin@l1v.local', 'FIN', 'MANAGER'],
   ];
-  for (const [name, email, role] of users)
-    await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, role, passwordHash: hash } });
+  for (const [name, email, role, subRole] of users)
+    await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, role, subRole, passwordHash: hash } });
 
   // Master paket/jasa awal (dapat ditambah/dikurangi di menu Master Paket)
   for (const [i, name] of PACKAGES.entries()) await prisma.package.upsert({ where: { name }, update: {}, create: { name, sortOrder: i } });

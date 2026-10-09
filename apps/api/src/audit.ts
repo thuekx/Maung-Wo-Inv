@@ -1,9 +1,10 @@
-import { Role } from './orm';
+import { Role, SubRole } from './orm';
 import { Effects, transact } from './effects';
 import type { Request } from 'express';
 
-export interface Who { id: string; name: string; role: Role }
-export const whoOf = (req: Request): Who => ({ id: req.user!.id, name: req.user!.name, role: req.user!.role });
+export interface Who { id: string; name: string; role: Role; subRole?: SubRole | null }
+/** Pelaku; bila Admin sedang bertindak sebagai peran lain, nama diberi keterangan agar jejak audit jujur. */
+export const whoOf = (req: Request): Who => ({ id: req.user!.id, name: req.realUser ? `${req.user!.name} (Admin sbg ${req.user!.role})` : req.user!.name, role: req.user!.role, subRole: req.user!.subRole });
 
 type Json = Record<string, unknown> | null;
 

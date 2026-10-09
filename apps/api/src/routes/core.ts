@@ -42,15 +42,17 @@ core.get('/search', async (req, res) => {
   const q = String(req.query.q ?? '').trim();
   if (q.length < 2) return void res.json({ customers: [], workOrders: [], assets: [] });
   const like = { contains: q, mode: 'insensitive' as const };
+  const role = req.user!.role;
+  const seeCust = ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(role), seeAssets = ['ADMIN', 'GA'].includes(role); // sama dengan hak menu
   const [customers, workOrders, assets] = await Promise.all([
-    prisma.customer.findMany({ where: { archivedAt: null, OR: [{ name: like }, { code: like }, { phone: { contains: q } }, { ip: { contains: q } }] }, select: { id: true, code: true, name: true, status: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    !seeCust ? Promise.resolve([]) : prisma.customer.findMany({ where: { archivedAt: null, OR: [{ name: like }, { code: like }, { phone: { contains: q } }, { ip: { contains: q } }] }, select: { id: true, code: true, name: true, status: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
     prisma.workOrder.findMany({ where: { OR: [{ number: like }, { title: like }] }, select: { id: true, number: true, title: true, status: true, type: true }, orderBy: { createdAt: 'desc' }, take: 5 }),
-    prisma.asset.findMany({ where: { OR: [{ serialNumber: like }, { assetCode: like }] }, select: { id: true, serialNumber: true, assetCode: true, status: true, item: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }),
+    !seeAssets ? Promise.resolve([]) : prisma.asset.findMany({ where: { OR: [{ serialNumber: like }, { assetCode: like }] }, select: { id: true, serialNumber: true, assetCode: true, status: true, item: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }),
   ]);
   res.json({ customers, workOrders, assets });
 });
 
-core.get('/auth/me', (req, res) => res.json(publicUser(req.user!)));
+core.get('/auth/me', (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null }));
 
 core.post('/auth/telegram-code', async (req, res) => {
   const code = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -81,12 +83,13 @@ const userBody = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   role: z.enum(['ADMIN', 'MKT', 'NOC', 'FOC', 'GA', 'FIN']),
+  subRole: z.enum(['MANAGER', 'SUPERVISOR', 'STAFF']).default('STAFF'),
   password: z.string().min(8),
   telegramChatId: z.string().optional().nullable(),
 });
 
 core.get('/users', requireRole('ADMIN'), async (_req, res) => {
-  res.json(await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, active: true, telegramChatId: true, mustChangePassword: true }, orderBy: { name: 'asc' } }));
+  res.json(await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, subRole: true, active: true, telegramChatId: true, mustChangePassword: true }, orderBy: { name: 'asc' } }));
 });
 core.post('/users', requireRole('ADMIN'), async (req, res) => {
   const { password, ...b } = userBody.parse(req.body);
@@ -115,7 +118,7 @@ core.patch('/users/:id', requireRole('ADMIN'), async (req, res) => {
 });
 
 /* ── customers ── */
-core.get('/customers', async (req, res) => {
+core.get('/customers', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) => {
   const q = req.query.q ? String(req.query.q).trim() : '';
   const status = req.query.status ? String(req.query.status).split(',') : undefined;
   const packageName = req.query.packageName ? String(req.query.packageName) : undefined;
@@ -140,6 +143,7 @@ core.get('/customers', async (req, res) => {
 
 core.get('/customers/:id', async (req, res, next) => {
   if (!/^[a-z0-9]{20,32}$/.test(String(req.params.id))) return next(); // mis. /customers/export.xlsx ditangani router lain
+  if (!['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(req.user!.role)) throw new AppError(403, 'Akses khusus: MKT, NOC, FIN, GA');
   const c = await prisma.customer.findUnique({
     where: { id: String(req.params.id) },
     include: {

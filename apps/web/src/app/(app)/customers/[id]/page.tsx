@@ -6,7 +6,7 @@ import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
 import { Badge, custTone, DataGrid, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
-import { customerFields } from '../page';
+import { customerFields, NETWORK_FIELDS } from '../page';
 
 export default function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -60,7 +60,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
       </section>
       {edit && (
         <Modal title={`Edit pelanggan ${c.code}`} onClose={() => setEdit(false)}>
-          <DynamicForm fields={customerFields(['ADMIN', 'NOC'].includes(role), true)} initial={c} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/customers/${c.id}`, { method: 'PATCH', body: v }); setEdit(false); await reload(); }} />
+          <DynamicForm fields={customerFields(['ADMIN', 'NOC'].includes(role), true).filter((f) => role !== 'NOC' || NETWORK_FIELDS.includes(f.name))} initial={c} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/customers/${c.id}`, { method: 'PATCH', body: v }); setEdit(false); await reload(); }} />
         </Modal>
       )}
     </div>

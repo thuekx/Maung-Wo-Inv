@@ -77,7 +77,7 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   await act(wo.id, 'validate', 'noc', { odp: `ODP-${String.fromCharCode(65 + (i % 5))}${1 + (i % 4)}`, port: String(i), vlan: String(100 + (i % 3)), ip: `10.20.${i}.10`, note: 'Coverage OK' });
   if ((await status(wo.id)) !== 'READY_TO_SCHEDULE' || !at('scheduled')) return { ...wo, customerId: cust };
 
-  await act(wo.id, 'schedule', tech, { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY).toISOString(), note: 'Konfirmasi ke pelanggan' });
+  await act(wo.id, 'schedule', 'citra', { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY).toISOString(), note: 'Konfirmasi ke pelanggan' });
   if (!at('in_progress')) return { ...wo, customerId: cust };
 
   const ont = await prisma.asset.findFirstOrThrow({ where: { itemId: ID.ONT, warehouseId: wh, status: 'IN_STOCK' }, orderBy: { serialNumber: 'asc' } });
@@ -93,7 +93,7 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   }
 
   await act(wo.id, 'submit_report', tech, {
-    serials: [ont.serialNumber], cableMeters: 95, materials: [{ itemId: ID.FASTCONN, qty: 2 }, { itemId: ID.SLEEVE, qty: 2 }], opmDbm: -19.4,
+    serials: [ont.serialNumber], materials: [{ itemId: ID.DROPCORE, qty: 95 }, { itemId: ID.FASTCONN, qty: 2 }, { itemId: ID.SLEEVE, qty: 2 }], opmDbm: -19.4,
     photos: [await photo(lat, lng, 'Perangkat ONT terpasang', tech), await photo(lat, lng, 'Hasil OPM -19.4 dBm', tech)], note: 'Instalasi rapi, sinyal stabil',
   });
   if (!at('awaiting_ba')) return { ...wo, customerId: cust };
@@ -119,12 +119,12 @@ async function trouble(cust: string, until: 'diagnose' | 'dispatch' | 'scheduled
   await act(wo.id, 'escalate_field', 'noc', { cause: 'Redaman tinggi', note: 'Redaman -27 dBm, diduga konektor kotor/tikungan kabel' });
   const at = (s: string) => ORDER_T.indexOf(until) >= ORDER_T.indexOf(s);
   if (!at('scheduled')) return wo;
-  await act(wo.id, 'schedule', tech, { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY / 2).toISOString() });
+  await act(wo.id, 'schedule', 'citra', { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY / 2).toISOString() });
   if (!at('in_progress')) return wo;
   await act(wo.id, 'start', tech, { note: 'Berangkat ke lokasi' });
   if (!at('verify')) return wo;
   const c = await prisma.customer.findUniqueOrThrow({ where: { id: cust } });
-  await act(wo.id, 'submit_report', tech, { cableMeters: 0, opmDbm: -20.3, photos: [await photo(c.lat ?? -6.2, c.lng ?? 106.8, 'Pembersihan konektor & OPM', tech)], note: 'Konektor dibersihkan, tikungan kabel dirapikan', serialsNew: [], serialsOld: [], materials: [] });
+  await act(wo.id, 'submit_report', tech, { opmDbm: -20.3, photos: [await photo(c.lat ?? -6.2, c.lng ?? 106.8, 'Pembersihan konektor & OPM', tech)], note: 'Konektor dibersihkan, tikungan kabel dirapikan', serialsNew: [], serialsOld: [], materials: [] });
   if (!at('confirm')) return wo;
   await act(wo.id, 'verify_up', 'noc', { pingMs: 5, note: 'Koneksi normal' });
   if (!at('closed')) return wo;
@@ -140,7 +140,7 @@ async function terminate(cust: string, until: 'noc' | 'dispatch' | 'scheduled' |
   if (!at('dispatch')) return wo;
   await act(wo.id, 'deactivate', 'noc', { vlanRemoved: true, ipReleased: true, ontUnauthorized: true, note: 'Konfigurasi dibersihkan' });
   if (!at('scheduled')) return wo;
-  await act(wo.id, 'schedule', tech, { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY).toISOString() });
+  await act(wo.id, 'schedule', 'citra', { technicianId: A[tech].id, scheduledAt: new Date(Date.now() + DAY).toISOString() });
   if (!at('in_progress')) return wo;
   await act(wo.id, 'start', tech, { note: 'Menuju lokasi penarikan' });
   if (!at('qc')) return wo;
@@ -160,10 +160,10 @@ async function main() {
     console.log('Data demo sudah pernah dibuat (penanda demoSeed). Tidak ada yang diubah.');
     return;
   }
-  for (const [k, email] of Object.entries({ mkt: 'mkt@l1v.local', noc: 'noc@l1v.local', budi: 'budi@l1v.local', andi: 'andi@l1v.local', ga: 'ga@l1v.local', fin: 'fin@l1v.local' })) {
+  for (const [k, email] of Object.entries({ mkt: 'mkt@l1v.local', noc: 'noc@l1v.local', budi: 'budi@l1v.local', andi: 'andi@l1v.local', citra: 'citra@l1v.local', ga: 'ga@l1v.local', fin: 'fin@l1v.local' })) {
     const u = await prisma.user.findUnique({ where: { email } });
     if (!u) throw new Error(`User ${email} belum ada — jalankan seed dasar dulu (node dist/prisma/seed.js)`);
-    A[k] = { id: u.id, name: u.name, role: u.role };
+    A[k] = { id: u.id, name: u.name, role: u.role, subRole: u.subRole };
   }
   ID = Object.fromEntries((await prisma.item.findMany()).map((i) => [i.sku, i.id]));
   WH = Object.fromEntries((await prisma.warehouse.findMany()).map((w) => [w.code, w.id]));

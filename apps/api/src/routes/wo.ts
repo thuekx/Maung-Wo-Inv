@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { AppError, prisma } from '../db';
-import { authenticate } from '../auth';
+import { actorOf, authenticate } from '../auth';
 import { transact } from '../effects';
 import { mineWhere } from '../dashboard';
 import { countIf, pageParams, sendPage } from '../paging';
@@ -19,7 +19,7 @@ woRoutes.get('/work-orders/meta', (_req, res) => res.json(workflowMeta()));
 
 woRoutes.get('/work-orders', async (req, res) => {
   const q = z
-    .object({ type: z.string().optional(), status: z.string().optional(), scope: z.enum(['open', 'closed', 'all', 'mine']).default('open'), q: z.string().optional(), customerId: z.string().optional(), olderThanDays: z.coerce.number().int().min(1).optional() })
+    .object({ type: z.string().optional(), status: z.string().optional(), scope: z.enum(['open', 'closed', 'all', 'mine', 'created']).default('open'), q: z.string().optional(), customerId: z.string().optional(), olderThanDays: z.coerce.number().int().min(1).optional() })
     .parse(req.query);
   const me = req.user!;
   const pp = pageParams(req, {
@@ -32,7 +32,7 @@ woRoutes.get('/work-orders', async (req, res) => {
   const custIds = term ? (await prisma.customer.findMany({ where: { name: { contains: term, mode: 'insensitive' } }, select: { id: true }, take: 500 })).map((c) => c.id) : [];
   const where: Prisma.WorkOrderWhereInput = {
     AND: [
-      q.scope === 'mine' ? mineWhere(me) : q.scope === 'open' ? { closedAt: null } : q.scope === 'closed' ? { closedAt: { not: null } } : {},
+      q.scope === 'mine' ? mineWhere(me) : q.scope === 'created' ? { createdById: me.id } : q.scope === 'open' ? { closedAt: null } : q.scope === 'closed' ? { closedAt: { not: null } } : {},
       ...(q.type ? [{ type: q.type as any }] : []),
       ...(q.status ? [{ status: q.status }] : []),
       ...(q.customerId ? [{ customerId: q.customerId }] : []),
@@ -52,9 +52,9 @@ woRoutes.get('/work-orders', async (req, res) => {
 });
 
 woRoutes.post('/work-orders', async (req, res) => {
-  const { type, input } = z.object({ type: z.enum(['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST']), input: z.record(z.any()) }).parse(req.body);
+  const { type, input } = z.object({ type: z.enum(['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST', 'STOCK_RETURN']), input: z.record(z.any()) }).parse(req.body);
   const u = req.user!;
-  const created = await transact((fx) => createWorkOrder(fx, { type, actor: { id: u.id, name: u.name, role: u.role }, input }));
+  const created = await transact((fx) => createWorkOrder(fx, { type, actor: actorOf(req), input }));
   res.status(201).json(created);
 });
 
@@ -85,13 +85,13 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
     statusLabel: st?.label ?? (wo.status === 'CANCELLED' ? 'Dibatalkan' : wo.status),
     owner: st?.owner ?? null,
     final: wo.status === 'CANCELLED' || !!st?.final,
-    allowed: allowedActions(wo, { id: u.id, name: u.name, role: u.role }),
+    allowed: allowedActions(wo, actorOf(req)),
   });
 });
 
 woRoutes.post('/work-orders/:id/actions/:key', async (req, res) => {
   const u = req.user!;
-  await transact((fx) => applyAction(fx, String(req.params.id), String(req.params.key), { id: u.id, name: u.name, role: u.role }, req.body ?? {}));
+  await transact((fx) => applyAction(fx, String(req.params.id), String(req.params.key), actorOf(req), req.body ?? {}));
   res.json({ ok: true });
 });
 
@@ -110,7 +110,7 @@ woRoutes.post('/work-orders/:id/progress', async (req, res) => {
     const st = workflows[wo.type].statuses[wo.status];
     if (wo.closedAt || st?.owner !== 'FOC' || !wo.assigneeId) throw new AppError(409, 'Progres lapangan hanya untuk WO yang sedang dikerjakan teknisi');
     if (u.role !== 'ADMIN' && wo.assigneeId !== u.id) throw new AppError(403, 'Hanya teknisi yang ditugaskan');
-    await bindPhotos(fx.tx, wo.id, { id: u.id, name: u.name, role: u.role }, b.photos, 'PROGRESS', b.note);
+    await bindPhotos(fx.tx, wo.id, actorOf(req), b.photos, 'PROGRESS', b.note);
     await fx.tx.woEvent.create({ data: { woId: wo.id, action: 'progress', fromStatus: wo.status, toStatus: wo.status, actorId: u.id, actorName: u.name, note: b.note, payload: { photos: b.photos } } });
     await fx.notify({
       roles: ['NOC'],

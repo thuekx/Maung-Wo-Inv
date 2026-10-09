@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { fileUrl, ROLE_LABEL } from '@/lib/api';
+import { fileUrl, getAct, ROLE_LABEL, roleText, setAct, SUBROLE_LABEL } from '@/lib/api';
 import { ThemeToggle } from '@/lib/theme';
 import { useBranding } from '@/lib/brand';
 import { Icon, IconName, MarkM } from '@/components/icons';
@@ -17,11 +17,12 @@ const GROUPS: { title: string; items: Item[] }[] = [
   { title: 'Menu', items: [
     { href: '/', label: 'Dashboard', icon: 'dashboard' },
     { href: '/work-orders', label: 'Work Order', icon: 'clipboard' },
-    { href: '/customers', label: 'Pelanggan', icon: 'users' },
-    { href: '/inventory', label: 'Inventori & Aset', icon: 'box' },
+    { href: '/my-stock', label: 'Stok Saya', icon: 'box', roles: ['FOC'] },
+    { href: '/customers', label: 'Pelanggan', icon: 'users', roles: ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'] },
+    { href: '/inventory', label: 'Inventori & Aset', icon: 'box', roles: ['ADMIN', 'GA'] },
     { href: '/purchase-orders', label: 'Purchase Order', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'] },
   ] },
-  { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', roles: ['ADMIN', 'MKT', 'NOC', 'GA'] }] },
+  { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', roles: ['ADMIN', 'MKT', 'GA'] }] },
   { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }] },
 ];
 
@@ -40,6 +41,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => { setMobile(false); setMenu(false); }, [path]);
   // password baru dari Admin: wajib diganti dulu
   useEffect(() => { if (user?.mustChangePassword && path !== '/profile') router.replace('/profile'); }, [user, path, router]);
+  // halaman di luar hak peran → kembali ke dashboard (API tetap menolak walau URL diketik)
+  useEffect(() => {
+    if (!user) return;
+    const it = GROUPS.flatMap((g) => g.items).find((i) => i.href !== '/' && path.startsWith(i.href));
+    if (it?.roles && !it.roles.includes(user.role)) router.replace('/');
+  }, [user, path, router]);
   useEffect(() => {
     const click = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false); };
     window.addEventListener('mousedown', click);
@@ -70,12 +77,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div ref={menuRef} className="relative">
             <button className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-2 hover:bg-white/10" onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu}>
               <Avatar name={user.name} size={32} />
-              <span className="hidden text-left leading-tight sm:block"><span className="block text-sm font-medium">{user.name}</span><span className="block text-[11px] text-slate-300">{ROLE_LABEL[user.role] ?? user.role}</span></span>
+              <span className="hidden text-left leading-tight sm:block"><span className="block text-sm font-medium">{user.name}</span><span className="block text-[11px] text-slate-300">{roleText(user)}</span></span>
               <Icon name="chevronDown" size={16} className="hidden text-slate-300 sm:block" />
             </button>
             {menu && (
               <div role="menu" className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-slate-700 shadow-xl">
                 <div className="border-b border-slate-100 px-4 py-2"><div className="text-sm font-semibold text-slate-800">{user.name}</div><div className="truncate text-xs text-slate-500">{user.email}</div></div>
+                {(user.role === 'ADMIN' || user.realAdmin) && <ActAs acting={user.realAdmin ? { role: user.role, sub: user.subRole } : null} />}
                 <Link href="/profile" role="menuitem" className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-slate-100"><Icon name="user" size={16} /> Profil & Telegram</Link>
                 <button role="menuitem" onClick={logout} className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-slate-100"><Icon name="logout" size={16} /> Keluar</button>
               </div>
@@ -84,6 +92,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      {user.realAdmin && (
+        <div className="fixed inset-x-0 top-16 z-30 flex items-center justify-center gap-3 bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
+          Anda bertindak sebagai <b>{roleText(user)}</b> (akun Admin) — izin & menu mengikuti peran ini.
+          <button className="underline" onClick={() => { setAct(null); window.location.href = '/'; }}>Kembali sebagai Admin</button>
+        </div>
+      )}
       {mobile && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMobile(false)} />}
       {/* Sidebar (TailAdmin): grup menu, bisa diciutkan, drawer di HP; aktif = penanda emas */}
       <aside className={`fixed bottom-0 left-0 top-16 z-40 overflow-y-auto border-r border-slate-200 bg-white px-3 py-4 transition-all duration-200 ${mobile ? 'translate-x-0' : '-translate-x-full'} w-64 lg:translate-x-0 ${collapsed ? 'lg:w-[76px]' : 'lg:w-64'}`}>
@@ -92,7 +106,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className={`min-w-0 leading-tight ${collapsed ? 'lg:hidden' : ''}`}>
             <div className="text-[11px] text-slate-500">Selamat datang,</div>
             <div className="truncate text-sm font-semibold text-brand-900">{user.name}</div>
-            <div className="truncate text-[11px] text-accent-700">{ROLE_LABEL[user.role] ?? user.role}</div>
+            <div className="truncate text-[11px] text-accent-700">{roleText(user)}</div>
           </div>
         </div>
         {GROUPS.map((g) => {
@@ -117,9 +131,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className={`min-w-0 px-4 pb-10 pt-24 transition-all duration-200 sm:px-6 ${collapsed ? 'lg:pl-[100px]' : 'lg:pl-72'}`}>
+        {user.realAdmin && <div className="h-5" />}
         <div className="mb-4 md:hidden"><SearchBox variant="page" /></div>
         {children}
       </main>
+    </div>
+  );
+}
+
+/** Admin: pilih peran (+ sub-role) untuk menguji alur seolah-olah akun tersebut. */
+function ActAs({ acting }: { acting: { role: string; sub: string } | null }) {
+  const [role, setRole] = useState(acting?.role ?? getAct()?.role ?? 'NOC');
+  const [sub, setSub] = useState(acting?.sub ?? getAct()?.sub ?? 'SUPERVISOR');
+  return (
+    <div className="border-b border-slate-100 px-4 py-2">
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bertindak sebagai</div>
+      <div className="flex gap-1">
+        <select className="input !py-1 text-xs" value={role} onChange={(e) => setRole(e.target.value)} aria-label="Peran">
+          {['MKT', 'NOC', 'FOC', 'GA', 'FIN'].map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+        </select>
+        <select className="input !py-1 text-xs" value={sub} onChange={(e) => setSub(e.target.value)} aria-label="Sub-role">
+          {Object.entries(SUBROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+      <button className="btn mt-1.5 w-full !py-1 text-xs" onClick={() => { setAct({ role, sub }); window.location.href = '/'; }}>Terapkan</button>
     </div>
   );
 }
