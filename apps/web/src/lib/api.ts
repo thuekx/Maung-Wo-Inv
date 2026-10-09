@@ -52,7 +52,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return json as T;
 }
 
-export const fileUrl = (u: string) => (u.startsWith('http') ? u : `${API}${u}`);
+/** Berkas unggahan ada di server API; logo bawaan (/brand/...) dilayani web itu sendiri. */
+export const fileUrl = (u: string) => (u.startsWith('http') || u.startsWith('/brand/') ? u : `${API}${u}`);
 
 export function useFetch<T = any>(path: string | null) {
   const [data, setData] = useState<T | null>(null);

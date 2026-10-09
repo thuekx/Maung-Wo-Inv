@@ -11,10 +11,13 @@ export interface Branding {
 }
 
 /** Bawaan = panduan MAUNG by LIV (sama dengan server); dipakai sebelum /branding selesai dimuat. */
+/** Logo bawaan (dibundel di web); dipakai selama Admin belum mengunggah logo sendiri (atau setelah "Hapus"). */
+export const DEFAULT_LOGOS = { logoUrl: '/brand/logo-horizontal.webp', logoStackedUrl: '/brand/logo-stacked.webp', logoMarkUrl: '/brand/logo-mark.webp' } as const;
+
 export const DEFAULT_BRAND: Branding = {
   companyName: 'MAUNG by LIV', tagline: 'Gerak Cepat, Kerja Tepat.', subtitle: 'Marketing • Asset • Unified Network & Governance',
   loginText: 'Satu Ekosistem.\nDampak Lebih Besar\nuntuk Jawa Barat dan Indonesia.',
-  logoUrl: null, logoStackedUrl: null, logoMarkUrl: null, loginBgUrl: null, gpsLogoUrl: null, kopUrl: null, formLogoUrl: null, mgrSignUrl: null,
+  logoUrl: '/brand/logo-horizontal.webp', logoStackedUrl: '/brand/logo-stacked.webp', logoMarkUrl: '/brand/logo-mark.webp', loginBgUrl: null, gpsLogoUrl: null, kopUrl: null, formLogoUrl: null, mgrSignUrl: null,
   colors: { primary: '#0B1F3B', accent: '#F59E0B', charts: ['#2F5D9E', '#F59E0B', '#14B8A6', '#8B5CF6', '#F43F5E', '#0EA5E9'] },
   requireGps: true,
 };
@@ -36,7 +39,7 @@ let at = 0;
 export const loadBranding = (force = false): Promise<Branding> => {
   if (force || !promise || Date.now() - at > 60_000) {
     at = Date.now();
-    promise = api<Branding>('/branding').then((b) => ({ ...DEFAULT_BRAND, ...b, colors: { ...DEFAULT_BRAND.colors, ...(b.colors ?? {}) } })).catch(() => DEFAULT_BRAND);
+    promise = api<Branding>('/branding').then((b) => ({ ...DEFAULT_BRAND, ...b, logoUrl: b.logoUrl || DEFAULT_LOGOS.logoUrl, logoStackedUrl: b.logoStackedUrl || DEFAULT_LOGOS.logoStackedUrl, logoMarkUrl: b.logoMarkUrl || DEFAULT_LOGOS.logoMarkUrl, colors: { ...DEFAULT_BRAND.colors, ...(b.colors ?? {}) } })).catch(() => DEFAULT_BRAND);
     promise.then((b) => { applyBrand(b); if (force) window.dispatchEvent(new CustomEvent('branding-changed', { detail: b })); });
   }
   return promise;

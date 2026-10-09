@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
-import { loadBranding } from '@/lib/brand';
+import { DEFAULT_LOGOS, loadBranding } from '@/lib/brand';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
@@ -181,8 +181,11 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
 
 const BRAND_KEY: Record<string, string> = { horizontal: 'logoUrl', stacked: 'logoStackedUrl', mark: 'logoMarkUrl', loginbg: 'loginBgUrl', gps: 'gpsLogoUrl', kop: 'kopUrl', formlogo: 'formLogoUrl', mgrsign: 'mgrSignUrl' };
 
-function UploadBox({ title, hint, url, dark, variant, onDone }: { title: string; hint: string; url: string | null; dark?: boolean; variant: string; onDone: () => void }) {
+function UploadBox({ title, hint, url: uploaded, dark, variant, onDone }: { title: string; hint: string; url: string | null; dark?: boolean; variant: string; onDone: () => void }) {
   const a = useAction();
+  const defUrl = (DEFAULT_LOGOS as Record<string, string>)[BRAND_KEY[variant]] ?? null;
+  const url = uploaded || defUrl; // belum ada unggahan → tampilkan logo bawaan
+  const isDefault = !uploaded && !!defUrl;
   const [bg, setBg] = useState<'light' | 'dark'>(dark ? 'dark' : 'light');
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   const [last, setLast] = useState<{ name: string; kb: number; at: string } | null>(null);
@@ -217,10 +220,10 @@ function UploadBox({ title, hint, url, dark, variant, onDone }: { title: string;
       <div className={`flex h-24 items-center justify-center rounded-lg border ${bg === 'dark' ? 'bg-brand-900' : 'bg-white'}`}>
         {shown && !broken ? <img key={shown} src={shown} alt={title} onError={() => setBrokenUrl(shown)} className="max-h-20 max-w-[85%] object-contain" /> : broken ? <span className="px-2 text-center text-xs text-red-600">Gambar tidak dapat dimuat dari server</span> : <span className="text-xs text-slate-400">Belum ada</span>}
       </div>
-      {url && <p className="truncate text-[11px] text-slate-500" title={url}>{last ? `Baru diunggah ${last.at}: ${last.name} (${last.kb} KB)` : 'Berkas aktif'} · <a className="text-brand-700 hover:underline" href={fileUrl(url)} target="_blank" rel="noreferrer">buka</a></p>}
+      {url && <p className="truncate text-[11px] text-slate-500" title={url}>{isDefault ? 'Logo bawaan aplikasi (belum ada unggahan)' : last ? `Baru diunggah ${last.at}: ${last.name} (${last.kb} KB)` : 'Berkas aktif'} · <a className="text-brand-700 hover:underline" href={fileUrl(url)} target="_blank" rel="noreferrer">buka</a></p>}
       <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e.target)} className="w-full text-xs" />
       <p className="text-xs text-slate-500">{hint}</p>
-      {url && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); setLast(null); await loadBranding(true); onDone(); }, 'Dihapus')}>Hapus</button>}
+      {uploaded && <button className="text-xs text-red-600 hover:underline" onClick={() => a.run(async () => { await api(`/admin/settings/branding/logo?variant=${variant}`, { method: 'DELETE' }); setLast(null); await loadBranding(true); onDone(); }, 'Dihapus — kembali ke logo bawaan')}>Hapus (pakai bawaan)</button>}
       <Msg m={a.msg} />
     </div>
   );
