@@ -3,7 +3,7 @@ import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { QRCodeSVG } from 'qrcode.react';
-import { api, doDelete, fmtDate, useFetch } from '@/lib/api';
+import { api, assetQr, doDelete, fmtDate, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
@@ -46,7 +46,7 @@ function QrModal({ asset, onClose }: { asset: any; onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="card w-72 text-center" onClick={(e) => e.stopPropagation()}>
         <div className="print-area mx-auto w-fit p-2">
-          <QRCodeSVG value={asset.serialNumber} size={180} />
+          <QRCodeSVG value={assetQr(asset.serialNumber)} size={180} />
           <div className="mt-2 font-mono text-sm font-bold">{asset.serialNumber}</div>
           <div className="text-xs">{asset.item.name}{asset.assetCode ? ` · ${asset.assetCode}` : ''}</div>
         </div>

@@ -3,7 +3,7 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { useRouter } from 'next/navigation';
-import { api, doDelete, useFetch } from '@/lib/api';
+import { api, assetQr, doDelete, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { BrandModelInput, DynamicForm, SerialInput } from '@/components/DynamicForm';
 import { Badge, ErrorMsg, Modal, PageHeader } from '@/components/ui';
@@ -77,7 +77,7 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
           <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">Label QR ({labels.length})</h2><div className="flex gap-2"><button className="btn-ghost" onClick={() => window.print()}>Cetak cepat</button><button className="btn" onClick={() => { try { sessionStorage.setItem('qr_print_ids', JSON.stringify(labels.map((a) => a.id))); } catch { /* ignore */ } window.open('/qr-print', '_blank'); }}>Cetak A4 (pilih ukuran label)</button></div></div>
           <div className="print-area grid grid-cols-2 gap-3 md:grid-cols-4">
             {labels.map((a) => (
-              <div key={a.id} className="rounded border p-2 text-center"><QRCodeSVG value={a.serialNumber} size={96} className="mx-auto" /><div className="mt-1 font-mono text-xs">{a.serialNumber}</div>{a.assetCode && <div className="text-[10px]">{a.assetCode}</div>}</div>
+              <div key={a.id} className="rounded border p-2 text-center"><QRCodeSVG value={assetQr(a.serialNumber)} size={96} className="mx-auto" /><div className="mt-1 font-mono text-xs">{a.serialNumber}</div>{a.assetCode && <div className="text-[10px]">{a.assetCode}</div>}</div>
             ))}
           </div>
         </div>

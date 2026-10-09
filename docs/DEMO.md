@@ -19,8 +19,8 @@ Semua akun `*@l1v.local` (peran Procurement sudah digabung ke GA; pada database 
 |---|---|---|
 | `admin@l1v.local` | Admin | Melihat semuanya; **Admin → Pengaturan** (logo PT, SMTP, Telegram); Log notifikasi |
 | `mkt@l1v.local` | Marketing | *Hendra Gunawan*: Kirim BA Digital · *Apotek Murni*: konfirmasi ke pelanggan (Trouble) · buat WO Pasang Baru/Trouble/Suspend/Terminate |
-| `noc@l1v.local` | NOC | Validasi: *Budi Santoso* · Aktivasi: *Maya Putri* · Diagnosa: *Toko Maju Jaya* · Verifikasi: *Bengkel Sinar* · Isolir: *Kos Putri Asri* · Pulihkan: *Laundry Bersih* · Deaktivasi: *CV Karya Utama* |
-| `citra@l1v.local` | FOC **Manager** | Menjadwalkan teknisi (WO Pasang Baru *Siti Rahma*, Trouble, Penarikan); membuat Purchase Request |
+| `noc@l1v.local` | NOC | Aktivasi (VLAN/IP/Ping-Latency/jitter): *Maya Putri* · Diagnosa: *Toko Maju Jaya* · Verifikasi: *Bengkel Sinar* · Isolir: *Kos Putri Asri* · Pulihkan: *Laundry Bersih* · Deaktivasi: *CV Karya Utama* |
+| `citra@l1v.local` | FOC **Manager** | **Validasi teknis awal** (ODP/Port/POP): *Budi Santoso* · Menjadwalkan tim (≥1 teknisi) · membuat WO **Maintenance/Troubleshoot** mandiri · Menjadwalkan teknisi (WO Pasang Baru *Siti Rahma*, Trouble, Penarikan); membuat Purchase Request |
 | `budi@l1v.local` | FOC **Supervisor** | Mulai & ambil material: *Dewi Lestari* · Progres + laporan instalasi: *Rudi Hartono* (sudah ada 1 foto progres) · Trouble terjadwal: *Kafe Senja* · Penarikan terjadwal: *Rumah Makan Padang* · jadwalkan: *Siti Rahma* |
 | `andi@l1v.local` | FOC **Staff** (tidak bisa menjadwalkan) | **Stok Saya**: minta material / kembalikan sisa (ada 1 serah-terima menunggu GA, 1 sebagian) ·  Laporan perbaikan: *Klinik Sehat* · Laporan penarikan: *Studio Foto Lensa* · jadwalkan Trouble: *Warnet Bintang* |
 | `ga@l1v.local` | GA / Procurement (satu peran) | Review 2 Permintaan Barang (mutasi atau terbitkan PO) · *Agus Wijaya* menunggu stok (WO anak otomatis) · terima barang PO (menu Purchase Order) · QC aset hasil penarikan: *Kantor Notaris* · aset GA dengan jadwal maintenance (3, 10, 45 hari dan 1 aset **terlambat**) · master merk/tipe · cetak QR massal |
@@ -38,3 +38,12 @@ Login sebagai `budi@l1v.local` → buka WO *Rudi Hartono* → **Update progres l
 
 **Formulir Berlangganan (login `mkt@l1v.local`):** menu *Form Berlangganan* — 3 contoh (`SM026…`, termasuk satu dengan isian minimal). Reg. No. = awalan `SM` + 3 digit tahun otomatis (2026 → `026`, 2027 → `027`) + nomor isian. Pembayaran bawaan Transfer, Manager Marketing bawaan *M Gugi Granada* (ubah di Admin → Pengaturan → Formulir Berlangganan). Cetak: buka formulir → **Cetak / PDF** (Simpan sebagai PDF, A4, margin Tidak ada).
 **Area:** Master Data → Area (area dari MSRadius muncul setelah sinkron; hubungkan tiap area ke gudangnya).
+
+## Alur & fitur terbaru (UAT 2026-10-09)
+- **Pasang Baru**: validasi teknis awal oleh **FOC supervisor/manager** (ODP, Port, POP) → cek stok → jadwal tim → instalasi (laporan: ODP/Port/POP aktual, Main splitter, Koordinat, Signal, Redaman, foto) → **Aktivasi NOC** (VLAN, IP internal, IP publik, Ping/Latency, Jitter) → BA Digital (khusus Marketing).
+- **Tim pelaksana**: supervisor/manager menugaskan 1 atau lebih teknisi (supervisor tidak dapat menugaskan manager). Salah satu anggota tim yang mengirim laporan. **Ganti tim** hanya bisa setelah ada laporan progres lapangan. Supervisor/manager tetap melihat WO di *Tugas saya* sampai WO keluar dari tahap FOC.
+- **Laporan PDF berkop**: tombol *Laporan Instalasi (PDF)* / *Laporan Troubleshooting (PDF)* di WO setelah laporan dikirim — nomor `FOC/INS-{ALIAS}/…`, `FOC/TBS-{ALIAS}/…`; BA `BAA/{ALIAS}/…`; PR `…/L1V/PNJ-{ALIAS}/…`. Singkatan area diatur di Master Data → Area.
+- **Maintenance/Troubleshoot mandiri**: *Work Order → Buat WO → Maintenance / Troubleshoot* (supervisor/manager FOC).
+- **Purchase Request**: pengaju non-GA hanya mengisi item; **GA** mengisi perbandingan harga + PPN dan dapat langsung *Simpan & terbitkan PR* tanpa diajukan.
+- **Label QR** berisi tautan `/a/{SN}` (halaman info aset publik, tanpa login). Pindai di aplikasi mengambil nomor seri saja. Kamera langsung butuh HTTPS; di HTTP pakai tombol *Foto barcode* atau scanner USB/Bluetooth (mengetik ke kolom SN).
+- **Admin**: sidebar *API MSRadius* (contoh respons nyata), sakelar email aktif/nonaktif, nama aplikasi untuk email.

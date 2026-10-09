@@ -53,6 +53,9 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 }
 
 /** Berkas unggahan ada di server API; logo bawaan (/brand/...) dilayani web itu sendiri. */
+/** Isi QR label aset: tautan ke halaman info aset (kamera ponsel membukanya; scanner di aplikasi hanya mengambil nomor serinya). */
+export const assetQr = (sn: string) => `${typeof window !== 'undefined' ? window.location.origin : ''}/a/${encodeURIComponent(sn)}`;
+
 export const fileUrl = (u: string) => (u.startsWith('http') || u.startsWith('/brand/') ? u : `${API}${u}`);
 
 export function useFetch<T = any>(path: string | null) {

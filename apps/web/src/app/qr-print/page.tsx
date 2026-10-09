@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { api } from '@/lib/api';
+import { api, assetQr } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useBranding } from '@/lib/photo';
 import { Select } from '@/components/Select';
@@ -85,7 +85,7 @@ export default function QrPrint() {
               {Array.from({ length: perPage }, (_, i) => page[i] ?? null).map((a, i) => (
                 <div key={i} style={{ width: `${P.w}mm`, height: `${P.h}mm`, boxSizing: 'border-box', border: guides ? '0.2mm dashed #94a3b8' : 'none', padding: '1.5mm', display: 'flex', alignItems: 'center', gap: '1.5mm', overflow: 'hidden', color: '#000' }}>
                   {a && <>
-                    <QRCodeSVG value={a.serialNumber} size={256} style={{ width: `${qrMm}mm`, height: `${qrMm}mm`, flex: 'none' }} />
+                    <QRCodeSVG level="M" value={assetQr(a.serialNumber)} size={256} style={{ width: `${qrMm}mm`, height: `${qrMm}mm`, flex: 'none' }} />
                     <div style={{ minWidth: 0, lineHeight: 1.15, fontSize: small ? '6pt' : '8pt' }}>
                       <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: small ? '7pt' : '9.5pt', wordBreak: 'break-all' }}>{a.serialNumber}</div>
                       {opt.item && <div style={{ fontWeight: 600 }}>{a.item.name}</div>}

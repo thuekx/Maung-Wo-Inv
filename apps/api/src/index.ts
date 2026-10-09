@@ -18,6 +18,7 @@ import { integrationRoutes } from './routes/integrations';
 import { exportRoutes } from './routes/export';
 import { adminRoutes } from './routes/admin';
 import { masterRoutes } from './routes/masters';
+import { publicRoutes } from './routes/public';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -31,6 +32,7 @@ app.use('/uploads', express.static(config.uploadDir, { maxAge: '7d', index: fals
 const api = express.Router();
 api.use(integrationRoutes); // tanpa JWT (pakai API key / secret)
 api.use(exportRoutes); // tanpa JWT (pakai EXPORT_API_KEY)
+api.use(publicRoutes); // tanpa JWT: info aset dari label QR (hanya data aman)
 api.use(core);
 api.use(adminRoutes);
 api.use(masterRoutes);

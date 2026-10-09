@@ -21,16 +21,18 @@ export interface Field {
 
 /* ───────── input khusus ───────── */
 
+import { parseScan, ScanButtons } from '@/components/Scanner';
+import { MapPicker } from '@/components/MapPicker';
+
 export function SerialInput({ value, onChange, onPending }: { value: string[]; onChange: (v: string[]) => void; onPending?: (text: string) => void }) {
   const [text, setTextRaw] = useState('');
   const setText = (t: string) => { setTextRaw(t); onPending?.(t.trim()); };
-  const [scanning, setScanning] = useState(false);
   const [info, setInfo] = useState<Record<string, string>>({});
   const valueRef = useRef(value);
   valueRef.current = value;
 
   const add = async (raw: string) => {
-    const sn = raw.trim().toUpperCase();
+    const sn = parseScan(raw);
     if (!sn || valueRef.current.includes(sn)) return;
     onChange([...valueRef.current, sn]);
     try {
@@ -41,33 +43,15 @@ export function SerialInput({ value, onChange, onPending }: { value: string[]; o
     }
   };
 
-  useEffect(() => {
-    if (!scanning) return;
-    let stop: (() => Promise<void>) | undefined;
-    let cancelled = false;
-    (async () => {
-      const { Html5Qrcode } = await import('html5-qrcode');
-      if (cancelled) return;
-      const sc = new Html5Qrcode('qr-reader');
-      stop = async () => { try { await sc.stop(); sc.clear(); } catch { /* sudah berhenti */ } };
-      try {
-        await sc.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, (txt) => add(txt), () => {});
-      } catch { setScanning(false); }
-    })();
-    return () => { cancelled = true; stop?.(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanning]);
-
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        <input className={`input font-mono ${text.trim() ? 'border-amber-400' : ''}`} placeholder="Ketik / scan barcode lalu Enter" value={text} onChange={(e) => setText(e.target.value)}
+      <div className="flex flex-wrap gap-2">
+        <input className={`input min-w-[10rem] flex-1 font-mono ${text.trim() ? 'border-amber-400' : ''}`} placeholder="Ketik / scan barcode lalu Enter" value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(text); setText(''); } }} />
         <button type="button" className="btn-ghost" onClick={() => { add(text); setText(''); }}>Tambah</button>
-        <button type="button" className="btn-ghost" onClick={() => setScanning(!scanning)}>{scanning ? 'Tutup kamera' : '📷 Scan'}</button>
+        <ScanButtons onScan={(t) => add(t)} />
       </div>
       {text.trim() && <p className="text-xs font-medium text-amber-700">⚠ SN &quot;{text.trim().toUpperCase()}&quot; belum ditambahkan — tekan <b>Tambah</b> atau Enter, jika tidak SN ini tidak ikut tersimpan.</p>}
-      {scanning && <div id="qr-reader" className="max-w-xs overflow-hidden rounded-lg border" />}
       <ul className="space-y-1">
         {value.map((s) => (
           <li key={s} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
@@ -280,6 +264,18 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
   const { data: areas } = useFetch<any[]>(fields.some((f) => f.type === 'area') ? '/areas' : null);
   const set = (name: string, val: any) => setV((p) => ({ ...p, [name]: val }));
+  const hasCoords = fields.some((f) => f.name === 'lat') && fields.some((f) => f.name === 'lng');
+  const [map, setMap] = useState(false);
+  const [geoMsg, setGeoMsg] = useState('');
+  const useHere = () => {
+    setGeoMsg('');
+    if (!window.isSecureContext || !navigator.geolocation) return setGeoMsg('Lokasi perangkat hanya bisa dibaca di halaman HTTPS. Pilih dari peta atau ketik koordinat manual.');
+    navigator.geolocation.getCurrentPosition(
+      (p) => { setV((x) => ({ ...x, lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) })); setGeoMsg(`Lokasi terisi (akurasi ±${Math.round(p.coords.accuracy)} m)`); },
+      (e) => setGeoMsg(e.code === 1 ? 'Izin lokasi ditolak — izinkan lokasi untuk situs ini di pengaturan browser.' : 'Lokasi belum didapat, coba lagi di tempat terbuka.'),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -362,10 +358,18 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
             : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
           {fe[f.name] && <p className="mt-1 text-xs font-medium text-red-600" role="alert">{fe[f.name]}</p>}
           {f.help && <p className="mt-0.5 text-xs text-slate-500">{f.help}</p>}
+          {hasCoords && f.name === 'lng' && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" className="btn-ghost" onClick={useHere}>📍 Gunakan lokasi sekarang</button>
+              <button type="button" className="btn-ghost" onClick={() => setMap(true)}>🗺 Pilih dari peta</button>
+              {geoMsg && <span className="text-xs text-slate-600">{geoMsg}</span>}
+            </div>
+          )}
         </div>
       ))}
       <ErrorMsg>{err}</ErrorMsg>
       <button className={danger ? 'btn-danger' : 'btn'} disabled={busy}>{busy ? 'Memproses…' : submitLabel}</button>
+      {map && <MapPicker lat={v.lat === '' || v.lat == null ? undefined : Number(v.lat)} lng={v.lng === '' || v.lng == null ? undefined : Number(v.lng)} onPick={(la, ln) => setV((x) => ({ ...x, lat: la, lng: ln }))} onClose={() => setMap(false)} />}
     </form>
   );
 }
