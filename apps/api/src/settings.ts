@@ -98,6 +98,7 @@ export async function getBranding() {
     logoStackedUrl: (b.logoStackedUrl as string) || null, // tegak: untuk latar terang (kartu login)
     logoMarkUrl: (b.logoMarkUrl as string) || null, // ikon ringkas (tanpa teks): top bar
     loginBgUrl: (b.loginBgUrl as string) || null,
+    kopUrl: (b.kopUrl as string) || null, // kop surat A4 (gambar latar penuh) untuk dokumen PR/BA/laporan
     gpsLogoUrl: (b.gpsLogoUrl as string) || null, // logo perusahaan untuk banner foto GPS (terpisah dari logo aplikasi)
     colors: {
       primary: HEX.test(c.primary) ? c.primary : BRAND_DEFAULTS.colors.primary,
@@ -105,5 +106,19 @@ export async function getBranding() {
       charts: Array.isArray(c.charts) && c.charts.length === 6 && c.charts.every((x: string) => HEX.test(x)) ? c.charts : BRAND_DEFAULTS.colors.charts,
     },
     requireGps: a.requireGps !== false,
+  };
+}
+
+/* ── Pengaturan dokumen (nomor surat, kota, PPN) ── */
+export interface DocsCfg { codePrefix: string; city: string; taxPct: number; seqStart: number; minVendors: number }
+export const DOCS_DEFAULTS: DocsCfg = { codePrefix: 'L1V/PNJ-BDG', city: 'Bandung', taxPct: 11, seqStart: 1, minVendors: 2 };
+export async function getDocs(): Promise<DocsCfg> {
+  const d = (await getSetting<any>('docs')) ?? {};
+  return {
+    codePrefix: typeof d.codePrefix === 'string' && d.codePrefix.trim() ? d.codePrefix.trim() : DOCS_DEFAULTS.codePrefix,
+    city: typeof d.city === 'string' && d.city.trim() ? d.city.trim() : DOCS_DEFAULTS.city,
+    taxPct: Number.isFinite(Number(d.taxPct)) && d.taxPct !== '' && d.taxPct != null ? Number(d.taxPct) : DOCS_DEFAULTS.taxPct,
+    seqStart: Number.isInteger(Number(d.seqStart)) && Number(d.seqStart) >= 1 ? Number(d.seqStart) : DOCS_DEFAULTS.seqStart,
+    minVendors: Number.isInteger(Number(d.minVendors)) && Number(d.minVendors) >= 1 ? Number(d.minVendors) : DOCS_DEFAULTS.minVendors,
   };
 }

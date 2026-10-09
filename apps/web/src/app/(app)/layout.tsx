@@ -12,7 +12,7 @@ import { SearchBox } from '@/components/SearchBox';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Tip } from '@/components/Tip';
 
-interface Item { href: string; label: string; icon: IconName; roles?: string[] }
+interface Item { href: string; label: string; icon: IconName; roles?: string[]; /** supervisor/manager divisi mana pun juga boleh */ lead?: boolean }
 const GROUPS: { title: string; items: Item[] }[] = [
   { title: 'Menu', items: [
     { href: '/', label: 'Dashboard', icon: 'dashboard' },
@@ -20,11 +20,14 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: '/my-stock', label: 'Stok Saya', icon: 'box', roles: ['FOC'] },
     { href: '/customers', label: 'Pelanggan', icon: 'users', roles: ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'] },
     { href: '/inventory', label: 'Inventori & Aset', icon: 'box', roles: ['ADMIN', 'GA'] },
+    { href: '/purchase-requests', label: 'Purchase Request', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'], lead: true },
     { href: '/purchase-orders', label: 'Purchase Order', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'] },
   ] },
   { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', roles: ['ADMIN', 'MKT', 'GA'] }] },
   { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }] },
 ];
+
+const canSee = (i: Item, u: { role: string; subRole?: string }) => !i.roles || i.roles.includes(u.role) || (!!i.lead && (u.subRole === 'SUPERVISOR' || u.subRole === 'MANAGER'));
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, ready, logout } = useAuth();
@@ -45,7 +48,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
     const it = GROUPS.flatMap((g) => g.items).find((i) => i.href !== '/' && path.startsWith(i.href));
-    if (it?.roles && !it.roles.includes(user.role)) router.replace('/');
+    if (it && !canSee(it, user)) router.replace('/');
   }, [user, path, router]);
   useEffect(() => {
     const click = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenu(false); };
@@ -110,7 +113,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         {GROUPS.map((g) => {
-          const items = g.items.filter((i) => !i.roles || i.roles.includes(user.role));
+          const items = g.items.filter((i) => canSee(i, user));
           if (!items.length) return null;
           return (
             <div key={g.title} className="mb-5">

@@ -1,9 +1,9 @@
 generator client {
-  provider                = "prisma-client"
-  output                  = "../src/generated/prisma"
-  moduleFormat            = "cjs"
-  generatedFileExtension  = "ts"
-  importFileExtension     = "js"
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "cjs"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
 }
 
 datasource db {
@@ -73,21 +73,22 @@ enum NotifChannel {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  name           String
-  email          String   @unique
-  passwordHash   String
-  role           Role
-  subRole        SubRole  @default(STAFF) // saat ini hanya membedakan hak FOC (jadwal = supervisor/manager)
-  telegramChatId String?
-  active         Boolean  @default(true)
-  mustChangePassword Boolean @default(false)
-  createdAt      DateTime @default(now())
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               Role
+  subRole            SubRole  @default(STAFF) // saat ini hanya membedakan hak FOC (jadwal = supervisor/manager)
+  telegramChatId     String?
+  active             Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
 
-  created   WorkOrder[] @relation("creator")
-  assigned  WorkOrder[] @relation("assignee")
-  warehouse Warehouse[]
-  inbox     Inbox[]
+  created          WorkOrder[]       @relation("creator")
+  assigned         WorkOrder[]       @relation("assignee")
+  warehouse        Warehouse[]
+  inbox            Inbox[]
+  purchaseRequests PurchaseRequest[]
 }
 
 model Customer {
@@ -142,14 +143,15 @@ model WorkOrder {
   updatedAt   DateTime  @updatedAt
   closedAt    DateTime?
 
-  customer    Customer?       @relation(fields: [customerId], references: [id])
-  createdBy   User            @relation("creator", fields: [createdById], references: [id])
-  assignee    User?           @relation("assignee", fields: [assigneeId], references: [id])
-  parent      WorkOrder?      @relation("child", fields: [parentId], references: [id])
-  children    WorkOrder[]     @relation("child")
-  events      WoEvent[]
-  attachments Attachment[]
-  purchase    PurchaseOrder[]
+  customer         Customer?         @relation(fields: [customerId], references: [id])
+  createdBy        User              @relation("creator", fields: [createdById], references: [id])
+  assignee         User?             @relation("assignee", fields: [assigneeId], references: [id])
+  parent           WorkOrder?        @relation("child", fields: [parentId], references: [id])
+  children         WorkOrder[]       @relation("child")
+  events           WoEvent[]
+  attachments      Attachment[]
+  purchase         PurchaseOrder[]
+  purchaseRequests PurchaseRequest[]
 
   @@index([type, status])
   @@index([customerId])
@@ -161,18 +163,18 @@ model WorkOrder {
 }
 
 model WoEvent {
-  id         String   @id @default(cuid())
-  woId       String
-  action     String
-  fromStatus String?
-  toStatus   String
-  actorId    String?
-  actorName  String?
-  actorRole  String?
+  id           String   @id @default(cuid())
+  woId         String
+  action       String
+  fromStatus   String?
+  toStatus     String
+  actorId      String?
+  actorName    String?
+  actorRole    String?
   actorSubRole String?
-  note       String?
-  payload    Json?
-  createdAt  DateTime @default(now())
+  note         String?
+  payload      Json?
+  createdAt    DateTime @default(now())
 
   wo WorkOrder @relation(fields: [woId], references: [id], onDelete: Cascade)
 
@@ -205,7 +207,7 @@ model Warehouse {
   address String?
   active  Boolean       @default(true)
 
-  owner     User?           @relation(fields: [ownerId], references: [id])
+  owner     User?        @relation(fields: [ownerId], references: [id])
   stock     StockLevel[]
   assets    Asset[]
   customers Customer[]
@@ -223,9 +225,10 @@ model Item {
   coreCount         Int? // khusus kabel: jumlah core (terisi = item kabel, satuan meter)
   isVehicle         Boolean      @default(false) // kendaraan: form aset menampilkan plat & no. rangka
 
-  stock  StockLevel[]
-  assets Asset[]
+  stock   StockLevel[]
+  assets  Asset[]
   poLines PoLine[]
+  prLines PrLine[]
 }
 
 model StockLevel {
@@ -241,25 +244,25 @@ model StockLevel {
 }
 
 model Asset {
-  id                 String      @id @default(cuid())
-  itemId             String
-  serialNumber       String      @unique
-  assetCode          String?     @unique
-  status             AssetStatus @default(IN_STOCK)
-  warehouseId        String?
-  customerId         String?
-  woId               String?
-  condition          String?
-  notes              String?
-  needsMaintenance   Boolean     @default(false) // aset yang perlu perawatan berkala (muncul di dasbor)
+  id                      String      @id @default(cuid())
+  itemId                  String
+  serialNumber            String      @unique
+  assetCode               String?     @unique
+  status                  AssetStatus @default(IN_STOCK)
+  warehouseId             String?
+  customerId              String?
+  woId                    String?
+  condition               String?
+  notes                   String?
+  needsMaintenance        Boolean     @default(false) // aset yang perlu perawatan berkala (muncul di dasbor)
   maintenanceIntervalDays Int?
-  plateNumber        String?
-  chassisNumber      String?
-  nextMaintenanceAt  DateTime?
-  lastMaintenanceAt  DateTime?
-  createdAt          DateTime    @default(now())
-  brandId            String?
-  modelId            String?
+  plateNumber             String?
+  chassisNumber           String?
+  nextMaintenanceAt       DateTime?
+  lastMaintenanceAt       DateTime?
+  createdAt               DateTime    @default(now())
+  brandId                 String?
+  modelId                 String?
 
   item      Item        @relation(fields: [itemId], references: [id])
   warehouse Warehouse?  @relation(fields: [warehouseId], references: [id])
@@ -293,29 +296,40 @@ model StockMovement {
 }
 
 model PurchaseOrder {
-  id        String   @id @default(cuid())
-  number    String   @unique
-  vendor    String
-  status    String   @default("ISSUED") // ISSUED | PARTIAL | RECEIVED
-  woId      String?
+  id            String    @id @default(cuid())
+  number        String    @unique
+  vendor        String
+  status        String    @default("ISSUED") // ISSUED | PARTIAL | RECEIVED
+  woId          String?
   toWarehouseId String
-  note      String?
-  createdById String
-  createdAt DateTime @default(now())
+  note          String?
+  createdById   String
+  createdAt     DateTime  @default(now())
+  prId          String? // Purchase Request asal (PO diterbitkan di Accurate, dicatat ulang di sini)
+  vendorId      String?
+  poDate        DateTime?
+  taxPct        Decimal?  @db.Decimal(5, 2)
 
-  wo    WorkOrder? @relation(fields: [woId], references: [id])
-  lines PoLine[]
+  wo        WorkOrder?       @relation(fields: [woId], references: [id])
+  pr        PurchaseRequest? @relation(fields: [prId], references: [id])
+  vendorRef Vendor?          @relation(fields: [vendorId], references: [id])
+  lines     PoLine[]
+
+  @@index([prId])
 }
 
 model PoLine {
-  id          String @id @default(cuid())
+  id          String   @id @default(cuid())
   poId        String
   itemId      String
   qty         Int
-  receivedQty Int    @default(0)
+  receivedQty Int      @default(0)
+  unitPrice   Decimal? @db.Decimal(18, 2)
+  description String?
 
-  po   PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
-  item Item          @relation(fields: [itemId], references: [id])
+  po     PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  item   Item          @relation(fields: [itemId], references: [id])
+  prLine PrLine?
 }
 
 model Notification {
@@ -337,13 +351,13 @@ model Notification {
 
 // Event keluar ke aplikasi billing/finance eksisting (webhook bertanda tangan HMAC)
 model OutboundEvent {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   event     String
   payload   Json
-  status    String   @default("PENDING")
-  attempts  Int      @default(0)
+  status    String    @default("PENDING")
+  attempts  Int       @default(0)
   lastError String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   sentAt    DateTime?
 
   @@index([status, createdAt])
@@ -423,4 +437,86 @@ model Inbox {
 model Counter {
   key   String @id
   value Int    @default(0)
+}
+
+/**
+ * ── Pengadaan: master vendor, Purchase Request (perbandingan harga), PO dari Accurate ──
+ */
+model Vendor {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  contactName String?
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  quotes PrQuote[]
+  pos    PurchaseOrder[]
+}
+
+model PurchaseRequest {
+  id                 String    @id @default(cuid())
+  number             String?   @unique // nomor surat, dibuat saat PDF diterbitkan, mis. 250/L1V/PNJ-BDG/X/2026
+  status             String    @default("DRAFT") // DRAFT | ISSUED | APPROVED | REJECTED | PO_ENTERED | CLOSED | CANCELLED
+  subject            String // Perihal
+  city               String    @default("Bandung")
+  docDate            DateTime?
+  taxPct             Decimal   @default(11) @db.Decimal(5, 2)
+  note               String?
+  woId               String? // Permintaan Barang (WO) asal, bila ada
+  createdById        String
+  signRequester      String? // Mengajukan (diisi procurement saat menerbitkan PDF)
+  signRequesterTitle String?
+  signKnow           String? // Mengetahui
+  signApprove        String? // Menyetujui
+  issuedAt           DateTime?
+  approvedAt         DateTime?
+  approvalRef        String? // no. PR/persetujuan di sistem lain (Accurate)
+  approvalNote       String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  createdBy User            @relation(fields: [createdById], references: [id])
+  wo        WorkOrder?      @relation(fields: [woId], references: [id])
+  lines     PrLine[]
+  pos       PurchaseOrder[]
+
+  @@index([status, createdAt])
+  @@index([createdById])
+}
+
+model PrLine {
+  id          String  @id @default(cuid())
+  prId        String
+  sort        Int     @default(0)
+  description String
+  qty         Int
+  unit        String  @default("Unit")
+  itemId      String? // terhubung ke master item = barang stok (masuk gudang); kosong = non-stok/jasa
+  note        String? // Keterangan (tabel perbandingan)
+  poLineId    String? @unique // diisi saat PO dicatat
+
+  pr     PurchaseRequest @relation(fields: [prId], references: [id], onDelete: Cascade)
+  item   Item?           @relation(fields: [itemId], references: [id])
+  poLine PoLine?         @relation(fields: [poLineId], references: [id])
+  quotes PrQuote[]
+
+  @@index([prId])
+}
+
+model PrQuote {
+  id        String  @id @default(cuid())
+  lineId    String
+  vendorId  String
+  unitPrice Decimal @db.Decimal(18, 2)
+  note      String?
+  chosen    Boolean @default(false)
+
+  line   PrLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  @@unique([lineId, vendorId])
 }

@@ -223,6 +223,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
         <UploadBox title="Ikon / logo ringkas (top bar)" hint="Hanya lambang tanpa teks, mendekati persegi. Dipakai di top bar bersama nama brand. ≤ 1 MB. Contoh: docs/branding/logo-mark.png" url={b.logoMarkUrl} dark variant="mark" onDone={reload} />
         <UploadBox title="Logo tegak (latar terang)" hint="Untuk cetakan/dokumen latar putih. ≤ 2 MB." url={b.logoStackedUrl} variant="stacked" onDone={reload} />
         <UploadBox title="Logo untuk foto GPS (logo perusahaan)" hint="Logo PT yang ditempel di banner foto lapangan (bersama koordinat GPS). Terpisah dari logo aplikasi; bila kosong dipakai logo horizontal. PNG/WEBP ≤ 2 MB." url={b.gpsLogoUrl} dark variant="gps" onDone={reload} />
+        <UploadBox title="Kop surat A4 (dokumen PR, BA, laporan)" hint="Gambar kop satu halaman penuh (A4 portrait, mis. 2480×3508 px) dengan area isi kosong di tengah. Bila kosong dipakai kop bawaan. JPG/PNG/WEBP ≤ 3 MB." url={b.kopUrl} variant="kop" onDone={reload} />
         <UploadBox title="Gambar latar login (opsional)" hint="Foto lanskap/pegunungan. Diberi lapisan navy otomatis. JPG/WEBP ≤ 6 MB." url={b.loginBgUrl} dark variant="loginbg" onDone={reload} />
       </div>
 
@@ -336,6 +337,32 @@ function TelegramCard({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
+function DocsCard() {
+  const { data, reload } = useFetch<any>('/settings/docs');
+  const [v, setV] = useState<any>(null);
+  const cur = v ?? data;
+  const [err, setErr] = useState('');
+  if (!cur) return null;
+  const f = (k: string, label: string, help?: string, type = 'text') => (
+    <div><label className="mb-1 block text-sm font-medium">{label}</label><input className="input" type={type} value={cur[k]} onChange={(e) => setV({ ...cur, [k]: e.target.value })} />{help && <p className="mt-0.5 text-xs text-slate-500">{help}</p>}</div>
+  );
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Dokumen (Purchase Request)</h2>
+      <p className="text-sm text-slate-500">Nomor surat berformat <b>{cur.seqStart}/{cur.codePrefix}/X/{new Date().getFullYear()}</b> (nomor urut / kode / bulan romawi / tahun). Nomor urut berjalan per tahun.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {f('codePrefix', 'Kode surat', 'mis. L1V/PNJ-BDG')}
+        {f('city', 'Kota penandatanganan')}
+        {f('seqStart', 'Nomor urut pertama tahun ini', 'Isi bila perlu melanjutkan nomor dari dokumen lama (mis. 251)', 'number')}
+        {f('taxPct', 'PPN bawaan (%)', undefined, 'number')}
+        {f('minVendors', 'Minimal vendor per baris perbandingan', undefined, 'number')}
+      </div>
+      <ErrorMsg>{err}</ErrorMsg>
+      <button className="btn" onClick={async () => { setErr(''); try { await api('/admin/settings/docs', { method: 'PUT', body: { ...cur } }); toast.success('Pengaturan dokumen disimpan'); setV(null); await reload(); } catch (e) { setErr((e as Error).message); } }}>Simpan</button>
+    </div>
+  );
+}
+
 function Settings() {
   const { data, error, reload } = useFetch<any>('/admin/settings');
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
@@ -343,6 +370,7 @@ function Settings() {
   return (
     <div className="max-w-4xl space-y-4">
       <BrandingCard d={data} reload={reload} />
+      <DocsCard />
       <SmtpCard d={data} reload={reload} />
       <TelegramCard d={data} reload={reload} />
     </div>

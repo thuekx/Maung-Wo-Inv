@@ -69,16 +69,54 @@ function Brands({ canManage }: { canManage: boolean }) {
   );
 }
 
+const vendorFields: Field[] = [
+  { name: 'name', label: 'Nama vendor', type: 'text', required: true },
+  { name: 'contactName', label: 'Nama kontak', type: 'text' },
+  { name: 'phone', label: 'Telepon', type: 'text' },
+  { name: 'email', label: 'Email', type: 'text' },
+  { name: 'address', label: 'Alamat', type: 'textarea' },
+  { name: 'notes', label: 'Catatan', type: 'text' },
+];
+
+function Vendors({ canManage }: { canManage: boolean }) {
+  const { data, error, reload } = useFetch<any[]>('/vendors?all=1');
+  const [edit, setEdit] = useState<any>(null);
+  return (
+    <>
+      <p className="mb-3 text-sm text-slate-500">Vendor menjadi pilihan pada perbandingan harga di <b>Purchase Request</b> (minimal 2 vendor per baris) dan pada pencatatan PO dari Accurate. Vendor yang sudah dipakai tidak dihapus, cukup dinonaktifkan.</p>
+      {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah vendor</button>}
+      <ErrorMsg>{error}</ErrorMsg>
+      <Table head={['Vendor', 'Kontak', 'Telepon', 'Email', 'Status', '']}>
+        {data?.map((v) => (
+          <tr key={v.id}>
+            <td className="td font-medium">{v.name}</td><td className="td">{v.contactName ?? '-'}</td><td className="td">{v.phone ?? '-'}</td><td className="td">{v.email ?? '-'}</td>
+            <td className="td">{canManage ? <button onClick={async () => { await api(`/vendors/${v.id}`, { method: 'PATCH', body: { active: !v.active } }); reload(); }}><Badge tone={v.active ? 'green' : 'slate'}>{v.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={v.active ? 'green' : 'slate'}>{v.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
+            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(v)}>Edit</LinkBtn> · <LinkBtn danger onClick={async () => { if (await doDelete(`/vendors/${v.id}`, `vendor ${v.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
+          </tr>
+        ))}
+      </Table>
+      {data?.length === 0 && <p className="mt-3 text-slate-400">Belum ada vendor.</p>}
+      {edit && (
+        <Modal title={edit.id ? `Edit vendor ${edit.name}` : 'Tambah vendor'} onClose={() => setEdit(null)}>
+          <DynamicForm fields={vendorFields} initial={edit.id ? edit : undefined} sendEmpty={!!edit.id} submitLabel="Simpan"
+            onSubmit={async (v) => { if (edit.id) await api(`/vendors/${edit.id}`, { method: 'PATCH', body: v }); else await api('/vendors', { body: v }); setEdit(null); await reload(); }} />
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export default function Master() {
   const { user } = useAuth();
   const role = user?.role ?? '';
   const [tab, setTab] = useState(['GA'].includes(role) ? 'brands' : 'packages');
-  if (!['ADMIN', 'MKT', 'NOC', 'GA'].includes(role)) return <ErrorMsg>Akses ditolak</ErrorMsg>;
+  if (!['ADMIN', 'MKT', 'GA'].includes(role)) return <ErrorMsg>Akses ditolak</ErrorMsg>;
   return (
     <>
-      <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan dan merk & tipe perangkat" />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'brands', label: 'Merk & tipe aset' }]} />
-      {tab === 'packages' && <Packages canManage={['ADMIN', 'MKT', 'NOC'].includes(role)} />}
+      <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan, merk & tipe perangkat, dan vendor" />
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }]} />
+      {tab === 'packages' && <Packages canManage={['ADMIN', 'MKT'].includes(role)} />}
+      {tab === 'vendors' && <Vendors canManage={['ADMIN', 'GA'].includes(role)} />}
       {tab === 'brands' && <Brands canManage={['ADMIN', 'GA'].includes(role)} />}
     </>
   );

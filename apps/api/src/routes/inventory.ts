@@ -285,7 +285,7 @@ inventoryRoutes.get('/purchase-orders', requireRole('GA', 'FIN'), async (req, re
   sendPage(res, pp, rows, total);
 });
 inventoryRoutes.get('/purchase-orders/:id', requireRole('GA', 'FIN'), async (req, res) => {
-  const po = await prisma.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } } } });
+  const po = await prisma.purchaseOrder.findUnique({ where: { id: String(req.params.id) }, include: { lines: { include: { item: true } }, wo: { select: { id: true, number: true } }, pr: { select: { id: true, number: true, subject: true } } } });
   if (!po) throw new AppError(404, 'PO tidak ditemukan');
   const wh = await prisma.warehouse.findUnique({ where: { id: po.toWarehouseId } });
   res.json({ ...po, warehouse: wh });
@@ -318,7 +318,12 @@ inventoryRoutes.post('/purchase-orders/:id/receive', stockRoles, async (req, res
     const lines = await fx.tx.poLine.findMany({ where: { poId: po.id } });
     const complete = lines.every((l) => l.receivedQty >= l.qty);
     await fx.tx.purchaseOrder.update({ where: { id: po.id }, data: { status: complete ? 'RECEIVED' : 'PARTIAL' } });
-    if (complete && po.woId) await applyAction(fx, po.woId, 'po_received', await systemActor(fx.tx), { note: `PO ${po.number} diterima lengkap` }, true);
+    if (complete && po.woId) {
+      // WO ditutup bila semua PO untuk WO ini sudah diterima dan semua baris stok di PR-nya sudah punya PO
+      const openPo = await fx.tx.purchaseOrder.count({ where: { woId: po.woId, status: { not: 'RECEIVED' }, id: { not: po.id } } });
+      const unassigned = po.prId ? await fx.tx.prLine.count({ where: { prId: po.prId, itemId: { not: null }, poLineId: null } }) : 0;
+      if (!openPo && !unassigned) await applyAction(fx, po.woId, 'po_received', await systemActor(fx.tx), { note: `PO ${po.number} diterima lengkap` }, true);
+    }
     return { complete, assets };
   });
   res.json(result);

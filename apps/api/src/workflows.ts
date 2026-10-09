@@ -735,26 +735,27 @@ const stockRequest: Workflow = {
           },
         },
         {
-          key: 'create_po',
-          label: 'Stok habis → terbitkan PO ke vendor',
+          key: 'create_pr',
+          label: 'Stok habis → buat Purchase Request (draft)',
           roles: ['GA'],
           to: 'PO_ISSUED',
-          fields: [{ name: 'vendor', label: 'Vendor', type: 'text', required: true }, note()],
+          fields: [note()],
           run: async (ctx, input) => {
-            const i = z.object({ vendor: z.string().min(2), note: optNote }).parse(input);
+            const i = z.object({ note: optNote }).parse(input);
             const d = ctx.wo.data as any;
-            const po = await ctx.tx.purchaseOrder.create({
+            const lines = d.lines as { itemId: string; qty: number }[];
+            const items = await ctx.tx.item.findMany({ where: { id: { in: lines.map((l) => l.itemId) } } });
+            const pr = await ctx.tx.purchaseRequest.create({
               data: {
-                number: await nextNumber(ctx.tx, 'PO'),
-                vendor: i.vendor,
+                subject: `Pengadaan stok – ${ctx.wo.number}`,
+                note: i.note ?? d.reason ?? null,
                 woId: ctx.wo.id,
-                toWarehouseId: d.toWarehouseId,
-                note: i.note,
                 createdById: ctx.actor.id,
-                lines: { create: (d.lines as { itemId: string; qty: number }[]).map((l) => ({ itemId: l.itemId, qty: l.qty })) },
+                taxPct: ((await ctx.tx.setting.findUnique({ where: { key: 'docs' } }))?.value as any)?.taxPct ?? 11,
+                lines: { create: lines.map((l, k) => { const it = items.find((x) => x.id === l.itemId)!; return { sort: k, description: it.name, qty: l.qty, unit: it.unit, itemId: it.id }; }) },
               },
             });
-            ctx.data.po = po.number;
+            ctx.data.pr = pr.id;
           },
         },
       ],
@@ -765,9 +766,12 @@ const stockRequest: Workflow = {
       actions: [{ key: 'receive', label: 'Barang diterima', roles: ['FOC', 'NOC', 'GA'], to: 'CLOSED', fields: [note()] }],
     },
     PO_ISSUED: {
-      label: 'PO Terbit – Menunggu Barang (GA/Procurement)',
+      label: 'PR/PO Berjalan – Menunggu Barang (GA/Procurement)',
       owner: 'GA',
-      actions: [{ key: 'po_received', label: 'PO diterima', roles: [], system: true, to: 'CLOSED', fields: [] }],
+      actions: [
+        { key: 'po_received', label: 'PO diterima', roles: [], system: true, to: 'CLOSED', fields: [] },
+        { key: 'back_review', label: 'PR ditolak/dibatalkan → kembali ke review', roles: ['GA'], to: 'PROC_REVIEW', fields: [note(true)] },
+      ],
     },
     CLOSED: { label: 'Selesai', owner: 'GA', final: true, actions: [] },
   },

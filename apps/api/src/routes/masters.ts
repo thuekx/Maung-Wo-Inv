@@ -340,7 +340,7 @@ masterRoutes.get('/packages', async (req, res) => {
   ]);
   res.json(rows.map((p) => ({ ...p, customers: used.find((u) => u.packageName === p.name)?._count ?? 0 })));
 });
-const pkgRoles = requireRole('MKT', 'NOC');
+const pkgRoles = requireRole('MKT'); // NOC tidak mengelola master data
 const pkgBody = z.object({ name: z.string().trim().min(2).max(80), description: z.preprocess(nul, z.string().trim().max(200).nullable().optional()), active: z.boolean().optional(), sortOrder: z.coerce.number().int().min(0).max(9999).optional() });
 masterRoutes.post('/packages', pkgRoles, async (req, res) => {
   const b = pkgBody.parse(req.body);

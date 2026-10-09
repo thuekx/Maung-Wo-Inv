@@ -10,6 +10,7 @@ import { AppError } from './db';
 import { core } from './routes/core';
 import { woRoutes } from './routes/wo';
 import { inventoryRoutes } from './routes/inventory';
+import { procurementRoutes } from './routes/procurement';
 import { integrationRoutes } from './routes/integrations';
 import { exportRoutes } from './routes/export';
 import { adminRoutes } from './routes/admin';
@@ -32,6 +33,7 @@ api.use(adminRoutes);
 api.use(masterRoutes);
 api.use(woRoutes);
 api.use(inventoryRoutes);
+api.use(procurementRoutes);
 app.use('/api', api);
 
 /** Pesan validasi Zod → Indonesia (tampil inline di bawah kolom). */

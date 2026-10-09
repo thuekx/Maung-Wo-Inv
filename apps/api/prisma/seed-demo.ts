@@ -106,6 +106,61 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   return { ...wo, customerId: cust };
 }
 
+
+/** Vendor, Purchase Request di berbagai tahap, dan satu PO (dicatat dari Accurate) siap diterima. */
+async function procurementDemo(prWoId: string) {
+  const mk = (name: string, contactName: string, phone: string) => prisma.vendor.upsert({ where: { name }, update: {}, create: { name, contactName, phone, email: `sales@${name.toLowerCase().replace(/[^a-z]/g, '')}.co.id` } });
+  const [v1, v2, v3, v4] = await Promise.all([mk('PT Fiber Nusantara', 'Rina', '081211110001'), mk('CV Mitra Kabel', 'Dodi', '081211110002'), mk('PT Jaringan Prima', 'Eka', '081211110003'), mk('Toko Sinar Teknik', 'Hadi', '081211110004')]);
+  const year = new Date().getFullYear();
+  const issue = async (id: string) => {
+    const key = `PRDOC-${year}`;
+    const c = await prisma.counter.upsert({ where: { key }, create: { key, value: 250 }, update: { value: { increment: 1 } } });
+    const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][new Date().getMonth()];
+    await prisma.purchaseRequest.update({ where: { id }, data: { number: `${c.value}/L1V/PNJ-BDG/${roman}/${year}`, status: 'ISSUED', docDate: new Date(), issuedAt: new Date(), signRequester: 'Citra', signRequesterTitle: 'Manager FOC', signKnow: 'Akhmad Taufik', signApprove: 'Ayus Fardiaz' } });
+  };
+  const quote = async (lineId: string, rows: [string, number][], pick = 0) => {
+    for (const [k, [vendorId, unitPrice]] of rows.entries()) await prisma.prQuote.create({ data: { lineId, vendorId, unitPrice, chosen: k === pick } });
+  };
+
+  // PR dari Permintaan Barang (PIGTAIL): diperbandingkan, diterbitkan, disetujui, PO dicatat dari Accurate
+  const pr = await prisma.purchaseRequest.findFirstOrThrow({ where: { woId: prWoId }, include: { lines: true } });
+  for (const l of pr.lines) await quote(l.id, [[v1.id, 8500], [v2.id, 9200], [v3.id, 8900]]);
+  await issue(pr.id);
+  await prisma.purchaseRequest.update({ where: { id: pr.id }, data: { status: 'APPROVED', approvedAt: new Date(), approvalRef: 'PR-ACC-0412' } });
+  const po = await prisma.purchaseOrder.create({ data: { number: 'PO-ACC-2610-017', vendor: v1.name, vendorId: v1.id, status: 'ISSUED', woId: prWoId, toWarehouseId: WH['WH-PUSAT'], prId: pr.id, poDate: new Date(), taxPct: 11, createdById: A.ga.id, note: 'Termin 14 hari (dicatat dari Accurate)' } });
+  for (const l of pr.lines) {
+    const pl = await prisma.poLine.create({ data: { poId: po.id, itemId: l.itemId!, qty: l.qty, unitPrice: 8500, description: l.description } });
+    await prisma.prLine.update({ where: { id: l.id }, data: { poLineId: pl.id } });
+  }
+  await prisma.purchaseRequest.update({ where: { id: pr.id }, data: { status: 'PO_ENTERED' } });
+
+  // PR mandiri: draft (supervisor FOC), diajukan (manager FOC), diterbitkan (GA), ditolak
+  const mkPr = async (subject: string, by: string, status: string, lines: { description: string; qty: number; unit: string; quotes: [string, number][] }[]) => {
+    const p = await prisma.purchaseRequest.create({ data: { subject, createdById: A[by].id, status: 'DRAFT', city: 'Bandung' } });
+    for (const [i, l] of lines.entries()) {
+      const line = await prisma.prLine.create({ data: { prId: p.id, sort: i, description: l.description, qty: l.qty, unit: l.unit } });
+      await quote(line.id, l.quotes);
+    }
+    if (status !== 'DRAFT') await prisma.purchaseRequest.update({ where: { id: p.id }, data: { status: 'SUBMITTED' } });
+    if (status === 'ISSUED' || status === 'REJECTED') await issue(p.id);
+    if (status === 'REJECTED') await prisma.purchaseRequest.update({ where: { id: p.id }, data: { status: 'REJECTED', approvedAt: new Date(), approvalNote: 'Anggaran bulan ini sudah terpakai' } });
+    return p;
+  };
+  await mkPr('Pengajuan Operasional – ATK & perlengkapan kantor', 'budi', 'DRAFT', [
+    { description: 'Kertas A4 80 gr (rim)', qty: 10, unit: 'Rim', quotes: [[v4.id, 52000], [v2.id, 55000]] },
+    { description: 'Tinta printer hitam', qty: 4, unit: 'Botol', quotes: [[v4.id, 78000], [v3.id, 81000]] },
+  ]);
+  await mkPr('Pengajuan Operasional – alat splicing cadangan', 'citra', 'SUBMITTED', [
+    { description: 'Fusion splicer (cadangan)', qty: 1, unit: 'Unit', quotes: [[v3.id, 14500000], [v1.id, 15200000], [v2.id, 14900000]] },
+  ]);
+  await mkPr('Pengajuan Operasional – servis kendaraan operasional', 'ga', 'ISSUED', [
+    { description: 'Servis berkala mobil operasional', qty: 2, unit: 'Unit', quotes: [[v4.id, 1250000], [v3.id, 1400000]] },
+  ]);
+  await mkPr('Pengajuan Operasional – laptop tambahan NOC', 'noc', 'REJECTED', [
+    { description: 'Laptop 14" i5/16GB', qty: 1, unit: 'Unit', quotes: [[v3.id, 12500000], [v1.id, 13000000]] },
+  ]);
+}
+
 const technicianUnused = (t: string) => A[t].id;
 
 /** Pelanggan aktif lengkap (pasang baru selesai) sebagai bahan skenario lanjutan. */
@@ -221,19 +276,28 @@ async function main() {
   const lines = (...l: [string, number][]) => l.map(([sku, qty]) => ({ itemId: ID[sku], qty }));
   const sr1 = await create('STOCK_REQUEST', 'budi', { toWarehouseId: WH['WH-CAB-A'], lines: lines(['DROPCORE', 500], ['FASTCONN', 50]), reason: 'Stok mobile menipis, butuh restock untuk cabang A' }); aged.push(sr1.id);
   const sr2 = await create('STOCK_REQUEST', 'noc', { toWarehouseId: WH['WH-PUSAT'], lines: lines(['PIGTAIL', 100]), reason: 'Pigtail habis untuk splicing ODP baru' });
-  await act(sr2.id, 'create_po', 'ga', { vendor: 'PT Fiber Nusantara', note: 'Termin 14 hari' });
+  await act(sr2.id, 'create_pr', 'ga', { note: 'Stok pigtail habis' });
+  await procurementDemo(sr2.id);
   const sr3 = await create('STOCK_REQUEST', 'ga', { toWarehouseId: WH['WH-CAB-A'], lines: lines(['SLEEVE', 40]), reason: 'Kebutuhan sleeve cabang A' });
   await act(sr3.id, 'transfer', 'ga', { fromWarehouseId: WH['WH-PUSAT'] });
   const sr4 = await create('STOCK_REQUEST', 'ga', { toWarehouseId: WH['WH-CAB-A'], lines: lines(['FASTCONN', 30]), reason: 'Restock fast connector' });
   await act(sr4.id, 'transfer', 'ga', { fromWarehouseId: WH['WH-PUSAT'] });
   await act(sr4.id, 'receive', 'ga', { note: 'Diterima lengkap' }); closedWos.push(sr4.id);
 
+  console.log('• Serah-terima sisa material');
+  const rt1 = await create('STOCK_RETURN', 'budi', { toWarehouseId: WH['WH-PUSAT'], items: [{ itemId: ID.DROPCORE, qty: 20 }], note: 'Sisa kabel dari pekerjaan pasang baru' });
+  await act(rt1.id, 'receive_all', 'ga', { note: 'Diterima & diukur ulang' }); closedWos.push(rt1.id);
+  const rt2 = await create('STOCK_RETURN', 'andi', { toWarehouseId: WH['WH-PUSAT'], items: [{ itemId: ID.DROPCORE, qty: 15 }], note: 'Sisa kabel, menunggu diterima GA' });
+  void rt2;
+  const rt3 = await create('STOCK_RETURN', 'andi', { toWarehouseId: WH['WH-PUSAT'], items: [{ itemId: ID.DROPCORE, qty: 10 }], note: 'Sisa kabel gulungan kecil' });
+  await act(rt3.id, 'receive_partial', 'ga', { items: [{ itemId: ID.DROPCORE, qty: 6 }], note: 'Baru 6 m yang dibawa; sisanya menyusul' });
+
   console.log('• Aset GA & kondisi stok');
   await prisma.$transaction(async (t) => {
-    const gaItems: [string, number][] = [['AC', 3], ['LAPTOP', 10], ['CAR', -2], ['MOTOR', 45]];
+    const gaItems: [string, number][] = [['AC', 3], ['LAPTOP', 10], ['CAR', -2], ['MOTOR', 45], ['FURN', 200]]; // FURN: tanda perawatan menyala tetapi jadwal masih jauh (tidak muncul di dasbor)
     for (const [sku, days] of gaItems) {
       const code = await nextNumber(t, 'GA', false);
-      await t.asset.create({ data: { itemId: ID[sku], serialNumber: code, assetCode: code, status: 'IN_USE', warehouseId: WH['WH-PUSAT'], nextMaintenanceAt: new Date(Date.now() + days * DAY), notes: 'Aset demo' } });
+      await t.asset.create({ data: { itemId: ID[sku], serialNumber: code, assetCode: code, status: 'IN_USE', warehouseId: WH['WH-PUSAT'], nextMaintenanceAt: new Date(Date.now() + days * DAY), needsMaintenance: true, maintenanceIntervalDays: sku === 'CAR' || sku === 'MOTOR' ? 90 : 180, plateNumber: sku === 'CAR' ? 'D 1234 LSV' : sku === 'MOTOR' ? 'D 5678 LSV' : null, chassisNumber: sku === 'CAR' ? 'MHKA1234567890' : sku === 'MOTOR' ? 'MH1JM1234567' : null, notes: 'Aset demo' } });
     }
   });
   // fast connector pusat dibuat di bawah minimum → muncul "menipis" di dashboard

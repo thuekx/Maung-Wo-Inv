@@ -42,6 +42,7 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
         {canReceive && po.status === 'ISSUED' && <button className="btn-ghost text-red-600" onClick={async () => { if (await doDelete(`/purchase-orders/${po.id}`, `PO ${po.number}`)) router.replace('/purchase-orders'); }}>🗑 Hapus</button>}
       </PageHeader>
       {po.note && <p className="text-sm text-slate-500">Catatan: {po.note}</p>}
+      {po.pr && <p className="text-sm">Dari <Link className="text-brand-700 hover:underline" href={`/purchase-requests/${po.pr.id}`}>PR {po.pr.number ?? po.pr.subject}</Link>{po.poDate ? ` · tanggal PO ${new Date(po.poDate).toLocaleDateString('id-ID')}` : ''} · nomor PO sama dengan di Accurate</p>}
       {po.wo && <p className="text-sm">Dari WO <Link className="text-brand-700 hover:underline" href={`/work-orders/${po.wo.id}`}>{po.wo.number}</Link></p>}
 
       <div className="card space-y-4">
@@ -51,7 +52,7 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
           return (
             <div key={l.id} className="rounded-lg border p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div><b>{l.item.name}</b> <span className="text-sm text-slate-500">diterima {l.receivedQty}/{l.qty} {l.item.unit}</span></div>
+                <div><b>{l.item.name}</b> <span className="text-sm text-slate-500">diterima {l.receivedQty}/{l.qty} {l.item.unit}{l.unitPrice != null ? ` · Rp. ${Math.round(Number(l.unitPrice)).toLocaleString('id-ID')}/satuan` : ''}</span></div>
                 {canReceive && remain > 0 && <input className="input w-36" type="number" min={0} max={remain} placeholder={`Qty lolos QC (≤${remain})`} value={qty[l.id] ?? ''} onChange={(e) => setQty({ ...qty, [l.id]: e.target.value })} />}
               </div>
               {canReceive && remain > 0 && l.item.category === 'NETWORK' && (
