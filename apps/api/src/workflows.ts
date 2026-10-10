@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { WoType } from './orm';
 import { AppError, fieldError } from './db';
-import { config } from './config';
+import { webUrl } from './settings';
 import { AVAILABLE, installAvailability, mobileWarehouse, moveAsset, moveStock, mustAsset, nextNumber, normSn, qcAssets } from './inventory';
 import { aliasForArea, baNumber } from './docnum';
 import { assertNetworkFree, internalIp, odpName, portName, publicIp, vlanId } from './network';
@@ -11,7 +11,7 @@ import { inTeam, isLead, type ActionDef, type Ctx, type Field, type Workflow } f
 
 export const PACKAGES = ['Home 10 Mbps', 'Home 20 Mbps', 'Home 50 Mbps', 'Home 100 Mbps', 'Business 200 Mbps', 'Dedicated'];
 
-const link = (ctx: Ctx) => `${config.webUrl}/work-orders/${ctx.wo.id}`;
+const link = (ctx: Ctx) => `${webUrl()}/work-orders/${ctx.wo.id}`;
 const cname = (ctx: Ctx) => ctx.wo.customer?.name ?? '-';
 
 const note = (required = false): Field => ({ name: 'note', label: 'Catatan', type: 'textarea', required });

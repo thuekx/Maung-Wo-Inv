@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -50,6 +51,14 @@ core.get('/search', async (req, res) => {
     !seeAssets ? Promise.resolve([]) : prisma.asset.findMany({ where: { OR: [{ serialNumber: like }, { assetCode: like }] }, select: { id: true, serialNumber: true, assetCode: true, status: true, item: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 5 }),
   ]);
   res.json({ customers, workOrders, assets });
+});
+
+/** Introspeksi token untuk aplikasi lain (super apps / Sales Tracking): kirim `Authorization: Bearer <token>` → identitas & peran. 401 bila token tidak valid/kedaluwarsa. */
+core.get('/auth/introspect', (req, res) => {
+  const u = req.realUser ?? req.user!;
+  const tok = String(req.headers.authorization ?? '').slice(7);
+  const exp = (jwt.decode(tok) as { exp?: number } | null)?.exp ?? null;
+  res.json({ active: true, sub: u.id, name: u.name, email: u.email, role: u.role, subRole: u.subRole, exp });
 });
 
 core.get('/auth/me', (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null }));

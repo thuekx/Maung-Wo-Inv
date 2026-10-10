@@ -92,7 +92,7 @@ export function Table({ head, children, empty }: { head: string[]; children: Rea
   return (
     <div className="card overflow-x-auto p-0">
       <table className="w-full">
-        <thead className="border-b bg-slate-50"><tr>{head.map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
+        <thead className="border-b bg-slate-50"><tr>{head.map((h, i) => <th key={`${i}-${h}`} className="th">{h}</th>)}</tr></thead>
         <tbody className="divide-y">{children}</tbody>
       </table>
       {rows === 0 && <p className="p-6 text-center text-sm text-slate-400">{empty ?? 'Tidak ada data'}</p>}

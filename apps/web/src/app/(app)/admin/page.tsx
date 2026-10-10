@@ -241,6 +241,22 @@ function UploadBox({ title, hint, url: uploaded, dark, variant, onDone }: { titl
   );
 }
 
+/** URL aplikasi untuk tautan di email/WhatsApp/Telegram — atur di sini agar tidak bergantung IP server. */
+function AppUrlField({ d, reload }: { d: any; reload: () => void }) {
+  const [v, setV] = useState<string>(d.appUrl?.value ?? '');
+  const a = useAction();
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <label className="label">URL aplikasi (untuk tautan di notifikasi)</label>
+      <div className="flex flex-wrap gap-2">
+        <input className="input min-w-0 flex-1" value={v} onChange={(e) => setV(e.target.value)} placeholder={d.appUrl?.envValue ?? 'https://wo.perusahaan.co.id'} />
+        <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { publicUrl: v.trim() } }); reload(); }, 'URL aplikasi disimpan — berlaku ≤ 10 detik')}>Simpan URL</button>
+      </div>
+      <p className="mt-1 text-xs text-slate-500">Dipakai pada tautan WO di email, WhatsApp & Telegram. Kosongkan untuk memakai nilai server ({d.appUrl?.envValue}). Cukup ganti di sini bila IP/domain berubah — tanpa deploy ulang. Label QR aset otomatis memakai alamat yang sedang dibuka.</p>
+    </div>
+  );
+}
+
 function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
   const b = d.branding;
   const [f, setF] = useState({ appName: b.appName ?? 'MAUNG | SuperApps', companyName: b.companyName, tagline: b.tagline, subtitle: b.subtitle, loginText: b.loginText, primary: b.colors.primary, accent: b.colors.accent, charts: [...b.colors.charts] as string[] });
@@ -298,6 +314,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
 
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={b.requireGps} onChange={(e) => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { requireGps: e.target.checked } }); await loadBranding(true); reload(); }, 'Kebijakan GPS disimpan')} /> Wajibkan GPS pada foto teknisi (FOC) <span className="text-xs text-slate-500">— matikan hanya untuk uji coba tanpa HTTPS</span></label>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={b.optimizeImages} onChange={(e) => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { optimizeImages: e.target.checked } }); await loadBranding(true); reload(); }, 'Kompresi tampilan gambar disimpan')} /> Tampilkan gambar terkompresi <span className="text-xs text-slate-500">— berkas asli tetap tersimpan utuh; matikan untuk kembali memakai berkas asli (rollback)</span></label>
+      <AppUrlField d={d} reload={reload} />
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn" disabled={a.busy || !valid} onClick={save}>Simpan tampilan</button>
         <button className="btn-ghost" disabled={a.busy} onClick={reset}>Kembalikan ke bawaan MAUNG</button>

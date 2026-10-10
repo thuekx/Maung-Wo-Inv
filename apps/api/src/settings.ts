@@ -114,6 +114,15 @@ export async function getBranding() {
   };
 }
 
+/* ── URL aplikasi (tautan di email/notifikasi) ──
+ * Bisa diatur Admin (Admin → Tampilan); kosong → pakai WEB_URL dari .env. Disegarkan berkala agar API & worker selalu sinkron. */
+let runtimeWebUrl = config.webUrl;
+export const webUrl = () => runtimeWebUrl;
+export async function refreshWebUrl() {
+  try { runtimeWebUrl = (((await getSetting<any>('app'))?.publicUrl as string) || '').replace(/\/+$/, '') || config.webUrl; } catch { /* DB belum siap: pakai nilai lama */ }
+}
+export function startWebUrlSync() { void refreshWebUrl(); setInterval(() => void refreshWebUrl(), 10_000).unref(); }
+
 /* ── Pengaturan dokumen (nomor surat, kota, PPN) ── */
 export interface DocsCfg { codePrefix: string; city: string; taxPct: number; seqStart: number; minVendors: number; signRequesterTitle: string; signKnow: string; signKnowTitle: string; signApprove: string; signApproveTitle: string }
 export const DOCS_DEFAULTS: DocsCfg = { codePrefix: 'L1V/PNJ-{ALIAS}', city: 'Bandung', taxPct: 11, seqStart: 1, minVendors: 2, signRequesterTitle: '', signKnow: '', signKnowTitle: '', signApprove: '', signApproveTitle: '' };

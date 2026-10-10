@@ -1,7 +1,7 @@
 import { Prisma, WoType } from './orm';
 import { AppError, Tx } from './db';
 import { Effects } from './effects';
-import { config } from './config';
+import { webUrl } from './settings';
 import { nextNumber } from './inventory';
 import { workflows } from './workflows';
 import { inTeam, isLead, type Actor, type Ctx, type WoFull } from './wf-types';
@@ -125,7 +125,7 @@ async function enterStatus(fx: Effects, woId: string, actor: Actor, to: string, 
 
     const wo = await loadWo(tx, woId);
     const label = current === CANCELLED ? 'Dibatalkan' : st!.label;
-    const link = `${config.webUrl}/work-orders/${wo.id}`;
+    const link = `${webUrl()}/work-orders/${wo.id}`;
     const body = `${wo.title}\nPelanggan: ${wo.customer?.name ?? '-'}\nStatus: ${label}\nOleh: ${actor.name}${m.note ? `\nCatatan: ${m.note}` : ''}\n${link}`;
 
     if (final) {

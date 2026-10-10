@@ -8,7 +8,7 @@ import { mineWhere } from '../dashboard';
 import { countIf, pageParams, sendPage } from '../paging';
 import { Prisma } from '../orm';
 import { allowedActions, applyAction, bindPhotos, createWorkOrder } from '../engine';
-import { config } from '../config';
+import { webUrl } from '../settings';
 import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
 import { requireRole } from '../auth';
 import { workflowMeta, workflows } from '../workflows';
@@ -180,7 +180,7 @@ woRoutes.post('/work-orders/:id/progress', async (req, res) => {
       userIds: [wo.createdById],
       woId: wo.id,
       subject: `[${wo.number}] Update progres lapangan`,
-      body: `${u.name} mengirim ${b.photos.length} foto progres (GPS) untuk ${wo.title}.${b.note ? `\nCatatan: ${b.note}` : ''}\n${config.webUrl}/work-orders/${wo.id}`,
+      body: `${u.name} mengirim ${b.photos.length} foto progres (GPS) untuk ${wo.title}.${b.note ? `\nCatatan: ${b.note}` : ''}\n${webUrl()}/work-orders/${wo.id}`,
     });
   });
   res.json({ ok: true });

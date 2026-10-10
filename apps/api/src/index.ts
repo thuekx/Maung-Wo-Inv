@@ -22,6 +22,7 @@ import { publicRoutes } from './routes/public';
 import { reportRoutes } from './routes/reports';
 import { systemApiRoutes } from './routes/sysapi';
 import { imgRoutes } from './routes/img';
+import { startWebUrlSync } from './settings';
 import { teamRoutes } from './routes/team';
 
 const app = express();
@@ -99,4 +100,5 @@ void (async () => {
   } catch { /* folder belum ada: tidak masalah */ }
 })();
 
+startWebUrlSync();
 app.listen(config.port, () => console.log(`MAUNG API :${config.port}`));

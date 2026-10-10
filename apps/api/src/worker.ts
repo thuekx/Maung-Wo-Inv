@@ -7,7 +7,9 @@ import { connection, cronQueue, enqueue, QueuedJob } from './queue';
 import { sendEmail, sendTelegram, sendWhatsApp } from './senders';
 import { Effects } from './effects';
 import { getRadius, runSync } from './radius';
-import { putSetting, getSetting } from './settings';
+import { putSetting, getSetting, startWebUrlSync } from './settings';
+
+startWebUrlSync(); // URL aplikasi dari Admin untuk tautan di notifikasi
 
 /** Kirim email / Telegram dari tabel Notification (outbox). */
 new Worker(

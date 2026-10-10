@@ -120,3 +120,13 @@ curl -X POST https://<API_DOMAIN>/api/integrations/billing/events \
 
 ### Khusus Admin (memerlukan login Admin, bukan untuk aplikasi lain)
 `GET /api/admin/reports` dan `GET /api/admin/reports/{key}?from=YYYY-MM-DD&to=YYYY-MM-DD` (menu *Sistem → Laporan*), `GET /api/admin/system-api`, `GET /api/admin/radius/endpoints`.
+
+
+## Tambahan UAT v2.1
+| Endpoint | Peran | Keterangan |
+|---|---|---|
+| `GET /api/img?u=/uploads/x.png&w=400&trim=1` | publik | Versi webp terkompresi (cache); berkas asli tidak diubah |
+| `GET /api/auth/introspect` | token | Identitas & peran dari token (untuk aplikasi lain) |
+| `GET /api/admin/trouble-history?customerId=` | Admin | Riwayat TROUBLE + MAINTENANCE satu pelanggan beserta laporan |
+| `GET/POST /api/team`, `PATCH /api/team/:id` | Manager divisi | Kelola supervisor/staf divisinya |
+| `PUT /api/admin/settings/app` | Admin | `requireGps`, `optimizeImages`, `publicUrl` |

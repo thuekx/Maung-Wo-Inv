@@ -8,7 +8,7 @@ import nodemailer from 'nodemailer';
 import { AppError, fieldError, prisma } from '../db';
 import { requireRole } from '../auth';
 import { config } from '../config';
-import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, WA_FONNTE_URL } from '../settings';
+import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, refreshWebUrl, webUrl, WA_FONNTE_URL } from '../settings';
 import { fromHeader, sendTelegram, sendWhatsApp, telegramApi, waNumber } from '../senders';
 
 /** Pengaturan yang dikelola Admin: SMTP, Telegram, logo/branding, kebijakan GPS. Dipasang SETELAH authenticate. */
@@ -26,7 +26,8 @@ async function overview() {
     branding,
     whatsapp: { enabled: wa.enabled, provider: wa.provider, baseUrl: wa.baseUrl, headerName: wa.headerName, bodyTemplate: wa.bodyTemplate, hasToken: !!wa.token, tokenHint: hint(wa.token), source: wa.source },
     assetInfo,
-    webUrl: config.webUrl,
+    webUrl: webUrl(),
+    appUrl: { value: (((await getSetting<any>('app'))?.publicUrl as string) || ''), envValue: config.webUrl },
   };
 }
 
@@ -275,8 +276,9 @@ adminRoutes.delete('/admin/settings/branding/logo', async (req, res) => {
 
 /* ── Kebijakan aplikasi ── */
 adminRoutes.put('/admin/settings/app', async (req, res) => {
-  const body = z.object({ requireGps: z.boolean().optional(), optimizeImages: z.boolean().optional() }).parse(req.body);
+  const body = z.object({ requireGps: z.boolean().optional(), optimizeImages: z.boolean().optional(), publicUrl: z.string().trim().max(200).refine((v) => v === '' || /^https?:\/\/[^\s/]+[^\s]*$/.test(v), 'URL harus diawali http:// atau https://').optional() }).parse(req.body);
   const old = (await getSetting<any>('app')) ?? {};
-  await putSetting('app', { ...old, ...body }, req.user!.id);
+  await putSetting('app', { ...old, ...body, ...(body.publicUrl !== undefined ? { publicUrl: body.publicUrl.replace(/\/+$/, '') } : {}) }, req.user!.id);
+  await refreshWebUrl();
   res.json(await overview());
 });

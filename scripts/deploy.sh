@@ -10,9 +10,9 @@ cd "$(dirname "$0")/.."
 command -v docker >/dev/null || { echo "Docker belum terpasang. Jalankan scripts/install-server.sh dulu."; exit 1; }
 docker compose version >/dev/null || { echo "Docker Compose plugin tidak ada."; exit 1; }
 
-HOST=""; WEB_DOMAIN=""; API_DOMAIN=""
+HOST=""; HOST_ARG=""; WEB_DOMAIN=""; API_DOMAIN=""
 case "${1:-}" in
-  --host)  HOST="${2:?domain/IP}";;
+  --host)  HOST="${2:?domain/IP}"; HOST_ARG=1;;
   --caddy) WEB_DOMAIN="${2:?domain web}"; API_DOMAIN="${3:?domain api}";;
 esac
 [ -n "$HOST" ] || [ -n "$WEB_DOMAIN" ] || HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"; HOST="${HOST:-localhost}"
@@ -43,7 +43,10 @@ if [ -n "$WEB_DOMAIN" ]; then
   setenv WEB_DOMAIN "$WEB_DOMAIN"; setenv API_DOMAIN "$API_DOMAIN"
   FILES=(-f docker-compose.yml -f docker-compose.caddy.yml)
 else
-  setenv WEB_URL "http://$HOST:3000"; setenv CORS_ORIGIN "http://$HOST:3000"; setenv NEXT_PUBLIC_API_URL "http://$HOST:4000"
+  # Mode satu alamat: web meneruskan /api & /uploads ke container api (nama host docker) → tak ada IP/port API tertanam di build.
+  # WEB_URL (tautan di notifikasi) hanya diisi bila belum ada / host diberikan eksplisit; bisa diubah juga di Admin → Tampilan.
+  if [ -n "${CREATED:-}" ] || [ -n "$HOST_ARG" ] || ! grep -q '^WEB_URL=http' .env; then setenv WEB_URL "http://$HOST:3000"; fi
+  setenv NEXT_PUBLIC_API_URL ""; setenv CORS_ORIGIN "$(grep ^WEB_URL= .env | cut -d= -f2-)"
   FILES=(-f docker-compose.yml)
 fi
 
