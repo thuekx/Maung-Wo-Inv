@@ -36,8 +36,8 @@ export default function FormPrint({ params }: { params: Promise<{ id: string }> 
   const inList = list.some((p) => p.name === s.packageName);
   return (
     <DocShell title={`Formulir ${s.regNo}`} back={`/subscriptions/${id}`}>
-      <style>{`@media print { .form-foot { position: fixed; left: 0; right: 0; bottom: 8mm; } .form-foot-screen { display: none } } @media screen { .form-foot { display: none } }`}</style>
-      <section className="doc-page relative mx-auto mb-6 box-border bg-white text-black shadow-lg print:mb-0 print:shadow-none" style={{ width: '210mm', minHeight: '297mm', padding: '12mm 18mm 26mm', pageBreakAfter: 'always', breakAfter: 'page', fontSize: '10pt' }}>
+      <style>{`@media print { .form-p1 { height: 296mm !important; min-height: 0 !important; overflow: hidden } }`}</style>
+      <section className="doc-page form-p1 relative mx-auto mb-6 box-border bg-white text-black shadow-lg print:mb-0 print:shadow-none" style={{ width: '210mm', minHeight: '297mm', padding: '12mm 18mm 26mm', pageBreakAfter: 'always', breakAfter: 'page', fontSize: '10pt' }}>
         <img src={logo} alt="" className="absolute right-[18mm] top-[10mm] h-[24mm] w-auto" />
         <div className="pt-[10mm] text-center font-bold leading-tight"><div className="text-[11pt]">FORMULIR BERLANGGANAN</div><div className="text-[11pt]">SUBSCRIPTION FORMS</div></div>
         <div className="mt-[8mm] flex items-end justify-between text-[10pt]"><div><b>Tanggal</b> | Date <span className="ml-2 border-b border-black px-2">{longDate(s.formDate)}</span></div><div><b>Reg. No.</b> <span className="font-mono">{s.regNo}</span></div></div>
@@ -65,17 +65,17 @@ export default function FormPrint({ params }: { params: Promise<{ id: string }> 
           <td className="w-1/3 border border-black p-1.5 align-top"><b>Marketing</b><div className="h-[26mm]" /><div className="mx-2 border-b border-black pb-px">{s.marketingName}</div></td>
           <td className="w-1/3 border border-black p-1.5 align-top"><b>Manager Marketing</b><div className="flex h-[26mm] items-center justify-center">{brand.mgrSignUrl && <img src={fileUrl(brand.mgrSignUrl)} alt="" className="max-h-[24mm] max-w-[90%]" />}</div><div className="mx-2 border-b border-black pb-px font-semibold">{s.managerName}</div></td>
         </tr></tbody></table>
-        <div className="form-foot-screen absolute bottom-[8mm] left-[18mm] right-[18mm] whitespace-pre-line text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
+        <div className="absolute bottom-[8mm] left-[18mm] right-[18mm] whitespace-pre-line text-center text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
       </section>
-      <section className="doc-page relative mx-auto mb-6 box-border bg-white text-black shadow-lg print:mb-0 print:shadow-none" style={{ width: '210mm', minHeight: '297mm', padding: '12mm 14mm 22mm' }}>
-        <div style={{ columnCount: 2, columnGap: '8mm', fontSize: '7.6pt', lineHeight: 1.28, textAlign: 'justify' }}>
-          {TERMS.map((t, i) => t.k === 'h' ? <h3 key={i} className="mb-1 mt-2 break-after-avoid text-center font-bold" style={{ fontSize: '8.4pt' }}>{t.t}</h3>
+      <section className="doc-page form-p1 relative mx-auto mb-6 box-border bg-white text-black shadow-lg print:mb-0 print:shadow-none" style={{ width: "210mm", minHeight: "297mm", padding: "10mm 14mm 22mm" }}>
+        <div style={{ columnCount: 2, columnGap: '8mm', fontSize: '6.4pt', lineHeight: 1.2, textAlign: 'justify' }}>
+          {TERMS.map((t, i) => t.k === 'h' ? <h3 key={i} className="mb-1 mt-2 break-after-avoid text-center font-bold" style={{ fontSize: '7.4pt' }}>{t.t}</h3>
             : t.k === 'p' ? <p key={i} className="mb-1">{t.t}</p>
             : <div key={i} className="mb-0.5 flex gap-1.5 break-inside-avoid" style={{ paddingLeft: `${(t.lvl ?? 0) * 5}mm` }}><span className="w-4 shrink-0">{t.n}</span><span>{t.t}</span></div>)}
           <p className="mt-3 break-inside-avoid">{c.city}, {longDate(s.formDate)}</p>
         </div>
+        <div className="absolute bottom-[8mm] left-[14mm] right-[14mm] whitespace-pre-line text-center text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
       </section>
-      <div className="form-foot whitespace-pre-line text-center text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
     </DocShell>
   );
 }
