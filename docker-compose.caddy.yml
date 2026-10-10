@@ -1,8 +1,18 @@
-# Overlay HTTPS otomatis (Let's Encrypt) — dipakai: docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
-# Syarat: DNS WEB_DOMAIN & API_DOMAIN mengarah ke server, port 80/443 terbuka.
+# Overlay HTTPS otomatis (Let's Encrypt via Caddy) — satu domain untuk web + API.
+# Dipakai:  docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build   (atau: bash scripts/deploy.sh --domain wo.contoh.co.id)
+# Syarat: DNS A record WEB_DOMAIN → IP publik server, port 80 & 443 terbuka (firewall OS + firewall penyedia VPS).
+# Sertifikat diterbitkan & diperpanjang otomatis oleh Caddy (data di volume caddy_data — JANGAN dihapus: batas penerbitan Let's Encrypt).
+# Sakelar SSL / paksa-redirect: Admin → Pengaturan → SSL & Domain (API menulis Caddyfile ke volume caddyconf, Caddy memuat ulang sendiri).
 services:
   api:
     ports: !override []
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:?isi WEB_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      CADDY_CONF_DIR: /caddy-conf
+    volumes:
+      - uploads:/app/uploads
+      - caddyconf:/caddy-conf
   web:
     ports: !override []
   caddy:
@@ -10,14 +20,18 @@ services:
     restart: unless-stopped
     environment:
       WEB_DOMAIN: ${WEB_DOMAIN:?isi WEB_DOMAIN}
-      API_DOMAIN: ${API_DOMAIN:?isi API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    entrypoint: ["/bin/sh", "/caddy-entrypoint.sh"]
     volumes:
-      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./proxy/caddy-entrypoint.sh:/caddy-entrypoint.sh:ro
+      - ./proxy/Caddyfile.init:/init/Caddyfile.init:ro
+      - caddyconf:/etc/caddy
       - caddy_data:/data
       - caddy_config:/config
-    ports: ["80:80", "443:443"]
+    ports: ["80:80", "443:443", "443:443/udp"]
     depends_on: [web, api]
 
 volumes:
+  caddyconf:
   caddy_data:
   caddy_config:

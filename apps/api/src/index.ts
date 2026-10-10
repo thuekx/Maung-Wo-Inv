@@ -23,8 +23,10 @@ import { reportRoutes } from './routes/reports';
 import { systemApiRoutes } from './routes/sysapi';
 import { imgRoutes } from './routes/img';
 import { startWebUrlSync } from './settings';
+import { startSslWatcher } from './ssl';
 import { teamRoutes } from './routes/team';
 import { kancaRoutes, kancaWebhook } from './routes/kanca';
+import { sslRoutes } from './routes/ssl';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -53,6 +55,7 @@ api.use(areaRoutes);
 api.use(reportRoutes);
 api.use(systemApiRoutes);
 api.use(kancaRoutes);
+api.use(sslRoutes);
 api.use(subscriptionRoutes);
 app.use('/api', api);
 
@@ -104,4 +107,5 @@ void (async () => {
 })();
 
 startWebUrlSync();
+startSslWatcher();
 app.listen(config.port, () => console.log(`MAUNG API :${config.port}`));

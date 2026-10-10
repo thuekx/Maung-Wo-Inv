@@ -398,7 +398,7 @@ function TelegramCard({ d, reload }: { d: any; reload: () => void }) {
       </div>
       {info && <p className="rounded-lg bg-slate-100 p-3 text-sm">Bot: <b>@{info.bot.username}</b> ({info.bot.name}) · Webhook: {info.webhook.url || <span className="text-amber-700">belum dipasang</span>}{info.webhook.lastError && <span className="text-red-600"> · error terakhir: {info.webhook.lastError}</span>} · antrean: {info.webhook.pending}</p>}
       <div className="flex flex-wrap items-end gap-2">
-        <Field label="URL API publik (https)" help="Alamat yang bisa dijangkau Telegram, mis. https://api-wo.perusahaan.co.id"><input className="input w-80" value={base} onChange={(e) => setBase(e.target.value)} placeholder="https://api-wo.contoh.co.id" /></Field>
+        <Field label="URL API publik (https)" help="Alamat yang bisa dijangkau Telegram — pada mode SSL satu-domain sama dengan alamat aplikasi, mis. https://wo.perusahaan.co.id"><input className="input w-80" value={base} onChange={(e) => setBase(e.target.value)} placeholder="https://wo.contoh.co.id" /></Field>
         <button className="btn-ghost" disabled={a.busy || !base} onClick={() => a.run(() => api('/admin/settings/telegram/webhook', { body: { baseUrl: base } }), 'Webhook terpasang')}>Pasang webhook</button>
         <button className="btn-ghost" disabled={a.busy} onClick={() => a.run(() => api('/admin/settings/telegram/delete-webhook', { body: {} }), 'Webhook dihapus')}>Hapus webhook</button>
       </div>
@@ -567,6 +567,49 @@ function WhatsappCard({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
+/** SSL & Domain (Let's Encrypt via Caddy): status sertifikat, sakelar HTTPS, paksa-redirect. */
+function SslCard() {
+  const { data, error, reload } = useFetch<any>('/admin/ssl');
+  const [f, setF] = useState<any>(null);
+  const a = useAction();
+  if (error) return <ErrorMsg>{error}</ErrorMsg>;
+  if (!data) return <p className="text-slate-500">Memuat…</p>;
+  const cfg = f ?? data.cfg;
+  const set = (k: string, v: any) => setF({ ...cfg, [k]: v });
+  const cert = data.cert;
+  const dirty = !!f;
+  const save = () => a.run(async () => { await api('/admin/ssl', { method: 'PUT', body: cfg }); setF(null); reload(); }, 'Disimpan — Caddy memuat ulang otomatis (beberapa detik)');
+  return (
+    <div className="card space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h2 className="font-semibold">SSL & Domain (Let&apos;s Encrypt)</h2><p className="text-sm text-slate-500">Sertifikat HTTPS diterbitkan <b>dan diperpanjang otomatis</b> oleh Caddy (±30 hari sebelum habis). Syarat: domain mengarah ke IP publik server dan port 80 &amp; 443 terbuka.</p></div>
+        <Badge tone={!data.available ? 'slate' : !data.cfg.enabled ? 'amber' : cert?.ok ? 'green' : 'amber'}>{!data.available ? 'Mode HTTPS belum dipasang' : !data.cfg.enabled ? 'SSL nonaktif' : cert?.ok ? 'SSL aktif' : 'Menunggu sertifikat'}</Badge>
+      </div>
+      {!data.available && <p className="rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800">Server ini berjalan tanpa Caddy (HTTP saja). Aktifkan HTTPS dengan: <code>bash scripts/deploy.sh --domain wo.perusahaan.co.id --email admin@perusahaan.co.id</code>. Setelah itu halaman ini dapat dipakai untuk mengatur SSL.</p>}
+      {data.available && (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm"><span className="label">Domain</span><input className="input" value={cfg.domain} onChange={(e) => set('domain', e.target.value)} placeholder="wo.perusahaan.co.id" /><span className="mt-0.5 block text-xs text-slate-500">DNS A record: {data.dnsIps.length ? <b>{data.dnsIps.join(', ')}</b> : <i>belum terdeteksi</i>}</span></label>
+            <label className="block text-sm"><span className="label">Email pemberitahuan Let&apos;s Encrypt</span><input className="input" value={cfg.email} onChange={(e) => set('email', e.target.value)} placeholder="admin@perusahaan.co.id" /><span className="mt-0.5 block text-xs text-slate-500">Dipakai Let&apos;s Encrypt bila perpanjangan bermasalah.</span></label>
+          </div>
+          <label className="flex items-start gap-3 rounded-lg border px-3 py-2 text-sm"><input type="checkbox" className="mt-1" checked={cfg.enabled} onChange={(e) => set('enabled', e.target.checked)} /><span><b>SSL (HTTPS) aktif</b><span className="block text-xs text-slate-600">Mematikan SSL membuat aplikasi hanya melayani HTTP biasa (kamera/GPS di HP dan webhook Telegram memerlukan HTTPS). Sertifikat yang sudah terbit tetap tersimpan dan dapat dipakai lagi saat SSL dinyalakan.</span></span></label>
+          <label className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${cfg.enabled ? '' : 'opacity-50'}`}><input type="checkbox" className="mt-1" disabled={!cfg.enabled} checked={cfg.forceRedirect} onChange={(e) => set('forceRedirect', e.target.checked)} /><span><b>Paksa HTTPS (alihkan HTTP → HTTPS otomatis)</b><span className="block text-xs text-slate-600">Dinyalakan otomatis begitu sertifikat sah terpasang, supaya Anda tidak terkunci saat sertifikat belum terbit. Akses lewat alamat IP tetap HTTP biasa (jalur pemulihan).</span></span></label>
+          <div className="rounded-lg border p-3 text-sm">
+            <div className="mb-1 font-medium">Status sertifikat</div>
+            {!data.cfg.enabled ? <p className="text-slate-500">SSL nonaktif.</p> : !cert ? <p className="text-slate-500">—</p> : cert.ok ? (
+              <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-3"><div><dt className="text-xs text-slate-500">Penerbit</dt><dd>{cert.issuer || '-'}</dd></div><div><dt className="text-xs text-slate-500">Berlaku sampai</dt><dd>{fmtDate(cert.validTo)}</dd></div><div><dt className="text-xs text-slate-500">Sisa</dt><dd><Badge tone={cert.daysLeft > 14 ? 'green' : 'amber'}>{cert.daysLeft} hari</Badge> <span className="text-xs text-slate-500">diperpanjang otomatis</span></dd></div></dl>
+            ) : <p className="text-amber-700 dark:text-amber-300">{cert.error ?? 'Sertifikat belum terpasang'} — Caddy mencoba menerbitkan otomatis. Pastikan DNS sudah mengarah ke server &amp; port 80/443 terbuka; cek <code>docker compose logs caddy</code>. Selama belum terbit, aplikasi tetap bisa dibuka lewat HTTP.</p>}
+            {data.cfg.enabled && <p className="mt-2 text-xs text-slate-500">Redirect HTTP→HTTPS: <b>{data.redirectActive ? 'AKTIF' : cfg.forceRedirect ? 'menunggu sertifikat' : 'nonaktif'}</b></p>}
+          </div>
+          <div className="flex flex-wrap items-center gap-3"><button className="btn" disabled={a.busy || !dirty} onClick={save}>Simpan & terapkan</button>{dirty && <button className="btn-ghost" onClick={() => setF(null)}>Batal</button>}<button className="btn-ghost" onClick={reload}>↻ Periksa ulang</button></div>
+          <Msg m={a.msg} />
+          <details className="text-xs"><summary className="cursor-pointer text-slate-500">Lihat Caddyfile yang diterapkan</summary><pre className="mt-1 max-h-60 overflow-auto rounded-lg bg-slate-900 p-3 text-slate-100">{data.preview}</pre></details>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AssetInfoCard({ d, reload }: { d: any; reload: () => void }) {
   const ai = d.assetInfo;
   const [f, setF] = useState({ intro: ai.intro as string, footer: ai.footer as string, contacts: { ...ai.contacts } as Record<string, string> });
@@ -603,6 +646,7 @@ const SETTING_SECTIONS = [
   { key: 'subform', label: 'Formulir Berlangganan' },
   { key: 'docs', label: 'Dokumen PR' },
   { key: 'assetinfo', label: 'Info aset (QR)' },
+  { key: 'ssl', label: 'SSL & Domain' },
 ] as const;
 
 function Settings() {
@@ -628,6 +672,7 @@ function Settings() {
         {sec === 'subform' && <SubFormCard />}
         {sec === 'docs' && <DocsCard />}
         {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
+        {sec === 'ssl' && <SslCard />}
       </div>
     </div>
   );

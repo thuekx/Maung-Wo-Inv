@@ -17,7 +17,7 @@ Semua pengaturan dikelola **Admin dari aplikasi**: menu **Admin → Pengaturan**
 
 ### 3. Pasang webhook (agar user bisa menautkan akun)
 Telegram hanya mengirim pesan ke alamat **HTTPS publik**:
-- Pakai mode Caddy (`bash scripts/deploy.sh --caddy wo.contoh.co.id api-wo.contoh.co.id`) sehingga API punya `https://api-wo.contoh.co.id`.
+- Pakai mode SSL (`bash scripts/deploy.sh --domain wo.contoh.co.id`) sehingga API punya alamat HTTPS `https://wo.contoh.co.id/api/...`.
 - Isi kolom **URL API publik** dengan alamat itu → **Pasang webhook**. Aplikasi membuat secret acak dan mendaftarkan `https://…/api/telegram/webhook/<secret>` ke Telegram. Tombol **Cek bot** menampilkan status webhook dan error terakhir.
 - Tanpa HTTPS publik (mis. VM lokal) webhook tidak bisa dipasang; **notifikasi keluar tetap jalan** (hanya `/link` yang tidak bisa dipakai). Alternatif: isi *Telegram chat ID* user langsung di *Admin → User*.
 

@@ -17,7 +17,7 @@ Kunci memberi akses baca ke **seluruh** data (termasuk data pribadi pelanggan): 
 
 ## Endpoint
 
-Base URL: `https://<API_DOMAIN>` (atau `http://<ip>:4000`).
+Base URL: `https://<domain-aplikasi>` (mode SSL satu domain; web meneruskan `/api` ke API) — atau `http://<ip>:3000` tanpa SSL.
 
 | Path | Isi | Filter `since` |
 |---|---|---|
@@ -60,7 +60,7 @@ Ulangi permintaan dengan `cursor=<nextCursor>` sampai `nextCursor` bernilai `nul
 ## Contoh
 
 ```bash
-KEY=xxxx; API=https://api-wo.contoh.co.id
+KEY=xxxx; API=https://wo.contoh.co.id
 
 # 1) Semua pelanggan ke CSV (satu halaman)
 curl -H "x-api-key: $KEY" "$API/api/export/customers?format=csv&limit=5000" -o customers.csv
@@ -103,7 +103,7 @@ Daftar ini juga tampil langsung di aplikasi: **Sidebar → Sistem → API Sistem
 | `GET /api/integrations/billing/customers/{kode}` | Billing → Maung | Status layanan pelanggan (`status`, `activatedAt`, `packageName`) |
 
 ```bash
-curl -X POST https://<API_DOMAIN>/api/integrations/billing/events \
+curl -X POST https://<domain-aplikasi>/api/integrations/billing/events \
   -H "x-api-key: <BILLING_API_KEY>" -H "content-type: application/json" \
   -d '{"event":"suspend","customerCode":"260705044930","reason":"Tunggakan 2 bulan","invoiceRef":"INV-2610-045"}'
 ```

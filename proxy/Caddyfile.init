@@ -1,0 +1,20 @@
+# Caddyfile AWAL (dibuat sekali oleh caddy-entrypoint.sh bila /etc/caddy/Caddyfile belum ada).
+# Setelah itu berkas di volume `caddyconf` DIKELOLA OTOMATIS oleh API (Admin → Pengaturan → SSL & Domain) — jangan disalin balik ke repo.
+# Aman untuk awal: HTTPS (Let's Encrypt) aktif untuk domain, tetapi HTTP belum dialihkan sampai sertifikat terpasang.
+{
+	__EMAIL_LINE__
+	auto_https disable_redirects
+}
+
+__DOMAIN__ {
+	reverse_proxy web:3000
+}
+
+http://__DOMAIN__ {
+	reverse_proxy web:3000
+}
+
+# akses lewat IP / hostname lain: HTTP biasa (jalur pemulihan)
+:80 {
+	reverse_proxy web:3000
+}

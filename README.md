@@ -43,9 +43,11 @@ Rekomendasi minimum produksi (≈ 200–500 pelanggan aktif/bulan baru, puluhan 
 
 **Web** — `next`/`react` (UI) · `tailwindcss` (styling) · `html5-qrcode` (scan QR/barcode lewat kamera) · `qrcode.react` (membuat label QR aset).
 
-## 4. Instalasi & menjalankan (Ubuntu 24.04 LTS)
+## 4. Instalasi & menjalankan (Linux + Docker)
 
-Target tunggal: **Ubuntu Server 24.04 LTS (noble), x86_64/arm64**. Spesifikasi minimum 2 vCPU / **4 GB RAM** (build Next.js butuh memori; di 2 GB tambahkan swap) / 20 GB disk. Seluruh aplikasi berjalan di container Docker, jadi **Node.js tidak perlu dipasang di server** (Node 24 hanya untuk pengembangan, lihat bagian D).
+> **Panduan lengkap langkah demi langkah (DNS, firewall, SSL Let's Encrypt, instal ulang dari awal): [`docs/INSTALL.md`](docs/INSTALL.md).**
+
+OS yang didukung: **Ubuntu 22.04 / 24.04 / 26.04+** (dan turunannya), **Debian 12/13**, **Rocky / AlmaLinux / CentOS Stream / Fedora**; x86_64 atau arm64. Distro lain: pasang Docker Engine + Compose v2.24+ sendiri lalu langsung `scripts/deploy.sh`. Spesifikasi minimum 2 vCPU / **4 GB RAM** (build Next.js butuh memori; di 2 GB tambahkan swap: `SETUP_SWAP=2G`) / 20 GB disk. Seluruh aplikasi berjalan di container Docker, jadi **Node.js tidak perlu dipasang di server** (Node 24 hanya untuk pengembangan, lihat bagian D).
 
 Repo ini **private**. Cara clone di server: **Personal Access Token** (GitHub → Settings → Developer settings → fine-grained token, akses *Contents: read-only* ke repo ini) atau **Deploy Key** SSH (repo → Settings → Deploy keys, read-only).
 
@@ -63,17 +65,17 @@ git clone https://<USERNAME>:<TOKEN>@github.com/thuekx/Maung-Wo-Inv.git
 cd Maung-Wo-Inv
 sudo timedatectl set-timezone Asia/Jakarta          # waktu jadwal & cron
 
-# 1) Docker Engine + Compose plugin + Portainer
+# 1) Docker Engine + Compose plugin + Portainer (apt / dnf otomatis menyesuaikan OS)
 sudo bash scripts/install-server.sh
-#    opsi: SETUP_FIREWALL=1 (aktifkan UFW) | SKIP_PORTAINER=1 | INSTALL_NODE=1 (Node 24 untuk dev)
+#    opsi: SETUP_FIREWALL=1 | SETUP_SWAP=2G | SKIP_PORTAINER=1 | INSTALL_NODE=1 (Node 24 untuk dev)
 newgrp docker                                        # atau logout/login agar grup docker aktif
 
 # 2) Buat .env (secret acak), build, jalankan, seed data awal
+bash scripts/deploy.sh --domain wo.contoh.co.id --email admin@contoh.co.id   # HTTPS Let's Encrypt otomatis (SATU domain web+API) — disarankan
 bash scripts/deploy.sh                               # tanpa domain  -> http://IP-SERVER:3000
-bash scripts/deploy.sh --host wo.contoh.co.id        # dengan domain -> tetap HTTP
-bash scripts/deploy.sh --caddy wo.contoh.co.id api-wo.contoh.co.id   # HTTPS otomatis (Let's Encrypt)
+bash scripts/deploy.sh --host wo.contoh.co.id        # nama host tanpa SSL -> http://host:3000
 ```
-Di akhir, skrip mencetak URL web, URL Portainer, dan password akun demo. Untuk `--caddy`: arahkan DNS **kedua** domain (A record) ke IP server dan pastikan port 80/443 terbuka sebelum menjalankan. **Ganti password semua akun demo** setelah login pertama (menu Profil / Admin).
+Di akhir, skrip mencetak URL web, URL Portainer, dan password akun demo. Untuk `--domain`: arahkan DNS A record domain ke IP publik server dan pastikan port 80/443 terbuka **sebelum** menjalankan (skrip memeriksa DNS & port dan memberi peringatan). **Ganti password semua akun demo** setelah login pertama (menu Profil / Admin).
 
 Verifikasi:
 ```bash
@@ -94,12 +96,12 @@ Build pertama memakan beberapa menit (unduh image + `npm install` + `next build`
 
 > `NEXT_PUBLIC_API_URL` ikut dibake saat build web — jika diubah, web harus di-build ulang (*Pull and redeploy* dengan opsi rebuild).
 
-### C. Mode HTTPS (Caddy) — direkomendasikan untuk produksi
-`bash scripts/deploy.sh --caddy <domain-web> <domain-api>` memakai `docker-compose.caddy.yml`: hanya port 80/443 yang terbuka ke luar, port 3000/4000 tidak dipublikasikan, sertifikat diurus otomatis. Perintah manual setara:
-```bash
-docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
-```
-(butuh Docker Compose ≥ 2.24 — sudah terpenuhi oleh `install-server.sh`).
+### C. SSL Let's Encrypt (Caddy) — disarankan untuk produksi
+`bash scripts/deploy.sh --domain <domain> --email <email>` memakai `docker-compose.caddy.yml`: hanya port 80/443 terbuka ke luar, port 3000/4000 tidak dipublikasikan, web & API berbagi **satu domain** (web meneruskan `/api` ke API secara internal).
+- Sertifikat **diterbitkan otomatis** dan **diperpanjang otomatis** oleh Caddy (±30 hari sebelum habis) — tidak perlu cron/certbot. Data sertifikat ada di volume `caddy_data` (jangan dihapus: Let's Encrypt membatasi penerbitan ulang).
+- **Redirect HTTP→HTTPS otomatis** — dinyalakan setelah sertifikat sah terdeteksi (selama belum terbit, aplikasi tetap bisa dibuka lewat HTTP agar Anda tidak terkunci).
+- **Admin → Pengaturan → SSL & Domain**: lihat penerbit & sisa hari sertifikat, ganti domain/email, **matikan SSL** atau matikan **paksa HTTPS** tanpa menyentuh server. Akses lewat `http://<IP-server>` selalu tetap HTTP biasa (jalur pemulihan).
+- Perintah manual setara: `docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build` (Compose ≥ 2.24).
 
 ### D. Pengembangan di Ubuntu (opsional; Node 24 + DB/Redis di Docker)
 ```bash
@@ -119,17 +121,17 @@ Cek mutu dari root repo: `npm run typecheck`.
 
 | Berkas | Fungsi |
 |---|---|
-| `scripts/install-server.sh` | Docker Engine, Compose plugin, Portainer CE, opsional UFW & Node 24 (Ubuntu 24.04) |
-| `scripts/deploy.sh` | `.env` + secret acak, build, up, seed; mode `--host` / `--caddy` |
+| `scripts/install-server.sh` | Docker Engine, Compose plugin, Portainer CE; opsional firewall, swap, Node 24 (Ubuntu/Debian/RHEL-keluarga) |
+| `scripts/deploy.sh` | `.env` + secret acak, build, up, seed; mode `--domain` (HTTPS) / `--host` / tanpa argumen (IP:3000) |
 | `docker-compose.yml` | postgres, redis, api, worker, web (semua config via variabel) |
-| `docker-compose.caddy.yml` + `proxy/Caddyfile` | HTTPS otomatis (overlay) |
+| `docker-compose.caddy.yml` + `proxy/` | HTTPS Let's Encrypt otomatis (overlay Caddy; Caddyfile dikelola dari Admin) |
 | `docker-compose.dev.yml` | membuka port Postgres/Redis untuk dev lokal |
 | `package.json` (root) | `install:all`, `typecheck`, `up`, `down`, `logs`, `seed` |
 
-### Catatan operasional (Ubuntu 24.04)
+### Catatan operasional
 - **Jangan commit `.env`** (sudah di `.gitignore`); simpan salinannya di password manager. Hak akses: `chmod 600 .env`.
 - **Portainer = akses penuh ke Docker host.** Batasi port 9443 (firewall penyedia VPS / VPN / `ufw allow from <IP-kantor> to any port 9443`), aktifkan 2FA bila tersedia.
-- **Docker mem-bypass UFW** untuk port yang dipublikasikan (`3000`, `4000`, `9443`). Gunakan mode `--caddy` + firewall penyedia VPS sebagai lapisan utama; `SETUP_FIREWALL=1` saja tidak cukup menutup port container.
+- **Docker mem-bypass UFW** untuk port yang dipublikasikan (`3000`, `4000`, `9443`). Gunakan mode `--domain` + firewall penyedia VPS sebagai lapisan utama; `SETUP_FIREWALL=1` saja tidak cukup menutup port container.
 - **Backup harian** (cron user yang masuk grup docker):
   ```bash
   mkdir -p ~/backups
@@ -139,7 +141,7 @@ Cek mutu dari root repo: `npm run typecheck`.
   Backup volume foto: `docker run --rm -v maung-wo-inv_uploads:/d -v ~/backups:/b alpine tar czf /b/uploads_$(date +%F).tgz -C /d .`
   Pulihkan DB: `gunzip -c backup.sql.gz | docker compose exec -T postgres psql -U l1v l1v_wo`.
 - **Restart otomatis:** semua container `restart: unless-stopped`, dan service `docker` aktif saat boot, sehingga stack hidup kembali setelah reboot.
-- **Pembaruan keamanan OS:** `sudo apt install unattended-upgrades` lalu `sudo dpkg-reconfigure -plow unattended-upgrades`.
+- **Pembaruan keamanan OS:** Ubuntu/Debian: `sudo apt install unattended-upgrades` lalu `sudo dpkg-reconfigure -plow unattended-upgrades`; RHEL-keluarga: `sudo dnf install dnf-automatic && sudo systemctl enable --now dnf-automatic.timer`.
 
 ### Troubleshooting
 | Gejala | Penyebab / solusi |
@@ -147,8 +149,8 @@ Cek mutu dari root repo: `npm run typecheck`.
 | `permission denied ... docker.sock` | User belum di grup docker → `newgrp docker` atau login ulang. |
 | `docker compose` tidak dikenal | Compose plugin belum terpasang → jalankan ulang `install-server.sh`. |
 | Build web berhenti "Killed" | RAM kurang → tambah swap: `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`. |
-| Web tidak bisa login / CORS error | `NEXT_PUBLIC_API_URL`, `WEB_URL`, `CORS_ORIGIN` di `.env` tidak sama dengan URL yang dibuka di browser → perbaiki lalu `bash scripts/deploy.sh` (web di-build ulang). |
-| Caddy gagal mendapat sertifikat | DNS belum mengarah ke server / port 80 tertutup → cek `docker compose logs caddy`. |
+| Web tidak bisa login | Mode satu alamat: `NEXT_PUBLIC_API_URL` harus **kosong**; bila diisi (mode lama) harus sama dengan alamat API yang dibuka browser. Jalankan ulang `bash scripts/deploy.sh`. |
+| Caddy gagal mendapat sertifikat | DNS belum mengarah ke server / port 80 tertutup (firewall OS **dan** penyedia VPS) / proxy CDN (Cloudflare oranye) → cek `docker compose logs caddy` dan Admin → SSL & Domain. |
 | `api` restart terus | `docker compose logs api` — biasanya `JWT_SECRET`/`POSTGRES_PASSWORD` kosong atau Postgres belum sehat. |
 | Notifikasi tidak terkirim | Lihat Admin → Log notifikasi; tanpa `SMTP_HOST`/`TELEGRAM_BOT_TOKEN` sistem hanya mencatat (dry-run). |
 
