@@ -29,7 +29,7 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
     <div className="grid grid-cols-3 gap-2">
       {list.map((a) => (
         <figure key={a.id} className="break-inside-avoid">
-          <img src={fileUrl(a.url)} alt="" className="h-[38mm] w-full rounded border object-cover" />
+          <img src={fileUrl(a.url)} alt="" className="aspect-[4/3] w-full rounded border bg-white object-contain" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties} />
           <figcaption className="mt-0.5 text-[8pt] leading-tight text-gray-600">{a.note ? `${a.note} · ` : ''}{a.takenAt ? new Date(a.takenAt).toLocaleString('id-ID') : ''}{a.lat != null ? ` · ${Number(a.lat).toFixed(5)}, ${Number(a.lng).toFixed(5)}` : ''}</figcaption>
         </figure>
       ))}
@@ -74,7 +74,7 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
           {row('POP', r.pop ?? c?.pop)}{row('Main Splitter', r.mainSplitter)}
           {!install && row('ODP', r.odp ?? c?.odp)}
           {row('Koordinat', coord ? <>{coord} <a className="text-blue-700 underline print:no-underline" href={`https://www.google.com/maps?q=${coord.replace(' ', '')}`} target="_blank" rel="noreferrer">peta</a></> : null)}
-          {row('Signal', r.signalDbm != null ? `${r.signalDbm} dBm` : null)}{row('Redaman', r.opmDbm != null ? `${r.opmDbm} dBm` : null)}
+          {row('Signal', r.signalDbm != null ? `${r.signalDbm} dBm` : null)}{row('Redaman', r.attenuationDb != null ? `${r.attenuationDb} dB` : r.opmDbm != null ? `${Math.abs(r.opmDbm)} dB` : null)}
           {install && row('Tanggal pelaksanaan', longDate(r.at))}
           {row('Tim Pelaksana', team.length ? team.join(', ') : null)}
         </tbody></table>
@@ -82,7 +82,9 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
         {!install && (
           <>
             <p className="mb-1 font-semibold">Langkah Troubleshooting</p>
-            <p className="mb-4 whitespace-pre-wrap">{r.note || '-'}</p>
+            {r.findings || r.actions || r.result ? (
+              <table className="mb-4 w-full"><tbody>{row('Temuan', <span className="whitespace-pre-wrap">{r.findings}</span>)}{row('Tindakan', <span className="whitespace-pre-wrap">{r.actions}</span>)}{row('Hasil', <span className="whitespace-pre-wrap">{r.result}</span>)}</tbody></table>
+            ) : <p className="mb-4 whitespace-pre-wrap">{r.note || '-'}</p>}
             {removed.length > 0 && <><p className="mb-1 font-semibold">Perangkat Diambil</p><ul className="mb-4 list-disc pl-6">{removed.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
             {devices.length > 0 && <><p className="mb-1 font-semibold">Perangkat Baru Terpasang</p><ul className="mb-4 list-disc pl-6">{devices.map((d, i) => <li key={i}>{d}</li>)}</ul></>}
           </>

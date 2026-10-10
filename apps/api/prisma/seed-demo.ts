@@ -94,7 +94,7 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   }
 
   await act(wo.id, 'submit_report', tech, {
-    serials: [ont.serialNumber], materials: [{ itemId: ID.DROPCORE, qty: 95 }, { itemId: ID.FASTCONN, qty: 2 }, { itemId: ID.SLEEVE, qty: 2 }], opmDbm: -19.4, pop: o.cab ? 'POP-Cabang-A' : 'POP-Pusat', mainSplitter: 'MS-01 1:8', lat, lng, signalDbm: -18.2,
+    serials: [ont.serialNumber], materials: [{ itemId: ID.DROPCORE, qty: 95 }, { itemId: ID.FASTCONN, qty: 2 }, { itemId: ID.SLEEVE, qty: 2 }], attenuationDb: 19.4, pop: o.cab ? 'POP-Cabang-A' : 'POP-Pusat', mainSplitter: 'MS-01 1:8', lat, lng, signalDbm: -18.2,
     photos: [await photo(lat, lng, 'Perangkat ONT terpasang', tech), await photo(lat, lng, 'Hasil OPM -19.4 dBm', tech)], note: 'Instalasi rapi, sinyal stabil',
   });
   if (!at('awaiting_ba')) return { ...wo, customerId: cust };
@@ -180,7 +180,7 @@ async function trouble(cust: string, until: 'diagnose' | 'dispatch' | 'scheduled
   await act(wo.id, 'start', tech, { note: 'Berangkat ke lokasi' });
   if (!at('verify')) return wo;
   const c = await prisma.customer.findUniqueOrThrow({ where: { id: cust } });
-  await act(wo.id, 'submit_report', tech, { opmDbm: -20.3, photos: [await photo(c.lat ?? -6.2, c.lng ?? 106.8, 'Pembersihan konektor & OPM', tech)], note: 'Konektor dibersihkan, tikungan kabel dirapikan', serialsNew: [], serialsOld: [], materials: [] });
+  await act(wo.id, 'submit_report', tech, { attenuationDb: 20.3, signalDbm: -22, findings: 'Konektor kotor dan kabel menekuk', actions: 'Konektor dibersihkan, tikungan kabel dirapikan', result: 'Redaman turun ke 20.3 dB, koneksi normal', photos: [await photo(c.lat ?? -6.2, c.lng ?? 106.8, 'Pembersihan konektor & OPM', tech)], serialsNew: [], serialsOld: [], materials: [] });
   if (!at('confirm')) return wo;
   await act(wo.id, 'verify_up', 'noc', { pingMs: 5, note: 'Koneksi normal' });
   if (!at('closed')) return wo;

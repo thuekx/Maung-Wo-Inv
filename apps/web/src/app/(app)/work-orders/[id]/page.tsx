@@ -64,12 +64,13 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
                 <>
                   <div className="mb-3 flex flex-wrap gap-2">
                     {available.map((a) => (
-                      <button key={a.key} className={active === a.key ? (a.danger ? 'btn-danger' : 'btn') : 'btn-ghost'} onClick={() => setActive(active === a.key ? null : a.key)}>{a.label}</button>
+                      <button key={a.key} className={active === a.key ? (a.danger ? 'btn-danger' : 'btn') : 'btn-ghost'} onClick={() => setActive(a.key)}>{a.label}</button>
                     ))}
                   </div>
                   {current && (
                     <div className="rounded-lg border bg-slate-50 p-3">
-                      <DynamicForm key={current.key} fields={current.fields} initial={wo.prefill?.[current.key]} woId={wo.id} woNumber={wo.number} danger={current.danger} submitLabel={current.label}
+                      <div className="mb-2 flex items-center justify-between text-sm"><b>{current.label}</b><button type="button" className="text-slate-500 hover:underline" onClick={() => setActive(null)}>Tutup form</button></div>
+                      <DynamicForm key={current.key} fields={current.fields} initial={wo.prefill?.[current.key]} woId={wo.id} woNumber={wo.number} danger={current.danger} submitLabel={`✔ Submit: ${current.label}`}
                         onSubmit={async (input) => { await api(`/work-orders/${wo.id}/actions/${current.key}`, { body: input }); setActive(null); toast.success(`${current.label} berhasil.`); await reload(); }} />
                     </div>
                   )}

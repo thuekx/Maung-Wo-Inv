@@ -213,7 +213,8 @@ core.post('/uploads', upload.single('file'), async (req, res) => {
     throw new AppError(400, 'Foto teknisi wajib memiliki lokasi GPS — aktifkan izin lokasi di browser (butuh HTTPS)');
   }
   const url = `/uploads/${req.file.filename}`;
-  await prisma.attachment.create({ data: { url, mime: req.file.mimetype, uploadedBy: u.id, woId: m.woId, kind: m.kind, lat: m.lat, lng: m.lng, accuracy: m.accuracy, takenAt: new Date() } });
+  // woId TIDAK diikat saat unggah: foto baru terikat ke WO hanya saat laporan benar-benar dikirim (bindPhotos). Foto yang tak jadi dikirim tidak muncul di WO.
+  await prisma.attachment.create({ data: { url, mime: req.file.mimetype, uploadedBy: u.id, kind: m.kind, lat: m.lat, lng: m.lng, accuracy: m.accuracy, takenAt: new Date() } });
   res.status(201).json({ url, lat: m.lat ?? null, lng: m.lng ?? null });
 });
 

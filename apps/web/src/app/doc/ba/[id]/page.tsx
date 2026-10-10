@@ -7,6 +7,9 @@ import { ErrorMsg } from '@/components/ui';
 import { useBranding } from '@/lib/photo';
 
 /** Pratinjau Berita Acara Aktivasi Layanan (BA Digital) dari data WO Pasang Baru. */
+/** Redaman (dB, positif); data lama menyimpan opmDbm negatif. */
+const att = (r: any) => (r?.attenuationDb != null ? r.attenuationDb : r?.opmDbm != null ? Math.abs(r.opmDbm) : null);
+
 export default function BaPrint({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
@@ -40,7 +43,7 @@ export default function BaPrint({ params }: { params: Promise<{ id: string }> })
         {devices.length ? <ul className="mb-4 list-disc pl-6">{devices.map((d) => <li key={d.sn}><span className="font-mono">{d.sn}</span>{d.name ? ` — ${d.name}` : ''}</li>)}</ul> : <p className="mb-4">-</p>}
         <p className="mb-1 font-semibold">Hasil pengujian layanan</p>
         <table className="mb-4 w-full"><tbody>
-          {row('Profil bandwidth', act.profile)}{row('Ping / Latency', `${act.pingMs} ms${act.jitterMs != null && act.jitterMs !== '' ? ` · jitter ${act.jitterMs} ms` : ''}`)}{row('Speedtest', `Download ${act.downMbps} Mbps · Upload ${act.upMbps} Mbps`)}{row('Redaman optik (OPM)', wo.data.report?.opmDbm != null ? `${wo.data.report.opmDbm} dBm` : '')}
+          {row('Profil bandwidth', act.profile)}{row('Ping / Latency', `${act.pingMs} ms${act.jitterMs != null && act.jitterMs !== '' ? ` · jitter ${act.jitterMs} ms` : ''}`)}{row('Speedtest', `Download ${act.downMbps} Mbps · Upload ${act.upMbps} Mbps`)}{row('Signal', wo.data.report?.signalDbm != null ? `${wo.data.report.signalDbm} dBm` : '')}{row('Redaman', att(wo.data.report) != null ? `${att(wo.data.report)} dB` : '')}
         </tbody></table>
         <p className="mb-6">Dengan ini kedua belah pihak menyatakan bahwa layanan telah terpasang dan berfungsi dengan baik, serta pelanggan menyetujui ketentuan berlangganan {brand.companyName}.</p>
         <div className="grid grid-cols-2 gap-8 text-center">

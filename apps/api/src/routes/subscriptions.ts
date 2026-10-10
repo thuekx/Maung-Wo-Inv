@@ -45,7 +45,7 @@ const body = z.object({
 });
 
 const canWrite = requireRole('MKT');
-const readers = requireRole('MKT', 'FIN', 'NOC');
+const readers = requireRole('MKT'); // Formulir Berlangganan hanya Marketing (dan Admin)
 
 const regNoOf = async (date: Date, suffix: string) => `${(await getSubForm()).regPrefix}${regYear3(date)}${suffix}`;
 

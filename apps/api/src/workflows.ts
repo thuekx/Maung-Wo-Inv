@@ -37,10 +37,25 @@ const techFields = (opts: { redamanRequired?: boolean } = {}): Field[] => [
   { name: 'mainSplitter', label: 'Main splitter', type: 'text' },
   { name: 'lat', label: 'Latitude (koordinat lokasi)', type: 'number', help: 'Tekan "Gunakan lokasi sekarang" atau pilih dari peta' },
   { name: 'lng', label: 'Longitude (koordinat lokasi)', type: 'number' },
-  { name: 'signalDbm', label: 'Signal (dBm)', type: 'number', help: 'Mis. level terima ONT: -18.5' },
-  { name: 'opmDbm', label: 'Redaman OPM (dBm)', type: 'number', required: opts.redamanRequired, help: 'contoh: -19.5' },
+  { name: 'signalDbm', label: 'Signal (dBm)', type: 'number', help: 'Isi angkanya saja, mis. 21 — otomatis disimpan sebagai -21 dBm (signal selalu negatif)' },
+  { name: 'attenuationDb', label: 'Redaman (dB)', type: 'number', required: opts.redamanRequired, help: 'Isi angkanya saja, mis. 15 — otomatis disimpan sebagai 15 dB (redaman selalu positif)' },
 ];
-const techZ = { odp: odpName, port: portName, pop: optText, mainSplitter: optText, lat: optNum(-90, 90), lng: optNum(-180, 180), signalDbm: optNum(-60, 20) };
+const techZ = { odp: odpName, port: portName, pop: optText, mainSplitter: optText, lat: optNum(-90, 90), lng: optNum(-180, 180) };
+/** Signal selalu negatif (dBm) dan redaman selalu positif (dB), berapa pun tanda yang diketik. */
+const signalZ = z.preprocess(blankToUndef, z.coerce.number().min(-100).max(100).optional()).transform((v) => (v == null ? undefined : -Math.abs(v)));
+const attenuationZ = z.coerce.number().min(-100).max(100).transform((v) => Math.abs(v));
+const attenuationOpt = z.preprocess(blankToUndef, z.coerce.number().min(-100).max(100).optional()).transform((v) => (v == null ? undefined : Math.abs(v)));
+/** Klien API lama masih mengirim opmDbm (negatif) → dipetakan ke redaman (dB, positif). */
+const legacyLevels = (input: unknown) => { const o = { ...((input ?? {}) as Record<string, unknown>) }; if (o.attenuationDb === undefined && o.opmDbm !== undefined && o.opmDbm !== '') o.attenuationDb = Math.abs(Number(o.opmDbm)); return o; };
+
+/** Laporan troubleshooting: temuan, tindakan, hasil (terpisah agar mudah dibaca & dicetak). */
+const tatFields: Field[] = [
+  { name: 'findings', label: 'Temuan', type: 'textarea', required: true, help: 'Apa yang ditemukan di lapangan (gejala / penyebab)' },
+  { name: 'actions', label: 'Tindakan', type: 'textarea', required: true, help: 'Apa yang dikerjakan untuk memperbaiki' },
+  { name: 'result', label: 'Hasil', type: 'textarea', required: true, help: 'Kondisi setelah perbaikan (mis. LOS hilang, redaman normal)' },
+];
+const tatZ = { findings: z.string().trim().min(2, 'Isi temuan').max(1000), actions: z.string().trim().min(2, 'Isi tindakan').max(1000), result: z.string().trim().min(2, 'Isi hasil').max(1000) };
+const tatNote = (i: { findings: string; actions: string; result: string }) => `Temuan: ${i.findings}\nTindakan: ${i.actions}\nHasil: ${i.result}`;
 
 /** Terapkan data teknis ke pelanggan (ODP/port/POP/koordinat) dan kembalikan nilai akhir untuk laporan. */
 async function applyTech(ctx: Ctx, i: { odp?: string; port?: string; pop?: string; lat?: number; lng?: number }) {
@@ -354,8 +369,8 @@ const newInstall: Workflow = {
           ],
           run: async (ctx, input) => {
             const i = z
-              .object({ serials: sn.pipe(z.array(z.string()).min(1, 'Scan minimal 1 SN perangkat')), cableMeters: z.coerce.number().int().min(0).default(0), materials, ...techZ, opmDbm: z.coerce.number().min(-40).max(0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote })
-              .parse(input);
+              .object({ serials: sn.pipe(z.array(z.string()).min(1, 'Scan minimal 1 SN perangkat')), cableMeters: z.coerce.number().int().min(0).default(0), materials, ...techZ, signalDbm: signalZ, attenuationDb: attenuationZ, photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: optNote })
+              .parse(legacyLevels(input));
             const tech = await applyTech(ctx, i);
             const mob = await consume(ctx, i.cableMeters, i.materials, { pickedOnly: true });
             await installSerials(ctx, i.serials, mob.id);
@@ -554,12 +569,13 @@ const trouble: Workflow = {
             { name: 'materials', label: 'Material terpakai (kabel dalam meter, dll)', type: 'materials', help: 'Diambil dari Stok Berjalan Anda; kabel yang belum diambil/diminta tidak bisa dipakai.' },
             ...techFields(),
             photosF,
-            { name: 'note', label: 'Langkah-langkah troubleshooting yang dilakukan', type: 'textarea', required: true, help: 'Isi urut: temuan, tindakan, hasil. Tercetak di Laporan Troubleshooting.' },
+            ...tatFields,
           ],
           run: async (ctx, input) => {
-            const i = z
-              .object({ serialsNew: sn.default([]), serialsOld: sn.default([]), cableMeters: z.coerce.number().int().min(0).default(0), materials, ...techZ, opmDbm: optNum(-40, 0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: z.string().min(2, 'Isi langkah-langkah troubleshooting') })
-              .parse(input);
+            const i0 = z
+              .object({ serialsNew: sn.default([]), serialsOld: sn.default([]), cableMeters: z.coerce.number().int().min(0).default(0), materials, ...techZ, signalDbm: signalZ, attenuationDb: attenuationOpt, photos: z.array(z.string()).min(1, 'Minimal 1 foto'), ...tatZ })
+              .parse(legacyLevels(input));
+            const i = { ...i0, note: tatNote(i0) };
             const tech = await applyTech(ctx, i);
             const mob = await consume(ctx, i.cableMeters, i.materials);
             await installSerials(ctx, i.serialsNew, mob.id);
@@ -984,10 +1000,11 @@ const maintenance: Workflow = {
             ...techFields().filter((f) => !['odp', 'port'].includes(f.name)),
             { name: 'odp', label: 'ODP (bila relevan)', type: 'text' },
             photosF,
-            { name: 'note', label: 'Langkah-langkah troubleshooting yang dilakukan', type: 'textarea', required: true, help: 'Isi urut: temuan, tindakan, hasil. Tercetak di Laporan Troubleshooting.' },
+            ...tatFields,
           ],
           run: async (ctx, input) => {
-            const i = z.object({ cableMeters: z.coerce.number().int().min(0).default(0), materials, odp: optText, pop: optText, mainSplitter: optText, lat: optNum(-90, 90), lng: optNum(-180, 180), signalDbm: optNum(-60, 20), opmDbm: optNum(-40, 0), photos: z.array(z.string()).min(1, 'Minimal 1 foto'), note: z.string().min(2, 'Isi langkah-langkah troubleshooting') }).parse(input);
+            const i0 = z.object({ cableMeters: z.coerce.number().int().min(0).default(0), materials, odp: optText, pop: optText, mainSplitter: optText, lat: optNum(-90, 90), lng: optNum(-180, 180), signalDbm: signalZ, attenuationDb: attenuationOpt, photos: z.array(z.string()).min(1, 'Minimal 1 foto'), ...tatZ }).parse(legacyLevels(input));
+            const i = { ...i0, note: tatNote(i0) };
             await consume(ctx, i.cableMeters, i.materials);
             ctx.data.report = { ...i, team: await teamNames(ctx, ctx.wo.teamIds), submittedBy: ctx.actor.name, at: new Date() };
           },

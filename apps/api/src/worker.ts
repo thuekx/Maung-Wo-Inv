@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import fs from 'fs';
 import { Worker, Job } from 'bullmq';
 import { config } from './config';
 import { prisma } from './db';
@@ -73,6 +74,12 @@ new Worker(
     if (job.name === 'maintenance-reminder') {
       // pembersihan rutin harian: notifikasi dalam aplikasi lebih dari 90 hari
       await prisma.inbox.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86400_000) } } }).catch((e) => console.error('bersihkan inbox gagal', e));
+      // foto yang diunggah tetapi laporannya tidak pernah dikirim (tanpa WO > 2 hari): hapus berkas & catatan
+      try {
+        const orphans = await prisma.attachment.findMany({ where: { woId: null, kind: { in: ['REPORT', 'PROGRESS'] }, createdAt: { lt: new Date(Date.now() - 2 * 86400_000) } }, select: { id: true, url: true }, take: 500 });
+        for (const a of orphans) await fs.promises.unlink(`${config.uploadDir}/${a.url.split('/').pop()}`).catch(() => {});
+        if (orphans.length) await prisma.attachment.deleteMany({ where: { id: { in: orphans.map((a) => a.id) } } });
+      } catch (e) { console.error('bersihkan foto yatim gagal', e); }
       const due = await prisma.asset.findMany({
         where: { needsMaintenance: true, nextMaintenanceAt: { lte: new Date(Date.now() + 7 * 86400_000) }, status: { in: ['IN_USE', 'IN_STOCK'] } },
         include: { item: true },
