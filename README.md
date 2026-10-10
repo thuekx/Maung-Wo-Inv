@@ -61,6 +61,8 @@ git clone https://<USERNAME>:<TOKEN>@github.com/thuekx/Maung-Wo-Inv.git
 
 ### A. Instalasi cepat (skrip)
 
+**Termudah:** pemandu interaktif `scripts/setup.sh` (menanyakan semua isian) — perintahnya ada di [`docs/INSTALL.md`](docs/INSTALL.md). Atau manual:
+
 ```bash
 cd Maung-Wo-Inv
 sudo timedatectl set-timezone Asia/Jakarta          # waktu jadwal & cron

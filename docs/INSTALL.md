@@ -14,6 +14,16 @@ Berlaku untuk **Ubuntu 22.04 / 24.04 / 26.04+, Debian 12/13, Rocky / AlmaLinux /
 | 7 | Email admin | untuk pemberitahuan Let's Encrypt (opsional tetapi disarankan) |
 | 8 | Akses ke repo | repo private → Personal Access Token (Contents: read-only) atau Deploy Key, lihat README §4 |
 
+## Cara tercepat — pemandu interaktif (disarankan)
+Satu perintah, semua isian ditanyakan (domain, email, token GitHub, hapus instalasi lama, swap, firewall, Portainer), lalu otomatis: periksa DNS/port → unduh kode → pasang Docker → deploy dengan SSL → tunggu sertifikat.
+```bash
+read -rsp "Token GitHub: " GH_TOKEN; echo; export GH_TOKEN
+curl -fsSL -H "Authorization: token $GH_TOKEN" https://raw.githubusercontent.com/thuekx/Maung-Wo-Inv/main/scripts/setup.sh -o setup.sh && bash setup.sh
+```
+Token GitHub: fine-grained dengan *Repository access* ke repo ini + *Contents: Read-only*, atau token klasik dengan scope `repo`. Setelah kode terunduh, pemandu juga tersedia di `bash scripts/setup.sh` (`DRY_RUN=1` = hanya mencetak langkah).
+
+Langkah manual di bawah ini setara bila ingin mengerjakan satu per satu.
+
 ## 1. (Hanya bila mengulang dari instalasi lama) — bersihkan
 > ⚠️ Langkah ini **menghapus semua data** aplikasi lama. Bila ada data penting, backup dulu (README → *Backup harian*).
 ```bash
