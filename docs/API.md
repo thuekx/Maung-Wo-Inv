@@ -89,3 +89,34 @@ Excel: *Data → From Web*, isi URL dengan `format=csv`, tambahkan header `x-api
 | `503` | `EXPORT_API_KEY` belum diisi di server |
 
 Sel CSV yang diawali `= + - @` diberi awalan `'` untuk mencegah formula injection di Excel.
+
+---
+
+## Pembaruan (UAT v2, 2026-10-10)
+
+Daftar ini juga tampil langsung di aplikasi: **Sidebar → Sistem → API Sistem** (Admin), lengkap dengan tombol *Ambil contoh* (respons nyata, 1 data). Dokumen ini diperbarui setiap ada perubahan endpoint.
+
+### Integrasi Billing (dua arah, kunci `BILLING_API_KEY`)
+| Endpoint | Arah | Fungsi |
+|---|---|---|
+| `POST /api/integrations/billing/events` | Billing → Maung | Membuat WO otomatis. Body: `{"event":"suspend\|unsuspend\|terminate","customerCode":"…","reason":"…","invoiceRef":"…"}`. Header `x-api-key`. Idempoten (WO terbuka yang sama → `{"duplicate":true}`) |
+| `GET /api/integrations/billing/customers/{kode}` | Billing → Maung | Status layanan pelanggan (`status`, `activatedAt`, `packageName`) |
+
+```bash
+curl -X POST https://<API_DOMAIN>/api/integrations/billing/events \
+  -H "x-api-key: <BILLING_API_KEY>" -H "content-type: application/json" \
+  -d '{"event":"suspend","customerCode":"260705044930","reason":"Tunggakan 2 bulan","invoiceRef":"INV-2610-045"}'
+```
+
+### Publik (tanpa kunci)
+| Endpoint | Fungsi |
+|---|---|
+| `GET /api/public/asset/{SN}` | Info aset untuk halaman label QR (`/a/{SN}`): nama barang, merk/tipe, status, lokasi gudang, kalimat info & tombol kontak yang diatur Admin. **Tidak** memuat data pelanggan. Dibatasi 60 permintaan/menit/IP |
+
+### Keluar dari Maung (konfigurasi di Admin → Pengaturan)
+- **WhatsApp** (gateway pihak ketiga, berbiaya per pesan; sakelar ON/OFF, bawaan MATI): penyedia *Fonnte* (`POST {baseUrl}/send`, header `Authorization: <token>`, form `target`, `message`, `countryCode=62`) atau *gateway umum* (URL + nama header + templat body JSON memuat `{{to}}` dan `{{message}}`).
+- **Telegram Bot API** dan **SMTP**: lihat `docs/NOTIFIKASI.md`.
+- **MSRadius** (baca-saja): lihat `docs/RADIUS-API.md`.
+
+### Khusus Admin (memerlukan login Admin, bukan untuk aplikasi lain)
+`GET /api/admin/reports` dan `GET /api/admin/reports/{key}?from=YYYY-MM-DD&to=YYYY-MM-DD` (menu *Sistem → Laporan*), `GET /api/admin/system-api`, `GET /api/admin/radius/endpoints`.

@@ -19,6 +19,8 @@ import { exportRoutes } from './routes/export';
 import { adminRoutes } from './routes/admin';
 import { masterRoutes } from './routes/masters';
 import { publicRoutes } from './routes/public';
+import { reportRoutes } from './routes/reports';
+import { systemApiRoutes } from './routes/sysapi';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -41,6 +43,8 @@ api.use(inventoryRoutes);
 api.use(procurementRoutes);
 api.use(radiusRoutes);
 api.use(areaRoutes);
+api.use(reportRoutes);
+api.use(systemApiRoutes);
 api.use(subscriptionRoutes);
 app.use('/api', api);
 

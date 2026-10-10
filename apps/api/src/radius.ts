@@ -150,7 +150,13 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
     }, { timeout: 120_000 });
   }
   if (!opts.onlyCode) {
-    // tidak ada lagi di MSRadius → hanya ditandai (tidak dihapus)
+    // tidak ada lagi di MSRadius → hanya ditandai (tidak dihapus).
+    // Pengaman: respons kosong/terpotong (mis. gangguan di sisi MSRadius) tidak boleh menandai pelanggan massal.
+    const totalRadius = await prisma.customer.count({ where: { source: 'RADIUS' } });
+    if (seen.size === 0 || (totalRadius > 20 && seen.size < totalRadius * 0.5)) {
+      console.warn(`[radius] daftar pelanggan MSRadius tampak tidak lengkap (${seen.size} dari ${totalRadius}) — penandaan "hilang" dilewati`);
+      return st;
+    }
     const codes = [...seen];
     const gone = await prisma.$executeRaw`UPDATE "Customer" SET "missingFromApi" = true WHERE "source" = 'RADIUS' AND "missingFromApi" = false AND NOT ("code" = ANY(${codes}::text[]))`;
     st.missing = Number(gone);

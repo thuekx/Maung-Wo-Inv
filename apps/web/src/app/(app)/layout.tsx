@@ -26,7 +26,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: '/purchase-orders', label: 'Purchase Order', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'] },
   ] },
   { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', roles: ['ADMIN', 'MKT', 'GA'] }] },
-  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }] },
+  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }, { href: '/laporan', label: 'Laporan', icon: 'dashboard', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-sistem', label: 'API Sistem', icon: 'layers', roles: ['ADMIN'] }] },
 ];
 
 const canSee = (i: Item, u: { role: string; subRole?: string }) => !i.roles || i.roles.includes(u.role) || (!!i.lead && (u.subRole === 'SUPERVISOR' || u.subRole === 'MANAGER'));
