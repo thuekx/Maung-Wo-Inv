@@ -19,7 +19,7 @@ new Worker(
     if (!n || n.status === 'SENT') return;
     try {
       const text = `${n.subject}\n\n${n.body}`;
-      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : n.channel === 'WHATSAPP' ? await sendWhatsApp(n.target, `${n.subject}\n\n${n.body}`) : await sendTelegram(n.target, text);
+      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : n.channel === 'WHATSAPP' ? await sendWhatsApp(n.target, `${n.subject}\n\n${n.body}`, undefined, false, { subject: n.subject, body: n.body }) : await sendTelegram(n.target, text);
       if (r === 'disabled') {
         const why = n.channel === 'WHATSAPP' ? 'Pengiriman WhatsApp dinonaktifkan (Admin → Pengaturan → WhatsApp → sakelar)' : 'Pengiriman email dinonaktifkan (Admin → Pengaturan → SMTP → sakelar Email aktif)';
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });

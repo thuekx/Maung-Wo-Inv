@@ -24,7 +24,7 @@ async function overview() {
     smtp: { host: smtp.host, port: smtp.port, secure: smtp.secure, user: smtp.user, from: smtp.from, enabled: smtp.enabled, hasPass: !!smtp.pass, source: smtp.source },
     telegram: { hasToken: !!tg.token, tokenHint: hint(tg.token), botUsername: tg.botUsername, roleChats: tg.roleChats, hasWebhookSecret: !!tg.webhookSecret, source: tg.source },
     branding,
-    whatsapp: { enabled: wa.enabled, provider: wa.provider, baseUrl: wa.baseUrl, headerName: wa.headerName, bodyTemplate: wa.bodyTemplate, hasToken: !!wa.token, tokenHint: hint(wa.token), source: wa.source },
+    whatsapp: { enabled: wa.enabled, provider: wa.provider, baseUrl: wa.baseUrl, workspaceId: wa.workspaceId, templateId: wa.templateId, channelId: wa.channelId, varMode: wa.varMode, headerName: wa.headerName, bodyTemplate: wa.bodyTemplate, hasToken: !!wa.token, tokenHint: hint(wa.token), source: wa.source },
     assetInfo,
     webUrl: webUrl(),
     appUrl: { value: (((await getSetting<any>('app'))?.publicUrl as string) || ''), envValue: config.webUrl },
@@ -72,17 +72,23 @@ adminRoutes.post('/admin/settings/smtp/test', async (req, res) => {
 /* ── WhatsApp (gateway berbayar: sakelar ON/OFF, bawaan MATI) ── */
 adminRoutes.put('/admin/settings/whatsapp', async (req, res) => {
   const b = z.object({
-    provider: z.enum(['fonnte', 'custom']),
+    provider: z.enum(['fonnte', 'custom', 'kanca']),
+    workspaceId: z.string().trim().max(120).default(''),
+    templateId: z.string().trim().max(60).default(''),
+    channelId: z.string().trim().max(60).default(''),
+    varMode: z.enum(['1', '2']).default('1'),
     baseUrl: z.string().trim().max(200).default(''),
     token: z.string().trim().optional(),
     headerName: z.string().trim().max(60).default('Authorization'),
     bodyTemplate: z.string().max(1000).default(''),
     enabled: z.boolean().optional(),
   }).parse(req.body);
+  if (b.provider === 'kanca' && b.baseUrl && !/^https?:\/\//.test(b.baseUrl)) throw new AppError(400, 'URL dasar Kanca harus diawali https://');
+  if (b.provider === 'kanca' && !b.workspaceId) throw new AppError(400, 'Isi Workspace ID Kanca (slug, mis. tokomakmur-4231)');
   if (b.provider === 'custom' && !/^https?:\/\//.test(b.baseUrl)) throw new AppError(400, 'Isi URL endpoint kirim pesan (diawali http:// atau https://)');
   if (b.provider === 'custom' && b.bodyTemplate && !(b.bodyTemplate.includes('{{to}}') && b.bodyTemplate.includes('{{message}}'))) throw new AppError(400, 'Templat body harus memuat {{to}} dan {{message}}');
   const old = (await getSetting<any>('whatsapp')) ?? {};
-  await putSetting('whatsapp', { ...old, provider: b.provider, baseUrl: b.baseUrl, headerName: b.headerName, bodyTemplate: b.bodyTemplate, enabled: b.enabled ?? old.enabled === true, token: b.token === undefined ? old.token : b.token ? encryptSecret(b.token) : '' }, req.user!.id);
+  await putSetting('whatsapp', { ...old, provider: b.provider, baseUrl: b.baseUrl, workspaceId: b.workspaceId, templateId: b.templateId, channelId: b.channelId, varMode: b.varMode, headerName: b.headerName, bodyTemplate: b.bodyTemplate, enabled: b.enabled ?? old.enabled === true, token: b.token === undefined ? old.token : b.token ? encryptSecret(b.token) : '' }, req.user!.id);
   res.json(await overview());
 });
 
@@ -100,7 +106,8 @@ adminRoutes.post('/admin/settings/whatsapp/test', async (req, res) => {
   const c = await getWhatsapp();
   if (!c.token) throw new AppError(400, 'Token gateway WhatsApp belum diisi');
   try {
-    await sendWhatsApp(to, `✅ Tes ${await getAppName()} — pesan WhatsApp uji dikirim oleh ${req.user!.name}. (Berbiaya sesuai paket gateway Anda)`, c, true);
+    const t = `✅ Tes ${await getAppName()} — pesan WhatsApp uji dikirim oleh ${req.user!.name}. (Berbiaya sesuai paket gateway Anda)`;
+    await sendWhatsApp(to, t, c, true, { subject: 'Tes WhatsApp', body: `dikirim oleh ${req.user!.name}` });
   } catch (e) { throw new AppError(400, `Gagal kirim: ${(e as Error).message}`); }
   res.json({ ok: true, to: waNumber(to) });
 });

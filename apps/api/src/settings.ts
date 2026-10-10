@@ -163,19 +163,24 @@ export const regYear3 = (d: Date) => String(d.getFullYear() % 1000).padStart(3, 
 export const getAppName = async () => (((await getSetting<any>('branding')) ?? {}).appName as string) || APP_NAME_DEFAULT;
 
 /* ── WhatsApp (gateway pihak ketiga; berbayar per pesan → ada sakelar ON/OFF) ── */
-export interface WhatsappCfg { enabled: boolean; provider: 'fonnte' | 'custom'; baseUrl: string; token: string; headerName: string; bodyTemplate: string; source: 'db' | 'none' }
+export interface WhatsappCfg { enabled: boolean; provider: 'fonnte' | 'custom' | 'kanca'; baseUrl: string; token: string; headerName: string; bodyTemplate: string; source: 'db' | 'none'; /** Kanca: slug workspace, UUID template notifikasi, UUID channel (opsional), jumlah variabel template (1 = ringkasan, 2 = judul + isi) */ workspaceId: string; templateId: string; channelId: string; varMode: '1' | '2' }
 export const WA_FONNTE_URL = 'https://api.fonnte.com';
+export const WA_KANCA_URL = 'https://api.kanca.space';
 export const WA_CUSTOM_BODY = '{"to":{{to}},"message":{{message}}}';
 export async function getWhatsapp(): Promise<WhatsappCfg> {
   const s = (await getSetting<any>('whatsapp')) ?? {};
-  const provider = s.provider === 'custom' ? 'custom' : 'fonnte';
+  const provider: WhatsappCfg['provider'] = s.provider === 'custom' ? 'custom' : s.provider === 'kanca' ? 'kanca' : 'fonnte';
   return {
     enabled: s.enabled === true, // bawaan MATI: ada biaya per pesan
     provider,
-    baseUrl: (typeof s.baseUrl === 'string' && s.baseUrl.trim() ? s.baseUrl.trim() : provider === 'fonnte' ? WA_FONNTE_URL : '').replace(/\/+$/, ''),
+    baseUrl: (typeof s.baseUrl === 'string' && s.baseUrl.trim() ? s.baseUrl.trim() : provider === 'fonnte' ? WA_FONNTE_URL : provider === 'kanca' ? WA_KANCA_URL : '').replace(/\/+$/, ''),
     token: decryptSecret(s.token),
     headerName: typeof s.headerName === 'string' && s.headerName.trim() ? s.headerName.trim() : 'Authorization',
     bodyTemplate: typeof s.bodyTemplate === 'string' && s.bodyTemplate.trim() ? s.bodyTemplate : WA_CUSTOM_BODY,
+    workspaceId: typeof s.workspaceId === 'string' ? s.workspaceId.trim() : '',
+    templateId: typeof s.templateId === 'string' ? s.templateId.trim() : '',
+    channelId: typeof s.channelId === 'string' ? s.channelId.trim() : '',
+    varMode: s.varMode === '2' ? '2' : '1',
     source: s.token ? 'db' : 'none',
   };
 }

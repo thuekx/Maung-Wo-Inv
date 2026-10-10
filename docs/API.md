@@ -130,3 +130,6 @@ curl -X POST https://<API_DOMAIN>/api/integrations/billing/events \
 | `GET /api/admin/trouble-history?customerId=` | Admin | Riwayat TROUBLE + MAINTENANCE satu pelanggan beserta laporan |
 | `GET/POST /api/team`, `PATCH /api/team/:id` | Manager divisi | Kelola supervisor/staf divisinya |
 | `PUT /api/admin/settings/app` | Admin | `requireGps`, `optimizeImages`, `publicUrl` |
+| `GET /api/admin/kanca/overview` | Admin | Konfigurasi Kanca + info, wallet, template, 20 pesan terbaru (tiap bagian dengan status sendiri) |
+| `GET /api/admin/kanca/broadcast/:id` | Admin | Status broadcast Kanca (id atau nama) |
+| `PUT /api/admin/kanca/template` | Admin | Pilih template notifikasi |

@@ -513,7 +513,7 @@ function DocsCard() {
 
 function WhatsappCard({ d, reload }: { d: any; reload: () => void }) {
   const w = d.whatsapp;
-  const [f, setF] = useState({ provider: w.provider as string, baseUrl: w.baseUrl as string, headerName: w.headerName as string, bodyTemplate: w.bodyTemplate as string, token: '' });
+  const [f, setF] = useState({ provider: w.provider as string, baseUrl: w.baseUrl as string, headerName: w.headerName as string, bodyTemplate: w.bodyTemplate as string, workspaceId: (w.workspaceId ?? '') as string, templateId: (w.templateId ?? '') as string, channelId: (w.channelId ?? '') as string, varMode: (w.varMode ?? '1') as string, token: '' });
   const [to, setTo] = useState('');
   const [eps, setEps] = useState<any>(null);
   const [sample, setSample] = useState<Record<string, any>>({});
@@ -531,14 +531,18 @@ function WhatsappCard({ d, reload }: { d: any; reload: () => void }) {
           <span><b>Kirim WhatsApp: {w.enabled ? 'AKTIF' : 'NONAKTIF'}</b><span className="block text-xs text-slate-600">{w.enabled ? 'Pesan dikirim lewat gateway (berbiaya).' : 'Pesan WhatsApp tidak dikirim — tercatat "Tidak terkirim" di Log notifikasi dan dapat dikirim ulang setelah sakelar dinyalakan.'}</span></span>
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Penyedia"><Select className="input" value={f.provider} onChange={(e) => { set('provider', e.target.value); if (e.target.value === 'fonnte') set('baseUrl', 'https://api.fonnte.com'); }}><option value="fonnte">Fonnte (siap pakai)</option><option value="custom">Gateway lain (HTTP umum)</option></Select></Field>
+          <Field label="Penyedia"><Select className="input" value={f.provider} onChange={(e) => { set('provider', e.target.value); set('baseUrl', e.target.value === 'fonnte' ? 'https://api.fonnte.com' : e.target.value === 'kanca' ? 'https://api.kanca.space' : ''); }}><option value="fonnte">Fonnte (siap pakai)</option><option value="kanca">Kanca (WhatsApp Business / WABA)</option><option value="custom">Gateway lain (HTTP umum)</option></Select></Field>
           <Field label="Token / API key" help={w.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Dari dashboard penyedia; disimpan terenkripsi.'}><input className="input" type="password" value={f.token} onChange={(e) => set('token', e.target.value)} autoComplete="off" /></Field>
-          <Field label={f.provider === 'fonnte' ? 'URL dasar' : 'URL endpoint kirim pesan'} help={f.provider === 'fonnte' ? 'Bawaan https://api.fonnte.com' : 'mis. https://gateway.contoh.id/api/send'}><input className="input" value={f.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} /></Field>
+          <Field label={f.provider === 'custom' ? 'URL endpoint kirim pesan' : 'URL dasar'} help={f.provider === 'fonnte' ? 'Bawaan https://api.fonnte.com' : f.provider === 'kanca' ? 'Bawaan https://api.kanca.space' : 'mis. https://gateway.contoh.id/api/send'}><input className="input" value={f.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} /></Field>
+          {f.provider === 'kanca' && <Field label="Workspace ID" help="Slug workspace Kanca, mis. tokomakmur-4231 (dashboard → Integrasi)"><input className="input" value={f.workspaceId} onChange={(e) => set('workspaceId', e.target.value)} /></Field>}
+          {f.provider === 'kanca' && <Field label="Template notifikasi (UUID)" help="Template WABA berstatus APPROVED. Kosong = kirim teks bebas (hanya sampai ke penerima yang chat dalam 24 jam). Pilih dari daftar di menu API Kanca."><input className="input font-mono text-xs" value={f.templateId} onChange={(e) => set('templateId', e.target.value)} placeholder="9388eb83-…" /></Field>}
+          {f.provider === 'kanca' && <Field label="Variabel template" help="Sesuaikan dengan jumlah {{ }} di template Anda"><Select className="input" value={f.varMode} onChange={(e) => set('varMode', e.target.value)}><option value="1">1 variabel: {'{{1}}'} = judul — isi</option><option value="2">2 variabel: {'{{1}}'} = judul, {'{{2}}'} = isi</option></Select></Field>}
+          {f.provider === 'kanca' && <Field label="Channel ID (opsional)" help="Hanya bila workspace punya lebih dari 1 channel WABA"><input className="input font-mono text-xs" value={f.channelId} onChange={(e) => set('channelId', e.target.value)} /></Field>}
           {f.provider === 'custom' && <Field label="Nama header token" help="mis. Authorization atau X-API-KEY"><input className="input" value={f.headerName} onChange={(e) => set('headerName', e.target.value)} /></Field>}
           {f.provider === 'custom' && <div className="sm:col-span-2"><Field label="Templat body JSON" help="Wajib memuat {{to}} dan {{message}} (otomatis diberi tanda kutip). Contoh: {&quot;to&quot;:{{to}},&quot;message&quot;:{{message}}}"><textarea className="input font-mono text-xs" rows={3} value={f.bodyTemplate} onChange={(e) => set('bodyTemplate', e.target.value)} /></Field></div>}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/whatsapp', { method: 'PUT', body: { provider: f.provider, baseUrl: f.baseUrl, headerName: f.headerName, bodyTemplate: f.bodyTemplate, ...(f.token ? { token: f.token } : {}) } }); set('token', ''); reload(); }, 'Pengaturan WhatsApp disimpan')}>Simpan WhatsApp</button>
+          <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/whatsapp', { method: 'PUT', body: { provider: f.provider, baseUrl: f.baseUrl, headerName: f.headerName, bodyTemplate: f.bodyTemplate, workspaceId: f.workspaceId, templateId: f.templateId, channelId: f.channelId, varMode: f.varMode, ...(f.token ? { token: f.token } : {}) } }); set('token', ''); reload(); }, 'Pengaturan WhatsApp disimpan')}>Simpan WhatsApp</button>
           <input className="input w-56" placeholder="nomor uji, mis. 0812…" value={to} onChange={(e) => setTo(e.target.value)} />
           <button className="btn-ghost" disabled={a.busy || !to || !w.hasToken} onClick={() => a.run(() => api('/admin/settings/whatsapp/test', { body: { to } }), `Pesan uji dikirim ke ${to} (berbiaya)`)}>Kirim tes</button>
         </div>
@@ -547,7 +551,7 @@ function WhatsappCard({ d, reload }: { d: any; reload: () => void }) {
       <div className="card space-y-3">
         <h2 className="font-semibold">Endpoint API WhatsApp yang dapat ditarik</h2>
         <p className="text-sm text-slate-500">Daftar endpoint penyedia yang dipakai/dapat dipakai, dengan contoh respons nyata untuk yang <b>tidak berbiaya</b>. Endpoint pengiriman pesan tidak diberi contoh otomatis (berbiaya) — gunakan <b>Kirim tes</b>. Daftar mengikuti dokumentasi umum penyedia; cocokkan dengan dokumen resmi akun Anda.</p>
-        {!eps || !eps.endpoints.length ? <p className="text-sm text-slate-400">{eps ? 'Penyedia "gateway lain" tidak punya katalog bawaan — pakai Kirim tes untuk memeriksa koneksi.' : 'Memuat…'}</p> : eps.endpoints.map((e: any) => (
+        {!eps || !eps.endpoints.length ? <p className="text-sm text-slate-400">{eps ? (w.provider === 'kanca' ? 'Untuk Kanca, lihat info workspace, saldo, template dan riwayat pesan di menu Sistem → API Kanca.' : 'Penyedia "gateway lain" tidak punya katalog bawaan — pakai Kirim tes untuk memeriksa koneksi.') : 'Memuat…'}</p> : eps.endpoints.map((e: any) => (
           <div key={e.key} className="space-y-1.5 rounded-lg border p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0"><div className="font-medium">{e.title}</div><code className="break-all text-xs text-slate-600">{e.method} {eps.baseUrl}{e.path}</code></div>
