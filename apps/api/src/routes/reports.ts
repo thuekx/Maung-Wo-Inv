@@ -6,7 +6,8 @@ import { workflows } from '../workflows';
 
 /** Laporan dari data yang ada sekarang — khusus Admin. Periode `from`/`to` (tanggal) berlaku untuk laporan berbasis waktu. */
 export const reportRoutes = Router();
-reportRoutes.use(authenticate, requireRole('ADMIN'));
+// Dibatasi per path: `use` tanpa path akan menahan SEMUA permintaan yang lewat router ini (termasuk router berikutnya).
+reportRoutes.use(['/admin/reports', '/admin/trouble-history'], authenticate, requireRole('ADMIN'));
 
 type Col = { key: string; label: string; align?: 'right' };
 interface Report { key: string; title: string; group: string; description: string; timed: boolean; columns: Col[]; run: (from: Date, to: Date) => Promise<Record<string, unknown>[]> }

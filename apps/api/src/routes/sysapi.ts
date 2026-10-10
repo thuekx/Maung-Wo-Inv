@@ -5,7 +5,7 @@ import { config } from '../config';
 
 /** Katalog API sistem ini untuk dibaca aplikasi lain (khusus Admin): endpoint, autentikasi, dan contoh respons nyata. */
 export const systemApiRoutes = Router();
-systemApiRoutes.use(authenticate, requireRole('ADMIN'));
+systemApiRoutes.use('/admin/system-api', authenticate, requireRole('ADMIN'));
 
 const EXPORT = [
   { key: 'customers', description: 'Pelanggan: kode, kontak, alamat, paket, status, ODP/port/VLAN/IP, area' },
