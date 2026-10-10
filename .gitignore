@@ -5,3 +5,4 @@ dist
 uploads
 *.log
 dump.rdb
+apps/web/AGENTS.md
