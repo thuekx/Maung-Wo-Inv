@@ -5,11 +5,11 @@ import path from 'path';
 import multer from 'multer';
 import { z } from 'zod';
 import nodemailer from 'nodemailer';
-import { AppError, prisma } from '../db';
+import { AppError, fieldError, prisma } from '../db';
 import { requireRole } from '../auth';
 import { config } from '../config';
-import { encryptSecret, getAppName, getBranding, getSetting, getSmtp, getTelegram, putSetting } from '../settings';
-import { fromHeader, sendTelegram, telegramApi } from '../senders';
+import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, WA_FONNTE_URL } from '../settings';
+import { fromHeader, sendTelegram, sendWhatsApp, telegramApi, waNumber } from '../senders';
 
 /** Pengaturan yang dikelola Admin: SMTP, Telegram, logo/branding, kebijakan GPS. Dipasang SETELAH authenticate. */
 export const adminRoutes = Router();
@@ -19,11 +19,13 @@ const ROLES = ['ADMIN', 'MKT', 'NOC', 'FOC', 'GA', 'FIN'] as const;
 const hint = (s: string) => (s ? `••••${s.slice(-4)}` : '');
 
 async function overview() {
-  const [smtp, tg, branding] = await Promise.all([getSmtp(), getTelegram(), getBranding()]);
+  const [smtp, tg, branding, wa, assetInfo] = await Promise.all([getSmtp(), getTelegram(), getBranding(), getWhatsapp(), getAssetInfo()]);
   return {
     smtp: { host: smtp.host, port: smtp.port, secure: smtp.secure, user: smtp.user, from: smtp.from, enabled: smtp.enabled, hasPass: !!smtp.pass, source: smtp.source },
     telegram: { hasToken: !!tg.token, tokenHint: hint(tg.token), botUsername: tg.botUsername, roleChats: tg.roleChats, hasWebhookSecret: !!tg.webhookSecret, source: tg.source },
     branding,
+    whatsapp: { enabled: wa.enabled, provider: wa.provider, baseUrl: wa.baseUrl, headerName: wa.headerName, bodyTemplate: wa.bodyTemplate, hasToken: !!wa.token, tokenHint: hint(wa.token), source: wa.source },
+    assetInfo,
     webUrl: config.webUrl,
   };
 }
@@ -64,6 +66,77 @@ adminRoutes.post('/admin/settings/smtp/test', async (req, res) => {
     throw new AppError(400, `Gagal: ${(e as Error).message}`);
   }
   res.json({ ok: true });
+});
+
+/* ── WhatsApp (gateway berbayar: sakelar ON/OFF, bawaan MATI) ── */
+adminRoutes.put('/admin/settings/whatsapp', async (req, res) => {
+  const b = z.object({
+    provider: z.enum(['fonnte', 'custom']),
+    baseUrl: z.string().trim().max(200).default(''),
+    token: z.string().trim().optional(),
+    headerName: z.string().trim().max(60).default('Authorization'),
+    bodyTemplate: z.string().max(1000).default(''),
+    enabled: z.boolean().optional(),
+  }).parse(req.body);
+  if (b.provider === 'custom' && !/^https?:\/\//.test(b.baseUrl)) throw new AppError(400, 'Isi URL endpoint kirim pesan (diawali http:// atau https://)');
+  if (b.provider === 'custom' && b.bodyTemplate && !(b.bodyTemplate.includes('{{to}}') && b.bodyTemplate.includes('{{message}}'))) throw new AppError(400, 'Templat body harus memuat {{to}} dan {{message}}');
+  const old = (await getSetting<any>('whatsapp')) ?? {};
+  await putSetting('whatsapp', { ...old, provider: b.provider, baseUrl: b.baseUrl, headerName: b.headerName, bodyTemplate: b.bodyTemplate, enabled: b.enabled ?? old.enabled === true, token: b.token === undefined ? old.token : b.token ? encryptSecret(b.token) : '' }, req.user!.id);
+  res.json(await overview());
+});
+
+/** Sakelar cepat WhatsApp: ON hanya bila token sudah diisi (tiap pesan berbiaya). */
+adminRoutes.put('/admin/settings/whatsapp/enabled', async (req, res) => {
+  const { enabled } = z.object({ enabled: z.boolean() }).parse(req.body);
+  const old = (await getSetting<any>('whatsapp')) ?? {};
+  if (enabled && !old.token) throw new AppError(400, 'Isi token gateway WhatsApp dulu');
+  await putSetting('whatsapp', { ...old, enabled }, req.user!.id);
+  res.json(await overview());
+});
+
+adminRoutes.post('/admin/settings/whatsapp/test', async (req, res) => {
+  const { to } = z.object({ to: z.string().trim().min(8) }).parse(req.body);
+  const c = await getWhatsapp();
+  if (!c.token) throw new AppError(400, 'Token gateway WhatsApp belum diisi');
+  try {
+    await sendWhatsApp(to, `✅ Tes ${await getAppName()} — pesan WhatsApp uji dikirim oleh ${req.user!.name}. (Berbiaya sesuai paket gateway Anda)`, c, true);
+  } catch (e) { throw new AppError(400, `Gagal kirim: ${(e as Error).message}`); }
+  res.json({ ok: true, to: waNumber(to) });
+});
+
+/** Katalog endpoint API WhatsApp yang tersedia + contoh respons nyata (hanya yang tidak berbiaya/tidak mengirim pesan). */
+const WA_CATALOG = [
+  { key: 'device', title: 'Status perangkat / nomor pengirim', method: 'POST', path: '/device', provider: 'fonnte', safe: true, note: 'Mengembalikan status koneksi perangkat WhatsApp, nama, dan kuota (Fonnte). Tidak mengirim pesan.' },
+  { key: 'send', title: 'Kirim pesan teks', method: 'POST', path: '/send', provider: 'fonnte', safe: false, note: 'Params: target (nomor), message, countryCode. BERBIAYA — gunakan tombol "Kirim tes" di atas, bukan contoh respons.' },
+] as const;
+adminRoutes.get('/admin/whatsapp/endpoints', async (_req, res) => {
+  const c = await getWhatsapp();
+  res.json({ provider: c.provider, baseUrl: c.baseUrl, tokenSet: !!c.token, enabled: c.enabled, endpoints: WA_CATALOG.filter((e) => e.provider === c.provider) });
+});
+adminRoutes.post('/admin/whatsapp/endpoints/:key/sample', async (req, res) => {
+  const ep = WA_CATALOG.find((e) => e.key === String(req.params.key));
+  if (!ep || !ep.safe) throw new AppError(400, 'Endpoint ini tidak punya contoh respons otomatis (berbiaya)');
+  const c = await getWhatsapp();
+  if (c.provider !== 'fonnte' || !c.token) throw new AppError(400, 'Token gateway WhatsApp belum diisi');
+  try {
+    const r = await fetch(`${c.baseUrl || WA_FONNTE_URL}${ep.path}`, { method: 'POST', headers: { Authorization: c.token }, signal: AbortSignal.timeout(20_000) });
+    const raw = await r.text();
+    let sample: unknown = raw.slice(0, 2000); try { sample = JSON.parse(raw); } catch { /* teks */ }
+    res.json({ path: ep.path, httpStatus: r.status, sample });
+  } catch (e) { throw new AppError(502, `Gagal menghubungi gateway: ${(e as Error).message}`); }
+});
+
+/* ── Informasi aset publik (label QR) ── */
+adminRoutes.put('/admin/settings/asset-info', async (req, res) => {
+  const t = (max: number) => z.string().trim().max(max).default('');
+  const b = z.object({
+    intro: z.string().trim().min(5, 'Kalimat info minimal 5 karakter').max(500),
+    footer: t(300),
+    contacts: z.object({ email: t(120), whatsapp: t(30), telegram: t(80), facebook: t(200), instagram: t(200) }).default({}),
+  }).parse(req.body);
+  if (b.contacts.email && !z.string().email().safeParse(b.contacts.email).success) throw fieldError('contacts.email', 'Format email tidak valid');
+  await putSetting('assetInfo', b, req.user!.id);
+  res.json(await overview());
 });
 
 /* ── Telegram ── */

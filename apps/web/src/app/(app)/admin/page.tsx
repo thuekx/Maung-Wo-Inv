@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { DEFAULT_LOGOS, loadBranding } from '@/lib/brand';
@@ -141,6 +141,17 @@ function Outbound() {
   const { data, error } = useFetch<any[]>('/admin/outbound');
   return (
     <>
+      <details className="mb-3 rounded-lg border bg-slate-50 p-3 text-sm dark:bg-slate-800">
+        <summary className="cursor-pointer font-medium">Integrasi dengan aplikasi Billing — cara kerja & contoh</summary>
+        <div className="mt-2 space-y-2 text-slate-600">
+          <p><b>Masuk ke Maung (billing → Maung):</b> aplikasi billing memanggil <code>POST /api/integrations/billing/events</code> dengan header <code>x-api-key</code> (nilai <code>BILLING_API_KEY</code> di <code>.env</code>). Maung otomatis membuat WO Suspend / Unsuspend / Terminate. Memanggil dua kali untuk pelanggan yang sama aman (dijawab <code>duplicate: true</code>).</p>
+          <pre className="overflow-x-auto rounded-lg bg-slate-900 p-2 text-xs text-slate-100">{`curl -X POST https://api.perusahaan.co.id/api/integrations/billing/events \\
+  -H "x-api-key: <BILLING_API_KEY>" -H "content-type: application/json" \\
+  -d '{"event":"suspend","customerCode":"260705044930","reason":"Tunggakan 2 bulan","invoiceRef":"INV-2610-045"}'
+# → 201 {"duplicate":false,"id":"…","number":"WO-SP-20261010-0003"}`}</pre>
+          <p><b>Keluar dari Maung (Maung → billing):</b> bila <code>BILLING_WEBHOOK_URL</code> di <code>.env</code> diisi, setiap event dikirim sebagai <code>POST</code> JSON bertanda tangan HMAC-SHA256 (header <code>x-signature</code>) dan dicatat di tabel di bawah beserta jumlah percobaan. Billing juga dapat <i>polling</i> status pelanggan lewat <code>GET /api/integrations/billing/customers/&lt;kode&gt;</code>. Saat ini Finance hanya menerima <b>pengingat</b> (email/Telegram), belum ada event keluar otomatis.</p>
+        </div>
+      </details>
       <ErrorMsg>{error}</ErrorMsg>
       <Table head={['Waktu', 'Event ke Billing', 'Payload', 'Percobaan', 'Status']}>
         {data?.map((n) => (
@@ -346,6 +357,14 @@ function TelegramCard({ d, reload }: { d: any; reload: () => void }) {
         <li>Isi URL API publik (<b>https</b>) → <b>Pasang webhook</b> agar bot bisa menautkan akun (<code>/link</code>) — butuh domain HTTPS (mode Caddy).</li>
         <li>Opsional: buat grup divisi, tambahkan bot, kirim <code>/id</code> di grup, tempel angka chat ID di kolom divisi.</li>
       </ol>
+      <details className="rounded-lg border bg-slate-50 p-3 text-sm dark:bg-slate-800">
+        <summary className="cursor-pointer font-medium">Apa itu webhook, dan kapan dipakai?</summary>
+        <div className="mt-2 space-y-2 text-slate-600">
+          <p><b>Webhook</b> = alamat di server kita yang <i>dihubungi Telegram</i> setiap ada pesan masuk ke bot (kebalikan dari notifikasi, di mana kita yang mengirim). Di sini dipakai agar karyawan bisa menautkan akunnya: buka halaman <b>Profil → Buat kode tautan</b>, lalu kirim <code>/link KODE</code> ke bot. Telegram meneruskan pesan itu ke webhook, aplikasi mencocokkan kode, dan akun terhubung.</p>
+          <p><b>Contoh alurnya:</b> Andi mengirim <code>/link 9F3A1C2B</code> → Telegram melakukan <code>POST https://api.perusahaan.co.id/api/telegram/webhook/&lt;secret&gt;</code> dengan isi <code>{'{'}"message":{'{'}"chat":{'{'}"id":123456789{'}'},"text":"/link 9F3A1C2B"{'}'}{'}'}</code> → aplikasi menyimpan chat id 123456789 pada akun Andi dan membalas “✅ Akun berhasil terhubung”.</p>
+          <p><b>Syarat:</b> alamat harus <b>HTTPS publik</b> (domain, mis. lewat mode Caddy). Tanpa webhook, notifikasi keluar ke Telegram <u>tetap jalan</u>; hanya perintah <code>/link</code> yang tidak bisa dipakai. <i>Secret</i> di ujung alamat dibuat otomatis agar hanya Telegram yang bisa memanggilnya.</p>
+        </div>
+      </details>
       <Field label="Token bot" help={t.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Format: 123456789:AA…'}><input className="input max-w-xl" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={t.hasToken ? t.tokenHint : ''} autoComplete="new-password" /></Field>
       <div>
         <div className="mb-1 text-sm font-medium">Grup/chat per divisi (opsional)</div>
@@ -474,18 +493,120 @@ function DocsCard() {
   );
 }
 
+function WhatsappCard({ d, reload }: { d: any; reload: () => void }) {
+  const w = d.whatsapp;
+  const [f, setF] = useState({ provider: w.provider as string, baseUrl: w.baseUrl as string, headerName: w.headerName as string, bodyTemplate: w.bodyTemplate as string, token: '' });
+  const [to, setTo] = useState('');
+  const [eps, setEps] = useState<any>(null);
+  const [sample, setSample] = useState<Record<string, any>>({});
+  const a = useAction();
+  const set = (k: string, v: any) => setF((p) => ({ ...p, [k]: v }));
+  const loadEps = () => api<any>('/admin/whatsapp/endpoints').then(setEps).catch(() => {});
+  useEffect(() => { loadEps(); }, [w.provider, w.hasToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">WhatsApp (gateway pihak ketiga)</h2><Badge tone={w.hasToken ? 'green' : 'amber'}>{w.hasToken ? `Token ${w.tokenHint}` : 'Belum diatur'}</Badge></div>
+        <p className="text-sm text-slate-500">Dipakai untuk mengirim BA Digital (dan notifikasi lain bila diaktifkan) lewat WhatsApp. Setiap pesan <b>berbiaya</b> di penyedia gateway, karena itu pengiriman <b>bawaan MATI</b> — nyalakan dengan sakelar di bawah hanya saat dibutuhkan.</p>
+        <label className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${w.enabled ? 'border-green-300 bg-green-50 dark:bg-slate-800' : 'border-amber-300 bg-amber-50 dark:bg-slate-800'}`}>
+          <input type="checkbox" className="mt-1" checked={w.enabled} disabled={a.busy} onChange={(e) => a.run(async () => { await api('/admin/settings/whatsapp/enabled', { method: 'PUT', body: { enabled: e.target.checked } }); reload(); }, e.target.checked ? 'Pengiriman WhatsApp diaktifkan' : 'Pengiriman WhatsApp dinonaktifkan')} />
+          <span><b>Kirim WhatsApp: {w.enabled ? 'AKTIF' : 'NONAKTIF'}</b><span className="block text-xs text-slate-600">{w.enabled ? 'Pesan dikirim lewat gateway (berbiaya).' : 'Pesan WhatsApp tidak dikirim — tercatat "Tidak terkirim" di Log notifikasi dan dapat dikirim ulang setelah sakelar dinyalakan.'}</span></span>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Penyedia"><Select className="input" value={f.provider} onChange={(e) => { set('provider', e.target.value); if (e.target.value === 'fonnte') set('baseUrl', 'https://api.fonnte.com'); }}><option value="fonnte">Fonnte (siap pakai)</option><option value="custom">Gateway lain (HTTP umum)</option></Select></Field>
+          <Field label="Token / API key" help={w.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Dari dashboard penyedia; disimpan terenkripsi.'}><input className="input" type="password" value={f.token} onChange={(e) => set('token', e.target.value)} autoComplete="off" /></Field>
+          <Field label={f.provider === 'fonnte' ? 'URL dasar' : 'URL endpoint kirim pesan'} help={f.provider === 'fonnte' ? 'Bawaan https://api.fonnte.com' : 'mis. https://gateway.contoh.id/api/send'}><input className="input" value={f.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} /></Field>
+          {f.provider === 'custom' && <Field label="Nama header token" help="mis. Authorization atau X-API-KEY"><input className="input" value={f.headerName} onChange={(e) => set('headerName', e.target.value)} /></Field>}
+          {f.provider === 'custom' && <div className="sm:col-span-2"><Field label="Templat body JSON" help="Wajib memuat {{to}} dan {{message}} (otomatis diberi tanda kutip). Contoh: {&quot;to&quot;:{{to}},&quot;message&quot;:{{message}}}"><textarea className="input font-mono text-xs" rows={3} value={f.bodyTemplate} onChange={(e) => set('bodyTemplate', e.target.value)} /></Field></div>}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/whatsapp', { method: 'PUT', body: { provider: f.provider, baseUrl: f.baseUrl, headerName: f.headerName, bodyTemplate: f.bodyTemplate, ...(f.token ? { token: f.token } : {}) } }); set('token', ''); reload(); }, 'Pengaturan WhatsApp disimpan')}>Simpan WhatsApp</button>
+          <input className="input w-56" placeholder="nomor uji, mis. 0812…" value={to} onChange={(e) => setTo(e.target.value)} />
+          <button className="btn-ghost" disabled={a.busy || !to || !w.hasToken} onClick={() => a.run(() => api('/admin/settings/whatsapp/test', { body: { to } }), `Pesan uji dikirim ke ${to} (berbiaya)`)}>Kirim tes</button>
+        </div>
+        <Msg m={a.msg} />
+      </div>
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Endpoint API WhatsApp yang dapat ditarik</h2>
+        <p className="text-sm text-slate-500">Daftar endpoint penyedia yang dipakai/dapat dipakai, dengan contoh respons nyata untuk yang <b>tidak berbiaya</b>. Endpoint pengiriman pesan tidak diberi contoh otomatis (berbiaya) — gunakan <b>Kirim tes</b>. Daftar mengikuti dokumentasi umum penyedia; cocokkan dengan dokumen resmi akun Anda.</p>
+        {!eps || !eps.endpoints.length ? <p className="text-sm text-slate-400">{eps ? 'Penyedia "gateway lain" tidak punya katalog bawaan — pakai Kirim tes untuk memeriksa koneksi.' : 'Memuat…'}</p> : eps.endpoints.map((e: any) => (
+          <div key={e.key} className="space-y-1.5 rounded-lg border p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0"><div className="font-medium">{e.title}</div><code className="break-all text-xs text-slate-600">{e.method} {eps.baseUrl}{e.path}</code></div>
+              {e.safe ? <button className="btn-ghost" disabled={!eps.tokenSet} onClick={async () => { setSample((x) => ({ ...x, [e.key]: { loading: true } })); try { setSample((x) => ({ ...x, [e.key]: { out: undefined } })); const out = await api<any>(`/admin/whatsapp/endpoints/${e.key}/sample`, { body: {} }); setSample((x) => ({ ...x, [e.key]: { out } })); } catch (er) { setSample((x) => ({ ...x, [e.key]: { err: (er as Error).message } })); } }}>Ambil contoh</button> : <Badge tone="amber">berbiaya</Badge>}
+            </div>
+            <p className="text-xs text-slate-500">{e.note}</p>
+            {sample[e.key]?.err && <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{sample[e.key].err}</p>}
+            {sample[e.key]?.out && <pre className="max-h-72 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{JSON.stringify(sample[e.key].out.sample, null, 2)}</pre>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AssetInfoCard({ d, reload }: { d: any; reload: () => void }) {
+  const ai = d.assetInfo;
+  const [f, setF] = useState({ intro: ai.intro as string, footer: ai.footer as string, contacts: { ...ai.contacts } as Record<string, string> });
+  const a = useAction();
+  const setC = (k: string, v: string) => setF((p) => ({ ...p, contacts: { ...p.contacts, [k]: v } }));
+  const preview = f.intro.replace('{KODE}', 'GA-002').replace('{BARANG}', 'Laptop Kantor').replace('{MERK}', ' (Lenovo ThinkPad)').replace('{PERUSAHAAN}', d.branding.companyName).replace('{LOKASI}', ', berada di Kantor Bandung');
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Informasi aset (halaman label QR)</h2>
+      <p className="text-sm text-slate-500">Halaman ini terbuka untuk siapa saja yang memindai label QR aset (tanpa login). Atur kalimat info dan tombol kontak agar penemu aset bisa menghubungi perusahaan.</p>
+      <Field label="Kalimat info" help="Penanda: {KODE} {BARANG} {MERK} {PERUSAHAAN} {LOKASI}"><textarea className="input" rows={2} value={f.intro} onChange={(e) => setF({ ...f, intro: e.target.value })} /></Field>
+      <p className="rounded-lg bg-slate-50 p-2 text-sm dark:bg-slate-800"><span className="text-xs text-slate-500">Contoh tampilan: </span>{preview}</p>
+      <Field label="Teks kaki halaman" help="Boleh memakai {PERUSAHAAN}"><input className="input" value={f.footer} onChange={(e) => setF({ ...f, footer: e.target.value })} /></Field>
+      <h3 className="pt-1 text-sm font-semibold">Tombol kontak (kosongkan yang tidak dipakai)</h3>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Email"><input className="input" placeholder="info@perusahaan.co.id" value={f.contacts.email} onChange={(e) => setC('email', e.target.value)} /></Field>
+        <Field label="WhatsApp" help="Nomor, mis. 0812xxxxxxx"><input className="input" value={f.contacts.whatsapp} onChange={(e) => setC('whatsapp', e.target.value)} /></Field>
+        <Field label="Telegram" help="Username (tanpa @) atau tautan t.me"><input className="input" value={f.contacts.telegram} onChange={(e) => setC('telegram', e.target.value)} /></Field>
+        <Field label="Facebook" help="Tautan halaman"><input className="input" placeholder="https://facebook.com/…" value={f.contacts.facebook} onChange={(e) => setC('facebook', e.target.value)} /></Field>
+        <Field label="Instagram" help="Username (tanpa @) atau tautan"><input className="input" value={f.contacts.instagram} onChange={(e) => setC('instagram', e.target.value)} /></Field>
+      </div>
+      <button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/asset-info', { method: 'PUT', body: f }); reload(); }, 'Informasi aset disimpan')}>Simpan informasi aset</button>
+      <Msg m={a.msg} />
+    </div>
+  );
+}
+
+const SETTING_SECTIONS = [
+  { key: 'brand', label: 'Tampilan & brand' },
+  { key: 'email', label: 'Email (SMTP)' },
+  { key: 'telegram', label: 'Telegram' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'radius', label: 'MSRadius' },
+  { key: 'subform', label: 'Formulir Berlangganan' },
+  { key: 'docs', label: 'Dokumen PR' },
+  { key: 'assetinfo', label: 'Info aset (QR)' },
+] as const;
+
 function Settings() {
   const { data, error, reload } = useFetch<any>('/admin/settings');
+  const [sec, setSecRaw] = useState<string>('brand');
+  useEffect(() => { try { const x = localStorage.getItem('maung_admin_sec'); if (x && SETTING_SECTIONS.some((s) => s.key === x)) setSecRaw(x); } catch { /* abaikan */ } }, []);
+  const setSec = (k: string) => { setSecRaw(k); try { localStorage.setItem('maung_admin_sec', k); } catch { /* abaikan */ } };
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!data) return <p className="text-slate-500">Memuat…</p>;
   return (
-    <div className="max-w-4xl space-y-4">
-      <BrandingCard d={data} reload={reload} />
-      <RadiusCard />
-      <SubFormCard />
-      <DocsCard />
-      <SmtpCard d={data} reload={reload} />
-      <TelegramCard d={data} reload={reload} />
+    <div className="grid items-start gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
+      <nav className="flex gap-1 overflow-x-auto lg:sticky lg:top-20 lg:flex-col lg:overflow-visible" aria-label="Bagian pengaturan">
+        {SETTING_SECTIONS.map((s) => (
+          <button key={s.key} onClick={() => setSec(s.key)} className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${sec === s.key ? 'bg-accent-100 font-semibold text-brand-900 dark:bg-slate-700 dark:text-white' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{s.label}</button>
+        ))}
+      </nav>
+      <div className="min-w-0 max-w-4xl space-y-4">
+        {sec === 'brand' && <BrandingCard d={data} reload={reload} />}
+        {sec === 'email' && <SmtpCard d={data} reload={reload} />}
+        {sec === 'telegram' && <TelegramCard d={data} reload={reload} />}
+        {sec === 'whatsapp' && <WhatsappCard d={data} reload={reload} />}
+        {sec === 'radius' && <RadiusCard />}
+        {sec === 'subform' && <SubFormCard />}
+        {sec === 'docs' && <DocsCard />}
+        {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
+      </div>
     </div>
   );
 }

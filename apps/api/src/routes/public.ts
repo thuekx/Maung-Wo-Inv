@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { AppError, prisma } from '../db';
-import { getBranding } from '../settings';
+import { getAssetInfo, getBranding } from '../settings';
 import { normSn } from '../inventory';
 
 /**
@@ -22,8 +22,9 @@ publicRoutes.get('/public/asset/:sn', rateLimit({ windowMs: 60_000, limit: 60, s
     include: { item: true, warehouse: { select: { name: true } }, brand: { select: { name: true } }, model: { select: { name: true } } },
   });
   if (!a) throw new AppError(404, 'Aset tidak terdaftar');
-  const b = await getBranding();
+  const [b, info] = await Promise.all([getBranding(), getAssetInfo()]);
   res.json({
+    info: { intro: info.intro, footer: info.footer, contacts: info.contacts },
     company: b.companyName,
     appName: b.appName,
     serialNumber: a.serialNumber,

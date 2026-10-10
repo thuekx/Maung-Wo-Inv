@@ -7,6 +7,8 @@ export interface NotifyOpts {
   roles?: Role[];
   userIds?: (string | null | undefined)[];
   emails?: string[]; // penerima eksternal (mis. pelanggan)
+  whatsapps?: string[]; // nomor WhatsApp penerima eksternal
+  telegrams?: string[]; // chat id Telegram penerima eksternal
   subject: string;
   body: string;
   woId?: string;
@@ -33,7 +35,7 @@ export class Effects {
 
     const seen = new Set<string>();
     const rows: Prisma.NotificationCreateManyInput[] = [];
-    const add = (channel: 'EMAIL' | 'TELEGRAM', target: string | null | undefined, userId?: string) => {
+    const add = (channel: 'EMAIL' | 'TELEGRAM' | 'WHATSAPP', target: string | null | undefined, userId?: string) => {
       if (!target || seen.has(`${channel}:${target}`)) return;
       seen.add(`${channel}:${target}`);
       rows.push({ channel, target, userId, subject: o.subject, body: o.body, woId: o.woId });
@@ -46,6 +48,8 @@ export class Effects {
     const roleChats = (await getTelegram()).roleChats;
     for (const r of roles) add('TELEGRAM', roleChats[r]);
     for (const e of o.emails ?? []) add('EMAIL', e);
+    for (const w of o.whatsapps ?? []) add('WHATSAPP', w);
+    for (const t of o.telegrams ?? []) add('TELEGRAM', t);
 
     // kotak masuk dalam aplikasi (lonceng): sekali per pengguna, tidak bergantung pada sukses kirim email/Telegram
     if (users.length) await this.tx.inbox.createMany({ data: users.map((u) => ({ userId: u.id, subject: o.subject, body: o.body, woId: o.woId })) });

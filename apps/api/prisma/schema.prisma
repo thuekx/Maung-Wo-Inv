@@ -71,6 +71,7 @@ enum AssetStatus {
 enum NotifChannel {
   EMAIL
   TELEGRAM
+  WHATSAPP
 }
 
 model User {

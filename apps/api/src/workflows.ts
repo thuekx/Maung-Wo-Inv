@@ -430,25 +430,49 @@ const newInstall: Workflow = {
           label: 'Kirim BA Digital ke pelanggan',
           roles: ['MKT'],
           to: 'CLOSED',
-          fields: [{ name: 'recipientEmail', label: 'Email penerima BA (default: email pelanggan)', type: 'text' }, note()],
+          fields: [
+            { name: 'sendEmail', label: 'Kirim lewat Email', type: 'bool' },
+            { name: 'recipientEmail', label: 'Email penerima', type: 'text', help: 'Terisi dari email pelanggan; boleh diganti' },
+            { name: 'sendWhatsapp', label: 'Kirim lewat WhatsApp', type: 'bool', help: 'Berbiaya per pesan; hanya terkirim bila sakelar WhatsApp di Admin aktif' },
+            { name: 'recipientPhone', label: 'Nomor WhatsApp penerima', type: 'text', help: 'Terisi dari telepon pelanggan; boleh diganti' },
+            { name: 'sendTelegram', label: 'Kirim lewat Telegram', type: 'bool' },
+            { name: 'recipientTelegram', label: 'ID chat Telegram penerima', type: 'text', help: 'Pelanggan harus sudah menekan Start pada bot perusahaan' },
+            note(),
+          ],
           run: async (ctx, input) => {
-            const i = z.object({ recipientEmail: z.string().email().optional().or(z.literal('')), note: optNote }).parse(input);
+            const i = z
+              .object({
+                sendEmail: z.boolean().default(false), recipientEmail: z.preprocess(blankToUndef, z.string().email('Format email tidak valid').optional()),
+                sendWhatsapp: z.boolean().default(false), recipientPhone: z.preprocess(blankToUndef, z.string().trim().regex(/^[0-9+][0-9 +()-]{7,20}$/, 'Nomor WhatsApp tidak valid').optional()),
+                sendTelegram: z.boolean().default(false), recipientTelegram: z.preprocess(blankToUndef, z.string().trim().max(40).optional()),
+                note: optNote,
+              })
+              .parse(input);
             const c = ctx.wo.customer!;
+            const email = i.recipientEmail ?? c.email ?? undefined;
+            const phone = i.recipientPhone ?? c.phone ?? undefined;
+            if (!i.sendEmail && !i.sendWhatsapp && !i.sendTelegram) throw new AppError(400, 'Pilih minimal satu cara pengiriman BA (Email, WhatsApp, atau Telegram)');
+            if (i.sendEmail && !email) throw fieldError('recipientEmail', 'Isi email penerima');
+            if (i.sendWhatsapp && !phone) throw fieldError('recipientPhone', 'Isi nomor WhatsApp penerima');
+            if (i.sendTelegram && !i.recipientTelegram) throw fieldError('recipientTelegram', 'Isi ID chat Telegram penerima');
             const baNo = baNumber(await aliasForArea(ctx.tx, c.areaId), ctx.wo.number);
-            const to = i.recipientEmail || c.email;
-            if (to)
-              await ctx.fx.notify({
-                emails: [to],
-                woId: ctx.wo.id,
-                subject: `Berita Acara Aktivasi Layanan ${baNo}`,
-                body: `Yth. ${c.name},\n\nLayanan internet Anda telah aktif.\nNo. BA: ${baNo}\nPaket: ${c.packageName}\nAlamat: ${c.address}\n\nTerima kasih telah berlangganan.`,
-              });
-            ctx.data.ba = { number: baNo, sentTo: to ?? null, at: new Date() };
+            const subject = `Berita Acara Aktivasi Layanan ${baNo}`;
+            const body = `Yth. ${c.name},\n\nLayanan internet Anda telah aktif.\nNo. BA: ${baNo}\nPaket: ${c.packageName}\nAlamat: ${c.address}\n\nTerima kasih telah berlangganan.`;
+            await ctx.fx.notify({
+              emails: i.sendEmail ? [email!] : [],
+              whatsapps: i.sendWhatsapp ? [phone!] : [],
+              telegrams: i.sendTelegram ? [i.recipientTelegram!] : [],
+              woId: ctx.wo.id,
+              subject,
+              body,
+            });
+            const channels = [i.sendEmail && 'Email', i.sendWhatsapp && 'WhatsApp', i.sendTelegram && 'Telegram'].filter(Boolean) as string[];
+            ctx.data.ba = { number: baNo, channels, sentTo: [i.sendEmail && email, i.sendWhatsapp && phone, i.sendTelegram && i.recipientTelegram].filter(Boolean).join(', '), at: new Date() };
             await ctx.fx.notify({
               roles: ['FIN'],
               woId: ctx.wo.id,
               subject: `🔔 [${ctx.wo.number}] BA terkirim – pastikan invoice ${c.name} sudah disiapkan`,
-              body: `BA ${baNo} sudah dikirim ke pelanggan ${c.name} (${c.code}), paket ${c.packageName}.\nPengingat: mulai cycle penagihan dan pastikan invoice pertama sudah disiapkan di sistem billing.\n${link(ctx)}`,
+              body: `BA ${baNo} sudah dikirim ke pelanggan ${c.name} (${c.code}) lewat ${channels.join(' & ')}, paket ${c.packageName}.\nPengingat: mulai cycle penagihan dan pastikan invoice pertama sudah disiapkan di sistem billing.\n${link(ctx)}`,
             });
           },
         },

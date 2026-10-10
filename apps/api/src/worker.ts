@@ -3,7 +3,7 @@ import { Worker, Job } from 'bullmq';
 import { config } from './config';
 import { prisma } from './db';
 import { connection, cronQueue, enqueue, QueuedJob } from './queue';
-import { sendEmail, sendTelegram } from './senders';
+import { sendEmail, sendTelegram, sendWhatsApp } from './senders';
 import { Effects } from './effects';
 import { getRadius, runSync } from './radius';
 import { putSetting, getSetting } from './settings';
@@ -16,13 +16,14 @@ new Worker(
     if (!n || n.status === 'SENT') return;
     try {
       const text = `${n.subject}\n\n${n.body}`;
-      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : await sendTelegram(n.target, text);
+      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : n.channel === 'WHATSAPP' ? await sendWhatsApp(n.target, `${n.subject}\n\n${n.body}`) : await sendTelegram(n.target, text);
       if (r === 'disabled') {
-        await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: 'Pengiriman email dinonaktifkan (Admin → Pengaturan → SMTP → sakelar Email aktif)' } });
+        const why = n.channel === 'WHATSAPP' ? 'Pengiriman WhatsApp dinonaktifkan (Admin → Pengaturan → WhatsApp → sakelar)' : 'Pengiriman email dinonaktifkan (Admin → Pengaturan → SMTP → sakelar Email aktif)';
+        await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
         return;
       }
       if (r === 'dry-run') {
-        const why = n.channel === 'EMAIL' ? 'SMTP belum dikonfigurasi (Admin → Integrasi)' : 'Token bot Telegram belum dikonfigurasi (Admin → Integrasi)';
+        const why = n.channel === 'EMAIL' ? 'SMTP belum dikonfigurasi (Admin → Integrasi)' : n.channel === 'WHATSAPP' ? 'Gateway WhatsApp belum dikonfigurasi (Admin → Pengaturan → WhatsApp)' : 'Token bot Telegram belum dikonfigurasi (Admin → Integrasi)';
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
         return;
       }

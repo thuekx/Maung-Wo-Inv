@@ -102,6 +102,7 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
         validate: { odp: c.odp ?? '', port: c.port ?? '', pop: c.pop ?? '' },
         service_active: { vlan: c.vlan ?? '', ip: c.ip ?? (isPrivateIPv4(radIp) ? radIp : ''), publicIp: c.publicIp ?? (radIp && !isPrivateIPv4(radIp) ? radIp : '') },
         submit_report: tech,
+        send_ba: { sendEmail: !!c.email, recipientEmail: c.email ?? '', sendWhatsapp: false, recipientPhone: c.phone ?? '', sendTelegram: false },
       }
     : {};
   // nomor dokumen (BA / laporan) memakai singkatan area; area maintenance mandiri ada di data WO

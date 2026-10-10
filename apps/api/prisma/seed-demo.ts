@@ -102,7 +102,7 @@ async function install(name: string, o: { until: Stage; cab?: boolean; tech?: 'b
   await act(wo.id, 'service_active', 'noc', { ontAuthorized: true, profile: 'HOME-20M', vlan: String(100 + (i % 3)), ip: `10.20.${i}.10`, pingMs: 4, jitterMs: 1, downMbps: 19.4, upMbps: 19.1, stable: true, note: 'Aktivasi OK' });
   if (!at('closed')) return { ...wo, customerId: cust };
 
-  await act(wo.id, 'send_ba', 'mkt', {});
+  await act(wo.id, 'send_ba', 'mkt', { sendEmail: true });
   closedWos.push(wo.id);
   return { ...wo, customerId: cust };
 }

@@ -151,3 +151,39 @@ export const regYear3 = (d: Date) => String(d.getFullYear() % 1000).padStart(3, 
 
 /** Nama aplikasi untuk email/notifikasi (Admin → Tampilan & brand → Nama aplikasi). */
 export const getAppName = async () => (((await getSetting<any>('branding')) ?? {}).appName as string) || APP_NAME_DEFAULT;
+
+/* ── WhatsApp (gateway pihak ketiga; berbayar per pesan → ada sakelar ON/OFF) ── */
+export interface WhatsappCfg { enabled: boolean; provider: 'fonnte' | 'custom'; baseUrl: string; token: string; headerName: string; bodyTemplate: string; source: 'db' | 'none' }
+export const WA_FONNTE_URL = 'https://api.fonnte.com';
+export const WA_CUSTOM_BODY = '{"to":{{to}},"message":{{message}}}';
+export async function getWhatsapp(): Promise<WhatsappCfg> {
+  const s = (await getSetting<any>('whatsapp')) ?? {};
+  const provider = s.provider === 'custom' ? 'custom' : 'fonnte';
+  return {
+    enabled: s.enabled === true, // bawaan MATI: ada biaya per pesan
+    provider,
+    baseUrl: (typeof s.baseUrl === 'string' && s.baseUrl.trim() ? s.baseUrl.trim() : provider === 'fonnte' ? WA_FONNTE_URL : '').replace(/\/+$/, ''),
+    token: decryptSecret(s.token),
+    headerName: typeof s.headerName === 'string' && s.headerName.trim() ? s.headerName.trim() : 'Authorization',
+    bodyTemplate: typeof s.bodyTemplate === 'string' && s.bodyTemplate.trim() ? s.bodyTemplate : WA_CUSTOM_BODY,
+    source: s.token ? 'db' : 'none',
+  };
+}
+
+/* ── Informasi aset publik (halaman yang dibuka saat label QR dipindai) ── */
+export interface AssetInfoCfg { intro: string; footer: string; contacts: { email: string; whatsapp: string; telegram: string; facebook: string; instagram: string } }
+export const ASSET_INFO_DEFAULTS: AssetInfoCfg = {
+  intro: '{KODE} adalah {BARANG}{MERK} milik {PERUSAHAAN}{LOKASI}.',
+  footer: 'Menemukan aset ini di tempat yang tidak semestinya? Hubungi bagian GA {PERUSAHAAN}.',
+  contacts: { email: '', whatsapp: '', telegram: '', facebook: '', instagram: '' },
+};
+export async function getAssetInfo(): Promise<AssetInfoCfg> {
+  const d = (await getSetting<any>('assetInfo')) ?? {};
+  const c = d.contacts ?? {};
+  const t = (v: unknown, def: string) => (typeof v === 'string' ? v.trim() : def);
+  return {
+    intro: t(d.intro, ASSET_INFO_DEFAULTS.intro) || ASSET_INFO_DEFAULTS.intro,
+    footer: typeof d.footer === 'string' ? d.footer.trim() : ASSET_INFO_DEFAULTS.footer,
+    contacts: { email: t(c.email, ''), whatsapp: t(c.whatsapp, ''), telegram: t(c.telegram, ''), facebook: t(c.facebook, ''), instagram: t(c.instagram, '') },
+  };
+}
