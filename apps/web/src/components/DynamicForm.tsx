@@ -162,7 +162,7 @@ function QcInput({ woId, value, onChange }: { woId?: string; value: any[]; onCha
   );
 }
 
-function CustomerSelect({ value, onChange, statuses }: { value: string; onChange: (v: string) => void; statuses?: string[] }) {
+export function CustomerSelect({ value, onChange, statuses }: { value: string; onChange: (v: string) => void; statuses?: string[] }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<any[]>([]);
   const [picked, setPicked] = useState<any | null>(null);

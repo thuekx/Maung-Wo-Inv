@@ -22,6 +22,7 @@ import { publicRoutes } from './routes/public';
 import { reportRoutes } from './routes/reports';
 import { systemApiRoutes } from './routes/sysapi';
 import { imgRoutes } from './routes/img';
+import { teamRoutes } from './routes/team';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -38,6 +39,7 @@ api.use(integrationRoutes); // tanpa JWT (pakai API key / secret)
 api.use(exportRoutes); // tanpa JWT (pakai EXPORT_API_KEY)
 api.use(publicRoutes); // tanpa JWT: info aset dari label QR (hanya data aman)
 api.use(core);
+api.use(teamRoutes);
 api.use(adminRoutes);
 api.use(masterRoutes);
 api.use(woRoutes);

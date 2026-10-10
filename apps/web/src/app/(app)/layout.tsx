@@ -13,7 +13,7 @@ import { NotificationBell } from '@/components/NotificationBell';
 import { Tip } from '@/components/Tip';
 import { Select } from '@/components/Select';
 
-interface Item { href: string; label: string; icon: IconName; roles?: string[]; /** supervisor/manager divisi mana pun juga boleh */ lead?: boolean }
+interface Item { href: string; label: string; icon: IconName; roles?: string[]; /** supervisor/manager divisi mana pun juga boleh */ lead?: boolean; /** khusus Manager divisi (bukan Admin) */ manager?: boolean }
 const GROUPS: { title: string; items: Item[] }[] = [
   { title: 'Menu', items: [
     { href: '/', label: 'Dashboard', icon: 'dashboard' },
@@ -21,15 +21,16 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: '/subscriptions', label: 'Form Berlangganan', icon: 'clipboard', roles: ['ADMIN', 'MKT'] },
     { href: '/my-stock', label: 'Stok Saya', icon: 'box', roles: ['FOC'] },
     { href: '/customers', label: 'Pelanggan', icon: 'users', roles: ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'] },
+    { href: '/tim-saya', label: 'Tim Saya', icon: 'users', manager: true },
     { href: '/inventory', label: 'Inventori & Aset', icon: 'box', roles: ['ADMIN', 'GA'] },
     { href: '/purchase-requests', label: 'Purchase Request', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'], lead: true },
     { href: '/purchase-orders', label: 'Purchase Order', icon: 'receipt', roles: ['ADMIN', 'GA', 'FIN'] },
   ] },
   { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', roles: ['ADMIN', 'MKT', 'GA'] }] },
-  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }, { href: '/laporan', label: 'Laporan', icon: 'dashboard', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-sistem', label: 'API Sistem', icon: 'layers', roles: ['ADMIN'] }] },
+  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }, { href: '/laporan', label: 'Laporan', icon: 'dashboard', roles: ['ADMIN'] }, { href: '/riwayat-gangguan', label: 'Riwayat Gangguan', icon: 'clipboard', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-sistem', label: 'API Sistem', icon: 'layers', roles: ['ADMIN'] }] },
 ];
 
-const canSee = (i: Item, u: { role: string; subRole?: string }) => !i.roles || i.roles.includes(u.role) || (!!i.lead && (u.subRole === 'SUPERVISOR' || u.subRole === 'MANAGER'));
+const canSee = (i: Item, u: { role: string; subRole?: string }) => i.manager ? u.role !== 'ADMIN' && u.subRole === 'MANAGER' : !i.roles || i.roles.includes(u.role) || (!!i.lead && (u.subRole === 'SUPERVISOR' || u.subRole === 'MANAGER'));
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, ready, logout } = useAuth();

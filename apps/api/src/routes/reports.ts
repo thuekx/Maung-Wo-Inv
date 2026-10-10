@@ -125,3 +125,28 @@ reportRoutes.get('/admin/reports/:key', async (req, res) => {
   const rows = await r.run(from, to);
   res.json({ key: r.key, title: r.title, description: r.description, timed: r.timed, columns: r.columns, from, to: new Date(to.getTime() - (p.to ? 86400_000 : 0)), rows, generatedAt: new Date() });
 });
+
+/** Riwayat troubleshoot per pelanggan: tiket gangguan + maintenance, lengkap dengan isi laporannya (Temuan/Tindakan/Hasil, signal, redaman). */
+reportRoutes.get('/admin/trouble-history', async (req, res) => {
+  const { customerId } = z.object({ customerId: z.string().min(1) }).parse(req.query);
+  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, code: true, name: true, packageName: true, address: true } });
+  if (!customer) throw new AppError(404, 'Pelanggan tidak ditemukan');
+  const wos = await prisma.workOrder.findMany({
+    where: { customerId, type: { in: ['TROUBLE', 'MAINTENANCE'] } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, number: true, type: true, status: true, title: true, createdAt: true, closedAt: true, data: true },
+  });
+  const rows = wos.map((w) => {
+    const d = (w.data ?? {}) as Record<string, any>;
+    const r = (d.report ?? {}) as Record<string, any>;
+    return {
+      id: w.id, number: w.number, type: w.type, status: w.status, title: w.title, createdAt: w.createdAt, closedAt: w.closedAt,
+      issue: d.issue ?? d.description ?? null,
+      hasReport: !!d.report,
+      findings: r.findings ?? null, actions: r.actions ?? r.note ?? null, result: r.result ?? null,
+      signalDbm: r.signalDbm ?? null, attenuationDb: r.attenuationDb ?? r.opmDbm ?? null,
+      team: r.team ?? [], submittedBy: r.submittedBy ?? null, reportAt: r.at ?? null,
+    };
+  });
+  res.json({ customer, total: rows.length, rows });
+});
