@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { api, fileUrl } from '@/lib/api';
+import { api, fileUrl, imgUrl } from '@/lib/api';
 import { Icon } from './icons';
 
 export function PageHeader({ title, sub, pretitle, children }: { title: string; sub?: string; pretitle?: string; children?: React.ReactNode }) {
@@ -28,7 +28,7 @@ export const Badge = ({ children, tone = 'slate' }: { children: React.ReactNode;
 );
 
 export function Avatar({ name, size = 32, className = '', url }: { name: string; size?: number; className?: string; url?: string | null }) {
-  if (url) return <img src={fileUrl(url)} alt="" className={`shrink-0 rounded-full object-cover ${className}`} style={{ width: size, height: size }} />;
+  if (url) return <img src={imgUrl(url, { w: Math.max(80, size * 2) })} alt="" className={`shrink-0 rounded-full object-cover ${className}`} style={{ width: size, height: size }} />;
   const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
   return <span className={`inline-flex shrink-0 items-center justify-center rounded-full bg-accent-100 font-semibold text-brand-900 ${className}`} style={{ width: size, height: size, fontSize: size * 0.38 }} aria-hidden="true">{ini}</span>;
 }
@@ -130,7 +130,7 @@ export function DataView({ value, depth = 0, field }: { value: any; depth?: numb
   const refs = useContext(RefsContext);
   if (value === null || value === undefined || value === '') return <span className="text-slate-400">-</span>;
   if (typeof value === 'string' && value.startsWith('/uploads/'))
-    return <a href={fileUrl(value)} target="_blank" rel="noreferrer"><img src={fileUrl(value)} alt="" className="h-20 w-20 rounded-lg border object-cover" /></a>;
+    return <a href={fileUrl(value)} target="_blank" rel="noreferrer"><img src={imgUrl(value, { w: 240 })} alt="" className="h-20 w-20 rounded-lg border object-cover" /></a>;
   if (typeof value === 'string' && refs[value]) {
     const t = refs[value];
     return field === 'pr' ? <a className="text-brand-700 hover:underline" href={`/purchase-requests/${value}`}>{t}</a> : <span>{t}</span>;

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { fileUrl } from '@/lib/api';
+import { fileUrl, imgUrl } from '@/lib/api';
 import { useBranding } from '@/lib/brand';
 import { ThemeSwitch } from '@/lib/theme';
 import { Icon, MarkM } from '@/components/icons';
@@ -34,7 +34,7 @@ export default function LoginPage() {
         {!brand.loginBgUrl && <div className="contour absolute inset-0 -z-10 opacity-80" />}
         <div className="max-w-xl">
           {brand.logoUrl
-            ? <img src={fileUrl(brand.logoUrl)} alt={brand.companyName} className="mb-4 h-24 w-auto max-w-full object-contain object-left sm:h-28" />
+            ? <img src={imgUrl(brand.logoUrl, { w: 960, trim: true })} alt={brand.companyName} className="mb-5 h-28 w-auto max-w-full object-contain object-left sm:h-36" />
             : <div className="mb-4 flex items-center gap-3"><MarkM size={64} /><span className="font-display text-5xl font-extrabold tracking-wide">{brand.companyName}</span></div>}
           {brand.subtitle && <p className="text-xs tracking-[0.18em] text-slate-300 sm:text-sm">{brand.subtitle}</p>}
           {brand.tagline && <p className="mt-8 font-display text-3xl font-semibold leading-tight text-accent-400 sm:text-4xl">{brand.tagline}</p>}

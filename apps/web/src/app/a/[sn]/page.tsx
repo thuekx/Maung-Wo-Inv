@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { API } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useBranding } from '@/lib/brand';
-import { fileUrl } from '@/lib/api';
+import { fileUrl, imgUrl } from '@/lib/api';
 
 
 /** Ikon kontak (SVG sederhana bergaya merek) — warna mengikuti tiap layanan. */
@@ -44,7 +44,7 @@ export default function AssetInfo({ params }: { params: Promise<{ sn: string }> 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-8">
       <div className="mb-4 text-center">
-        {brand.logoStackedUrl || brand.logoUrl ? <img src={fileUrl((brand.logoStackedUrl || brand.logoUrl)!)} alt={brand.companyName} className="mx-auto h-16 w-auto object-contain" /> : <div className="font-display text-2xl font-bold">{brand.companyName}</div>}
+        {brand.logoStackedUrl || brand.logoUrl ? <img src={imgUrl((brand.logoStackedUrl || brand.logoUrl)!, { w: 400, trim: true })} alt={brand.companyName} className="mx-auto h-16 w-auto object-contain" /> : <div className="font-display text-2xl font-bold">{brand.companyName}</div>}
       </div>
       <div className="card space-y-3">
         {err && <p className="text-center text-red-600">{err}<br /><span className="text-xs text-slate-500">SN: {serial}</span></p>}

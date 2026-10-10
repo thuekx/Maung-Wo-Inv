@@ -1,6 +1,6 @@
 'use client';
 import { use } from 'react';
-import { fileUrl, useFetch } from '@/lib/api';
+import { imgUrl, useFetch } from '@/lib/api';
 import { DocPage, DocShell, longDate } from '@/components/DocSheet';
 import { ErrorMsg } from '@/components/ui';
 
@@ -29,7 +29,7 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
     <div className="grid grid-cols-3 gap-2">
       {list.map((a) => (
         <figure key={a.id} className="break-inside-avoid">
-          <img src={fileUrl(a.url)} alt="" className="aspect-[4/3] w-full rounded border bg-white object-contain" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties} />
+          <img src={imgUrl(a.url, { w: 1200 })} alt="" className="aspect-[4/3] w-full rounded border bg-white object-contain" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' } as React.CSSProperties} />
           <figcaption className="mt-0.5 text-[8pt] leading-tight text-gray-600">{a.note ? `${a.note} · ` : ''}{a.takenAt ? new Date(a.takenAt).toLocaleString('id-ID') : ''}{a.lat != null ? ` · ${Number(a.lat).toFixed(5)}, ${Number(a.lng).toFixed(5)}` : ''}</figcaption>
         </figure>
       ))}

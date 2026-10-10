@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { api, ApiError, fileUrl, useFetch } from '@/lib/api';
+import { api, ApiError, fileUrl, imgUrl, useFetch } from '@/lib/api';
 import { promptDialog } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { uploadPhoto, useBranding } from '@/lib/photo';
@@ -123,7 +123,7 @@ export function PhotosInput({ value, onChange, woId, label, kind = 'REPORT', pla
       <div className="flex flex-wrap gap-2">
         {value.map((u) => (
           <div key={u} className="relative">
-            <img src={fileUrl(u)} alt="" className="h-20 w-20 rounded-lg border object-cover" />
+            <img src={imgUrl(u, { w: 240 })} alt="" className="h-20 w-20 rounded-lg border object-cover" />
             <button type="button" className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-red-600 text-xs text-white" onClick={() => onChange(value.filter((x) => x !== u))}>✕</button>
           </div>
         ))}

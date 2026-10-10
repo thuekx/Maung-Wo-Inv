@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, setOptimizeImages } from './api';
 import { colorScale, cssVars, TINT } from './brandColors';
 
 export interface Branding {
@@ -8,6 +8,7 @@ export interface Branding {
   logoUrl: string | null; logoStackedUrl: string | null; logoMarkUrl: string | null; loginBgUrl: string | null; gpsLogoUrl: string | null; kopUrl: string | null; formLogoUrl: string | null; mgrSignUrl: string | null;
   colors: { primary: string; accent: string; charts: string[] };
   requireGps: boolean;
+  optimizeImages: boolean;
 }
 
 /** Bawaan = panduan MAUNG by LIV (sama dengan server); dipakai sebelum /branding selesai dimuat. */
@@ -20,6 +21,7 @@ export const DEFAULT_BRAND: Branding = {
   logoUrl: '/brand/logo-horizontal.webp', logoStackedUrl: '/brand/logo-stacked.webp', logoMarkUrl: '/brand/logo-mark.webp', loginBgUrl: null, gpsLogoUrl: null, kopUrl: null, formLogoUrl: null, mgrSignUrl: null,
   colors: { primary: '#0B1F3B', accent: '#F59E0B', charts: ['#2F5D9E', '#F59E0B', '#14B8A6', '#8B5CF6', '#F43F5E', '#0EA5E9'] },
   requireGps: true,
+  optimizeImages: true,
 };
 
 const CACHE = 'maung_brand';
@@ -40,7 +42,7 @@ export const loadBranding = (force = false): Promise<Branding> => {
   if (force || !promise || Date.now() - at > 60_000) {
     at = Date.now();
     promise = api<Branding>('/branding').then((b) => ({ ...DEFAULT_BRAND, ...b, logoUrl: b.logoUrl || DEFAULT_LOGOS.logoUrl, logoStackedUrl: b.logoStackedUrl || DEFAULT_LOGOS.logoStackedUrl, logoMarkUrl: b.logoMarkUrl || DEFAULT_LOGOS.logoMarkUrl, colors: { ...DEFAULT_BRAND.colors, ...(b.colors ?? {}) } })).catch(() => DEFAULT_BRAND);
-    promise.then((b) => { applyBrand(b); if (force) window.dispatchEvent(new CustomEvent('branding-changed', { detail: b })); });
+    promise.then((b) => { applyBrand(b); setOptimizeImages(b.optimizeImages !== false); if (force) window.dispatchEvent(new CustomEvent('branding-changed', { detail: b })); });
   }
   return promise;
 };

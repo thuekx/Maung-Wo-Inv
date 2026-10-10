@@ -275,8 +275,8 @@ adminRoutes.delete('/admin/settings/branding/logo', async (req, res) => {
 
 /* ── Kebijakan aplikasi ── */
 adminRoutes.put('/admin/settings/app', async (req, res) => {
-  const { requireGps } = z.object({ requireGps: z.boolean() }).parse(req.body);
+  const body = z.object({ requireGps: z.boolean().optional(), optimizeImages: z.boolean().optional() }).parse(req.body);
   const old = (await getSetting<any>('app')) ?? {};
-  await putSetting('app', { ...old, requireGps }, req.user!.id);
+  await putSetting('app', { ...old, ...body }, req.user!.id);
   res.json(await overview());
 });

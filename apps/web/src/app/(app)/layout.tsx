@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { fileUrl, getAct, ROLE_LABEL, roleText, setAct, SUBROLE_LABEL } from '@/lib/api';
+import { fileUrl, imgUrl, getAct, ROLE_LABEL, roleText, setAct, SUBROLE_LABEL } from '@/lib/api';
 import { ThemeToggle } from '@/lib/theme';
 import { useBranding } from '@/lib/brand';
 import { Icon, IconName, MarkM } from '@/components/icons';
@@ -70,9 +70,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <span className="hidden lg:flex"><Tip label={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'} align="left"><button className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10" onClick={toggleCollapse} aria-label={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}><Icon name="panel" /></button></Tip></span>
         <Link href="/" className="flex shrink-0 items-center gap-2" aria-label={brand.companyName}>
           {brand.logoMarkUrl
-            ? <><img src={fileUrl(brand.logoMarkUrl)} alt="" className="h-10 w-10 object-contain" /><span className="hidden font-display text-xl font-bold tracking-wide sm:inline">{brand.companyName}</span></>
+            ? <><img src={imgUrl(brand.logoMarkUrl, { w: 160, trim: true })} alt="" className="h-10 w-10 object-contain" /><span className="hidden font-display text-xl font-bold tracking-wide sm:inline">{brand.companyName}</span></>
             : brand.logoUrl
-              ? <img src={fileUrl(brand.logoUrl)} alt={brand.companyName} className="h-11 w-auto max-w-[220px] object-contain" />
+              ? <img src={imgUrl(brand.logoUrl, { w: 440, trim: true })} alt={brand.companyName} className="h-11 w-auto max-w-[220px] object-contain" />
               : <><MarkM size={30} /><span className="hidden font-display text-lg font-bold tracking-wide sm:inline">{brand.companyName}</span></>}
         </Link>
         <div className="mx-auto hidden min-w-0 flex-1 justify-center px-4 md:flex"><SearchBox /></div>

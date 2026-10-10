@@ -21,6 +21,7 @@ import { masterRoutes } from './routes/masters';
 import { publicRoutes } from './routes/public';
 import { reportRoutes } from './routes/reports';
 import { systemApiRoutes } from './routes/sysapi';
+import { imgRoutes } from './routes/img';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -32,6 +33,7 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/uploads', express.static(config.uploadDir, { maxAge: '7d', index: false }));
 
 const api = express.Router();
+api.use(imgRoutes); // tanpa JWT: versi terkompresi gambar unggahan
 api.use(integrationRoutes); // tanpa JWT (pakai API key / secret)
 api.use(exportRoutes); // tanpa JWT (pakai EXPORT_API_KEY)
 api.use(publicRoutes); // tanpa JWT: info aset dari label QR (hanya data aman)

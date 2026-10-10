@@ -58,6 +58,13 @@ export const assetQr = (sn: string) => `${typeof window !== 'undefined' ? window
 
 export const fileUrl = (u: string) => (u.startsWith('http') || u.startsWith('/brand/') ? u : `${API}${u}`);
 
+/** Sakelar kompresi tampilan (Admin → Tampilan). Mati = selalu pakai berkas asli (rollback). */
+let optimize = true;
+export const setOptimizeImages = (v: boolean) => { optimize = v; };
+/** URL tampilan gambar unggahan: versi webp terkompresi lebar `w` px (berkas asli tetap tersimpan utuh). trim = buang tepi kosong (logo). */
+export const imgUrl = (u: string, o: { w?: number; trim?: boolean } = {}) =>
+  optimize && u.startsWith('/uploads/') ? `${API}/api/img?u=${encodeURIComponent(u)}&w=${o.w ?? 800}${o.trim ? '&trim=1' : ''}` : fileUrl(u);
+
 export function useFetch<T = any>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);

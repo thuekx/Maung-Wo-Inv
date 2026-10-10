@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API, api, doDelete, fileUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
+import { API, api, doDelete, fileUrl, imgUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { DEFAULT_LOGOS, loadBranding } from '@/lib/brand';
 import { useAuth } from '@/lib/auth';
@@ -287,7 +287,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
         <div className="subheader mb-2">Pratinjau panel login</div>
         <div className="relative isolate overflow-hidden rounded-lg p-5 text-white" style={{ background: f.primary }}>
           <div className="contour absolute inset-0 -z-10 opacity-60" />
-          {b.logoUrl ? <img src={fileUrl(b.logoUrl)} alt="" className="mb-2 h-12 w-auto object-contain" /> : <div className="mb-2 font-display text-2xl font-extrabold">{f.companyName}</div>}
+          {b.logoUrl ? <img src={imgUrl(b.logoUrl, { w: 300, trim: true })} alt="" className="mb-2 h-12 w-auto object-contain" /> : <div className="mb-2 font-display text-2xl font-extrabold">{f.companyName}</div>}
           <div className="text-[11px] tracking-[0.16em] text-slate-300">{f.subtitle}</div>
           <div className="mt-3 font-display text-xl font-semibold" style={{ color: f.accent }}>{f.tagline}</div>
           <div className="my-2 h-0.5 w-10" style={{ background: f.accent }} />
@@ -297,6 +297,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
       </div>
 
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={b.requireGps} onChange={(e) => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { requireGps: e.target.checked } }); await loadBranding(true); reload(); }, 'Kebijakan GPS disimpan')} /> Wajibkan GPS pada foto teknisi (FOC) <span className="text-xs text-slate-500">— matikan hanya untuk uji coba tanpa HTTPS</span></label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={b.optimizeImages} onChange={(e) => a.run(async () => { await api('/admin/settings/app', { method: 'PUT', body: { optimizeImages: e.target.checked } }); await loadBranding(true); reload(); }, 'Kompresi tampilan gambar disimpan')} /> Tampilkan gambar terkompresi <span className="text-xs text-slate-500">— berkas asli tetap tersimpan utuh; matikan untuk kembali memakai berkas asli (rollback)</span></label>
       <div className="flex flex-wrap items-center gap-3">
         <button className="btn" disabled={a.busy || !valid} onClick={save}>Simpan tampilan</button>
         <button className="btn-ghost" disabled={a.busy} onClick={reset}>Kembalikan ke bawaan MAUNG</button>

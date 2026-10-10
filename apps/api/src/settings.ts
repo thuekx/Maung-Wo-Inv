@@ -110,6 +110,7 @@ export async function getBranding() {
       charts: Array.isArray(c.charts) && c.charts.length === 6 && c.charts.every((x: string) => HEX.test(x)) ? c.charts : BRAND_DEFAULTS.colors.charts,
     },
     requireGps: a.requireGps !== false,
+    optimizeImages: a.optimizeImages !== false, // tampilkan gambar terkompresi (rollback: matikan di Admin)
   };
 }
 

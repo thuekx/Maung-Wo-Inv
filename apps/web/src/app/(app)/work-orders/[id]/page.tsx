@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
 import { toast } from '@/lib/dialog';
 import { Badge, DataView, ErrorMsg, Modal, PageHeader, RefsContext, statusTone } from '@/components/ui';
-import { fileUrl } from '@/lib/api';
+import { fileUrl, imgUrl } from '@/lib/api';
 
 export default function WoDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -112,7 +112,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {photos.map((a: any) => (
                   <figure key={a.id} className="overflow-hidden rounded-lg border text-xs">
-                    <a href={fileUrl(a.url)} target="_blank" rel="noreferrer"><img src={fileUrl(a.url)} alt="" className="aspect-[4/3] w-full object-cover" /></a>
+                    <a href={fileUrl(a.url)} target="_blank" rel="noreferrer"><img src={imgUrl(a.url, { w: 560 })} alt="" className="aspect-[4/3] w-full object-cover" /></a>
                     <figcaption className="space-y-0.5 p-2">
                       <div className="flex items-center justify-between"><Badge tone={a.kind === 'PROGRESS' ? 'violet' : 'blue'}>{a.kind === 'PROGRESS' ? 'Progres' : 'Laporan'}</Badge><span className="text-slate-500">{fmtDate(a.takenAt ?? a.createdAt)}</span></div>
                       <div className="text-slate-600">{a.uploaderName}{a.note ? ` — ${a.note}` : ''}</div>
