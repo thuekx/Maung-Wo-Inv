@@ -426,10 +426,11 @@ function SubFormCard() {
   return (
     <div className="card space-y-3">
       <h2 className="font-semibold">Formulir Berlangganan</h2>
-      <p className="text-sm text-slate-500">Reg. No. dibentuk <b>{cur.regPrefix}{cur.year3}</b> + nomor isian (3 digit tahun otomatis: 2027 → 027). Logo formulir & tanda tangan Manager Marketing diunggah di kartu Branding.</p>
+      <p className="text-sm text-slate-500">Reg. No. dibentuk <b>{cur.regPrefix}{cur.year3}</b> + nomor urut otomatis 4 digit (3 digit tahun otomatis: 2027 → 027). Logo formulir & tanda tangan Manager Marketing diunggah di kartu Branding.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {f('regPrefix', 'Awalan Reg. No.', 'Huruf saja, mis. SM')}
         {f('managerName', 'Manager Marketing (bawaan)')}
+        <div><label className="mb-1 block text-sm font-medium">Nomor urut pertama tahun ini</label><input className="input" type="number" min={1} value={cur.regSeqStart ?? 1} onChange={(e) => setV({ ...cur, regSeqStart: e.target.value })} /><p className="mt-0.5 text-xs text-slate-500">Reg. No. dibuat otomatis berurutan ({cur.regPrefix}{cur.year3}0001, …). Isi bila perlu melanjutkan nomor lama, mis. 120 → {cur.regPrefix}{cur.year3}0120.</p></div>
         {f('city', 'Kota')}{f('ppnNote', 'Keterangan PPN biaya langganan')}
         {f('bankName', 'Nama bank')}{f('accName', 'Atas nama rekening')}{f('accNo', 'No. rekening')}
         <div><label className="mb-1 block text-sm font-medium">Pembayaran bawaan</label><Select className="input" value={cur.defaultPayment} onChange={(e) => setV({ ...cur, defaultPayment: e.target.value })}><option value="TRANSFER">Transfer</option><option value="CASH">Tunai</option><option value="DEBIT">Debet</option></Select></div>
@@ -460,6 +461,12 @@ function DocsCard() {
         {f('seqStart', 'Nomor urut pertama tahun ini', 'Isi bila perlu melanjutkan nomor dari dokumen lama (mis. 251)', 'number')}
         {f('taxPct', 'PPN bawaan (%)', undefined, 'number')}
         {f('minVendors', 'Minimal vendor per baris perbandingan', undefined, 'number')}
+      </div>
+      <h3 className="pt-1 text-sm font-semibold">Penandatangan bawaan (dapat diubah GA/Procurement saat menerbitkan PR)</h3>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {f('signRequesterTitle', 'Jabatan pengaju (bawaan)', 'Kosong = jabatan pembuat PR')}<div />
+        {f('signKnow', 'Mengetahui — nama')}{f('signKnowTitle', 'Mengetahui — jabatan')}
+        {f('signApprove', 'Menyetujui — nama')}{f('signApproveTitle', 'Menyetujui — jabatan')}
       </div>
       <ErrorMsg>{err}</ErrorMsg>
       <button className="btn" onClick={async () => { setErr(''); try { await api('/admin/settings/docs', { method: 'PUT', body: { ...cur } }); toast.success('Pengaturan dokumen disimpan'); setV(null); await reload(); } catch (e) { setErr((e as Error).message); } }}>Simpan</button>

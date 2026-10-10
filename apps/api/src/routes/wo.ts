@@ -94,7 +94,9 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
   // isian awal form aksi: NOC melihat IP dari MSRadius (bila ada) & data jaringan yang sudah tercatat
   const c = wo.customer;
   const radIp = c?.radiusIp ?? '';
-  const tech = c ? { odp: c.odp ?? '', port: c.port ?? '', pop: c.pop ?? '', lat: c.lat ?? '', lng: c.lng ?? '' } : {};
+  // data teknis dari validasi FOC (kolom pelanggan; cadangan: catatan validasi di data WO) agar tim FOC tidak mengisi ulang
+  const val = ((wo.data as any)?.validation ?? {}) as { odp?: string; port?: string; pop?: string };
+  const tech = c ? { odp: c.odp || val.odp || '', port: c.port || val.port || '', pop: c.pop || val.pop || '', lat: c.lat ?? '', lng: c.lng ?? '' } : {};
   const prefill = c
     ? {
         validate: { odp: c.odp ?? '', port: c.port ?? '', pop: c.pop ?? '' },
@@ -130,6 +132,29 @@ woRoutes.post('/work-orders/:id/actions/:key', async (req, res) => {
   const u = req.user!;
   await transact((fx) => applyAction(fx, String(req.params.id), String(req.params.key), actorOf(req), req.body ?? {}));
   res.json({ ok: true });
+});
+
+/** Cek stok untuk Permintaan Barang: ketersediaan tiap barang di gudang tujuan dan di gudang lain (dipakai GA saat review). */
+woRoutes.get('/work-orders/:id/stock-check', requireRole('GA'), async (req, res) => {
+  const wo = await prisma.workOrder.findUnique({ where: { id: String(req.params.id) } });
+  if (!wo || wo.type !== 'STOCK_REQUEST') throw new AppError(404, 'Bukan Permintaan Barang');
+  const d = wo.data as any;
+  const lines = (d.lines ?? []) as { itemId: string; qty: number }[];
+  const [items, whs, levels, assets] = await Promise.all([
+    prisma.item.findMany({ where: { id: { in: lines.map((l) => l.itemId) } } }),
+    prisma.warehouse.findMany({ where: { kind: { not: 'MOBILE' }, active: true }, select: { id: true, name: true } }),
+    prisma.stockLevel.findMany({ where: { itemId: { in: lines.map((l) => l.itemId) }, warehouse: { kind: { not: 'MOBILE' } } } }),
+    prisma.asset.groupBy({ by: ['itemId', 'warehouseId'], where: { itemId: { in: lines.map((l) => l.itemId) }, status: { in: ['IN_STOCK', 'REFURBISHED'] }, warehouse: { kind: { not: 'MOBILE' } } }, _count: { _all: true } }),
+  ]);
+  res.json({
+    toWarehouse: whs.find((w) => w.id === d.toWarehouseId)?.name ?? null,
+    lines: lines.map((l) => {
+      const it = items.find((x) => x.id === l.itemId)!;
+      const per = whs.map((w) => ({ warehouse: w.name, isDest: w.id === d.toWarehouseId, qty: it.tracked ? assets.find((a) => a.itemId === it.id && a.warehouseId === w.id)?._count._all ?? 0 : levels.find((s) => s.itemId === it.id && s.warehouseId === w.id)?.qty ?? 0 }));
+      const dest = per.find((p) => p.isDest)?.qty ?? 0;
+      return { item: it.name, unit: it.unit, requested: l.qty, atDestination: dest, enough: dest >= l.qty, others: per.filter((p) => !p.isDest && p.qty > 0) };
+    }),
+  });
 });
 
 // aset yang menunggu QC dari WO ini (form QC di WO Terminate)

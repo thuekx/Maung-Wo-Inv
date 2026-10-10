@@ -13,6 +13,8 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
   const { id } = use(params);
   const { data: wo, error, reload } = useFetch<any>(`/work-orders/${id}`);
   const { data: meta } = useFetch<any[]>('/work-orders/meta');
+  const { user: me } = useAuth();
+  const { data: stock } = useFetch<any>(wo && wo.type === 'STOCK_REQUEST' && wo.status === 'PROC_REVIEW' && ['GA', 'ADMIN'].includes(me?.role ?? '') ? `/work-orders/${id}/stock-check` : null);
   const [active, setActive] = useState<string | null>(null);
   const [editWo, setEditWo] = useState(false);
   const { user } = useAuth();
@@ -73,6 +75,23 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
                   )}
                 </>
               )}
+            </div>
+          )}
+
+          {stock && (
+            <div className="card">
+              <h2 className="mb-1 font-semibold">Cek stok</h2>
+              <p className="mb-2 text-sm text-slate-500">Ketersediaan di gudang tujuan{stock.toWarehouse ? ` (${stock.toWarehouse})` : ''} dan gudang lain. Bila stok tujuan cukup, pilih <b>Stok tersedia di gudang tujuan → selesai</b>.</p>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="border-b text-left text-slate-500"><th className="py-1 pr-3">Barang</th><th className="py-1 pr-3 text-right">Diminta</th><th className="py-1 pr-3 text-right">Di gudang tujuan</th><th className="py-1">Di gudang lain</th></tr></thead>
+                <tbody>{stock.lines.map((l: any, i: number) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-1.5 pr-3">{l.item}</td>
+                    <td className="py-1.5 pr-3 text-right">{l.requested} {l.unit}</td>
+                    <td className={`py-1.5 pr-3 text-right font-semibold ${l.enough ? 'text-green-700' : 'text-red-600'}`}>{l.atDestination} {l.unit} {l.enough ? '✓ cukup' : '✗ kurang'}</td>
+                    <td className="py-1.5 text-slate-600">{l.others.length ? l.others.map((o: any) => `${o.warehouse}: ${o.qty}`).join(' · ') : '-'}</td>
+                  </tr>))}</tbody>
+              </table></div>
             </div>
           )}
 

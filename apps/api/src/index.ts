@@ -53,14 +53,21 @@ const idMsg = (m: string) =>
     .replace(/^Expected number, received nan$/i, 'Harus berupa angka')
     .replace(/^Number must be greater than or equal to (.+)$/, 'Minimal $1')
     .replace(/^Number must be less than or equal to (.+)$/, 'Maksimal $1')
-    .replace(/^Invalid enum value.*$/, 'Pilihan tidak valid');
+    .replace(/^Invalid enum value.*$/, 'Pilihan tidak valid')
+    .replace(/^Invalid date$/, 'Tanggal tidak valid')
+    .replace(/^Invalid(?: input)?$/, 'Isian tidak valid');
 
 const onError: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) return void res.status(err.status).json({ error: err.message, ...(err.fields ? { fields: err.fields } : {}) });
   if (err instanceof ZodError) {
     const fields: Record<string, string> = {};
     for (const i of err.issues) { const k = i.path.join('.') || 'input'; if (!fields[k]) fields[k] = idMsg(i.message); }
-    return void res.status(400).json({ error: err.issues.map((i) => `${i.path.join('.') || 'input'}: ${idMsg(i.message)}`).join('; '), fields });
+    // pesan untuk pengguna: tanpa nama variabel; pesan generik diringkas
+    const GENERIC = /^(Wajib diisi|Pilihan tidak valid|Harus berupa angka|Tanggal tidak valid|Isian tidak valid|Invalid.*)$/;
+    const msgs = [...new Set(err.issues.map((i) => idMsg(i.message)))];
+    const custom = msgs.filter((m) => !GENERIC.test(m));
+    const text = [...custom, ...(msgs.length > custom.length ? ['Ada isian wajib yang belum diisi atau tidak valid'] : [])].join('; ');
+    return void res.status(400).json({ error: text, fields });
   }
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') return void res.status(409).json({ error: 'Data duplikat (nilai unik sudah ada)' });

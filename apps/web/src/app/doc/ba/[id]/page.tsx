@@ -1,6 +1,6 @@
 'use client';
 import { use, useEffect, useState } from 'react';
-import { api, useFetch } from '@/lib/api';
+import { api, fileUrl, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { DocPage, DocShell, longDate } from '@/components/DocSheet';
 import { ErrorMsg } from '@/components/ui';
@@ -48,6 +48,13 @@ export default function BaPrint({ params }: { params: Promise<{ id: string }> })
           <div><div>Pihak Kedua</div><div className="font-semibold">Pelanggan</div><div className="h-20" /><div className="font-semibold underline">{c.name}</div></div>
         </div>
       </DocPage>
+      {(act.photos?.length ?? 0) > 0 && (
+        <DocPage>
+          <h2 className="mb-1 text-center font-bold">LAMPIRAN — BUKTI HASIL SPEEDTEST</h2>
+          <div className="mb-4 text-center text-[10pt]">No. {number}</div>
+          <div className="space-y-4">{act.photos.map((u: string) => <img key={u} src={fileUrl(u)} alt="Hasil speedtest" className="mx-auto max-h-[110mm] max-w-full rounded border object-contain" />)}</div>
+        </DocPage>
+      )}
     </DocShell>
   );
 }

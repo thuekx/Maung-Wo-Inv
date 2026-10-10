@@ -21,6 +21,7 @@ subscriptionRoutes.put('/admin/settings/subform', requireRole('ADMIN'), async (r
   const t = (max: number) => z.string().trim().min(1).max(max);
   const b = z.object({
     regPrefix: z.string().trim().min(1).max(6).regex(/^[A-Za-z]+$/, 'Hanya huruf'),
+    regSeqStart: z.coerce.number().int('Harus bilangan bulat').min(1, 'Minimal 1').max(999999),
     city: t(40), managerName: t(80), bankName: t(80), accName: t(80),
     accNo: z.string().trim().min(3).max(30).regex(/^[0-9 -]+$/, 'Hanya angka'),
     footer: z.string().trim().min(1).max(300), defaultPayment: z.enum(['CASH', 'TRANSFER', 'DEBIT']), ppnNote: t(60),
@@ -32,7 +33,6 @@ subscriptionRoutes.put('/admin/settings/subform', requireRole('ADMIN'), async (r
 /* ── CRUD ── */
 const body = z.object({
   formDate: z.coerce.date().optional(),
-  regSuffix: z.string().trim().min(1, 'Nomor registrasi wajib diisi').max(20, 'Maksimal 20 karakter').regex(/^[A-Za-z0-9._/-]+$/, 'Hanya huruf, angka, . _ / -'),
   name: opt(120), address: opt(300),
   phone: z.preprocess(nul, z.string().trim().max(20).regex(/^[0-9+][0-9 +()-]*$/, 'Hanya angka, spasi, + ( ) -').nullable().optional()),
   email: z.preprocess(nul, z.string().email('Format email tidak valid').max(120).nullable().optional()),
@@ -73,10 +73,17 @@ subscriptionRoutes.post('/subscriptions', canWrite, async (req, res) => {
   const cfg = await getSubForm();
   const date = b.formDate ?? new Date();
   const who = whoOf(req);
-  const { regSuffix, formDate: _fd, ...rest } = b;
+  const { formDate: _fd, ...rest } = b;
   const row = await transact(async (fx) => {
-    const regNo = await regNoOf(date, regSuffix);
-    if (await fx.tx.subscription.findUnique({ where: { regNo } })) throw fieldError('regSuffix', `Nomor registrasi ${regNo} sudah dipakai`, 409);
+    // nomor registrasi otomatis: awalan + 3 digit tahun + urutan (urutan pertama diatur Admin), per tahun
+    const key = `SUBREG-${date.getFullYear()}`;
+    let regNo = '';
+    for (let n = 0; n < 50; n++) {
+      let c = await fx.tx.counter.upsert({ where: { key }, create: { key, value: cfg.regSeqStart }, update: { value: { increment: 1 } } });
+      if (c.value < cfg.regSeqStart) c = await fx.tx.counter.update({ where: { key }, data: { value: cfg.regSeqStart } }); // Admin menaikkan nomor mulai
+      regNo = await regNoOf(date, String(c.value).padStart(4, '0'));
+      if (!(await fx.tx.subscription.findUnique({ where: { regNo } }))) break;
+    }
     const r = await fx.tx.subscription.create({ data: { ...rest, regNo, formDate: date, payment: b.payment ?? cfg.defaultPayment, managerName: b.managerName === undefined ? cfg.managerName : b.managerName, marketingName: b.marketingName === undefined ? req.user!.name : b.marketingName, createdById: req.user!.id } as any });
     await writeAudit(fx, who, { action: 'CREATE', entity: 'formulir berlangganan', entityId: r.id, summary: `${who.name} menerbitkan formulir berlangganan ${regNo}${r.name ? ` (${r.name})` : ''}` });
     return r;
@@ -89,15 +96,9 @@ subscriptionRoutes.patch('/subscriptions/:id', canWrite, async (req, res) => {
   const b = body.partial().parse(req.body);
   const cur = await prisma.subscription.findUnique({ where: { id } });
   if (!cur) throw new AppError(404, 'Formulir tidak ditemukan');
-  const { regSuffix, formDate, ...rest } = b;
-  const data: Record<string, unknown> = { ...rest };
+  const { formDate, ...rest } = b;
+  const data: Record<string, unknown> = { ...rest }; // nomor registrasi tetap (otomatis saat dibuat)
   if (formDate) data.formDate = formDate;
-  if (regSuffix !== undefined || formDate) {
-    const cfg = await getSubForm();
-    const oldSuffix = cur.regNo.slice(cfg.regPrefix.length + 3);
-    data.regNo = await regNoOf(formDate ?? cur.formDate, regSuffix ?? oldSuffix);
-    if (data.regNo !== cur.regNo && (await prisma.subscription.findUnique({ where: { regNo: data.regNo as string } }))) throw fieldError('regSuffix', `Nomor registrasi ${data.regNo} sudah dipakai`, 409);
-  }
   res.json(await auditedUpdate(whoOf(req), 'formulir berlangganan', id, cur.regNo, changes(cur, data), (fx) => fx.tx.subscription.update({ where: { id }, data: data as any })));
 });
 

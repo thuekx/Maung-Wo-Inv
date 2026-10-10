@@ -73,17 +73,19 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
         {ga && <div className="mt-3 space-y-0.5 text-right text-sm"><div>Subtotal {rupiah(pr.totals.subtotal)}</div><div>PPN {Number(pr.taxPct)}% {rupiah(pr.totals.tax)}</div><div className="font-semibold">Grand Total {rupiah(pr.totals.grandTotal)}</div></div>}
       </div>
 
-      {pr.signRequester && <p className="text-sm text-slate-600">Mengajukan: <b>{pr.signRequester}</b>{pr.signRequesterTitle ? ` (${pr.signRequesterTitle})` : ''} · Mengetahui: <b>{pr.signKnow}</b> · Menyetujui: <b>{pr.signApprove}</b></p>}
+      {pr.signRequester && <p className="text-sm text-slate-600">Mengajukan: <b>{pr.signRequester}</b>{pr.signRequesterTitle ? ` (${pr.signRequesterTitle})` : ''} · Mengetahui: <b>{pr.signKnow}</b>{pr.signKnowTitle ? ` (${pr.signKnowTitle})` : ''} · Menyetujui: <b>{pr.signApprove}</b>{pr.signApproveTitle ? ` (${pr.signApproveTitle})` : ''}</p>}
 
       {modal === 'issue' && (
         <Modal title="Terbitkan PDF Pengajuan" onClose={() => setModal(null)}>
           <p className="mb-3 text-sm text-slate-500">Nomor surat dibuat otomatis ({pr.number ?? 'saat diterbitkan'}). Isi nama penandatangan sesuai dokumen saat ini; dapat diubah lagi selama belum disetujui.</p>
-          <DynamicForm submitLabel={pr.status === 'ISSUED' ? 'Simpan penandatangan' : 'Terbitkan'} initial={{ signRequester: pr.signRequester ?? pr.createdBy.name, signRequesterTitle: pr.signRequesterTitle ?? roleText(pr.createdBy), signKnow: pr.signKnow ?? 'Akhmad Taufik', signApprove: pr.signApprove ?? 'Ayus Fardiaz', docDate: (pr.docDate ?? new Date().toISOString()).slice(0, 16) }}
+          <DynamicForm submitLabel={pr.status === 'ISSUED' ? 'Simpan penandatangan' : 'Terbitkan'} initial={{ signRequester: pr.signRequester ?? pr.createdBy.name, signRequesterTitle: pr.signRequesterTitle ?? (pr.docs.signRequesterTitle || roleText(pr.createdBy)), signKnow: pr.signKnow ?? pr.docs.signKnow, signKnowTitle: pr.signKnowTitle ?? pr.docs.signKnowTitle, signApprove: pr.signApprove ?? pr.docs.signApprove, signApproveTitle: pr.signApproveTitle ?? pr.docs.signApproveTitle, docDate: (pr.docDate ?? new Date().toISOString()).slice(0, 16) }}
             fields={[
               { name: 'signRequester', label: 'Mengajukan (nama)', type: 'text', required: true },
               { name: 'signRequesterTitle', label: 'Jabatan pengaju', type: 'text', help: 'mis. Manager' },
               { name: 'signKnow', label: 'Mengetahui (nama)', type: 'text', required: true },
+              { name: 'signKnowTitle', label: 'Jabatan yang mengetahui', type: 'text' },
               { name: 'signApprove', label: 'Menyetujui (nama)', type: 'text', required: true },
+              { name: 'signApproveTitle', label: 'Jabatan yang menyetujui', type: 'text' },
               { name: 'docDate', label: 'Tanggal surat', type: 'datetime' },
             ]}
             onSubmit={async (v) => { await api(`/purchase-requests/${id}/issue`, { body: v }); toast.success('PR diterbitkan.'); setModal(null); await reload(); router.push(`/doc/pr/${id}`); }} />
@@ -103,7 +105,7 @@ export default function PrDetail({ params }: { params: Promise<{ id: string }> }
           <DynamicForm danger submitLabel="Batalkan PR" fields={[{ name: 'note', label: 'Alasan pembatalan', type: 'textarea', required: true }]} onSubmit={(v) => run(() => api(`/purchase-requests/${id}/cancel`, { body: v }), 'PR dibatalkan.')} />
         </Modal>
       )}
-      {modal === 'po' && <PoEntry pr={pr} onClose={() => setModal(null)} onDone={async (poId) => { toast.success('PO dicatat.'); setModal(null); router.push(`/purchase-orders/${poId}`); }} />}
+      {modal === 'po' && <PoEntry pr={pr} onClose={() => setModal(null)} onDone={async () => { toast.success('PO dicatat. Anda masih di halaman PR ini — catat PO berikutnya bila ada.'); setModal(null); await reload(); }} />}
     </div>
   );
 }

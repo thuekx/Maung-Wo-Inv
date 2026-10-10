@@ -26,6 +26,11 @@ procurementRoutes.put('/admin/settings/docs', requireRole('ADMIN'), async (req, 
     taxPct: z.coerce.number().min(0).max(100),
     seqStart: z.coerce.number().int().min(1).max(999999),
     minVendors: z.coerce.number().int().min(1).max(5),
+    signRequesterTitle: z.string().trim().max(60).default(''),
+    signKnow: z.string().trim().max(80).default(''),
+    signKnowTitle: z.string().trim().max(60).default(''),
+    signApprove: z.string().trim().max(80).default(''),
+    signApproveTitle: z.string().trim().max(60).default(''),
   }).parse(req.body);
   await putSetting('docs', b, req.user!.id);
   res.json(await getDocs());
@@ -239,7 +244,9 @@ procurementRoutes.post('/purchase-requests/:id/issue', gaOnly, async (req, res) 
     signRequester: z.string().trim().min(2, 'Nama pengaju wajib diisi').max(80),
     signRequesterTitle: z.preprocess(nul, z.string().trim().max(60).nullable().optional()),
     signKnow: z.string().trim().min(2, 'Nama "Mengetahui" wajib diisi').max(80),
+    signKnowTitle: z.preprocess(nul, z.string().trim().max(60).nullable().optional()),
     signApprove: z.string().trim().min(2, 'Nama "Menyetujui" wajib diisi').max(80),
+    signApproveTitle: z.preprocess(nul, z.string().trim().max(60).nullable().optional()),
     docDate: z.coerce.date().optional(),
   }).parse(req.body);
   const pr = await loadPr(id);
@@ -254,10 +261,11 @@ procurementRoutes.post('/purchase-requests/:id/issue', gaOnly, async (req, res) 
     const date = b.docDate ?? pr.docDate ?? new Date();
     if (!number) {
       const key = `PRDOC-${date.getFullYear()}`;
-      const c = await fx.tx.counter.upsert({ where: { key }, create: { key, value: docs.seqStart }, update: { value: { increment: 1 } } });
+      let c = await fx.tx.counter.upsert({ where: { key }, create: { key, value: docs.seqStart }, update: { value: { increment: 1 } } });
+      if (c.value < docs.seqStart) c = await fx.tx.counter.update({ where: { key }, data: { value: docs.seqStart } }); // Admin menaikkan nomor mulai
       number = `${c.value}/${prefix}/${ROMAN[date.getMonth()]}/${date.getFullYear()}`;
     }
-    await fx.tx.purchaseRequest.update({ where: { id }, data: { number, status: 'ISSUED', docDate: date, issuedAt: pr.issuedAt ?? new Date(), city: docs.city, signRequester: b.signRequester, signRequesterTitle: b.signRequesterTitle ?? null, signKnow: b.signKnow, signApprove: b.signApprove } });
+    await fx.tx.purchaseRequest.update({ where: { id }, data: { number, status: 'ISSUED', docDate: date, issuedAt: pr.issuedAt ?? new Date(), city: docs.city, signRequester: b.signRequester, signRequesterTitle: b.signRequesterTitle ?? null, signKnow: b.signKnow, signKnowTitle: b.signKnowTitle ?? null, signApprove: b.signApprove, signApproveTitle: b.signApproveTitle ?? null } });
     if (pr.status !== 'ISSUED') {
       await fx.notify({ userIds: [pr.createdById], subject: `[PR ${number}] Diterbitkan`, body: `Purchase Request "${pr.subject}" telah diterbitkan oleh ${who.name} dan menunggu persetujuan.` });
       await writeAudit(fx, who, { action: 'UPDATE', entity: 'purchase request', entityId: id, summary: `${who.name} menerbitkan PR ${number}` });

@@ -386,6 +386,7 @@ const newInstall: Workflow = {
             { name: 'downMbps', label: 'Speedtest download (Mbps)', type: 'number', required: true },
             { name: 'upMbps', label: 'Speedtest upload (Mbps)', type: 'number', required: true },
             { name: 'stable', label: 'Stability check lulus', type: 'bool', required: true },
+            { name: 'photos', label: 'Bukti hasil speedtest (tangkapan layar / foto)', type: 'photos', plain: true, help: 'Dilampirkan pada Berita Acara (BAA). Boleh lebih dari satu gambar.' },
             note(),
           ],
           run: async (ctx, input) => {
@@ -401,6 +402,7 @@ const newInstall: Workflow = {
                 downMbps: z.coerce.number().min(0),
                 upMbps: z.coerce.number().min(0),
                 stable: yes('Stability check harus lulus'),
+                photos: z.array(z.string()).max(10, 'Maksimal 10 gambar').default([]),
                 note: optNote,
               })
               .parse(input);
@@ -799,6 +801,28 @@ const stockRequest: Workflow = {
       label: 'Review GA/Procurement',
       owner: 'GA',
       actions: [
+        {
+          key: 'in_stock',
+          label: 'Stok tersedia di gudang tujuan → selesai',
+          roles: ['GA'],
+          to: 'CLOSED',
+          fields: [note()],
+          run: async (ctx) => {
+            const d = ctx.wo.data as any;
+            const lines = d.lines as { itemId: string; qty: number }[];
+            const items = await ctx.tx.item.findMany({ where: { id: { in: lines.map((l) => l.itemId) } } });
+            const short: string[] = [];
+            for (const l of lines) {
+              const it = items.find((x) => x.id === l.itemId)!;
+              const have = it.tracked
+                ? await ctx.tx.asset.count({ where: { itemId: it.id, warehouseId: d.toWarehouseId, status: { in: AVAILABLE } } })
+                : (await ctx.tx.stockLevel.findUnique({ where: { warehouseId_itemId: { warehouseId: d.toWarehouseId, itemId: it.id } } }))?.qty ?? 0;
+              if (have < l.qty) short.push(`${it.name} (diminta ${l.qty}, tersedia ${have})`);
+            }
+            if (short.length) throw new AppError(409, `Stok di gudang tujuan belum cukup: ${short.join(', ')} — gunakan mutasi atau Purchase Request`);
+            ctx.data.stockOk = { at: new Date(), by: ctx.actor.name };
+          },
+        },
         {
           key: 'transfer',
           label: 'Stok ada di gudang lain → mutasi',

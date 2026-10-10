@@ -114,8 +114,9 @@ export async function getBranding() {
 }
 
 /* ── Pengaturan dokumen (nomor surat, kota, PPN) ── */
-export interface DocsCfg { codePrefix: string; city: string; taxPct: number; seqStart: number; minVendors: number }
-export const DOCS_DEFAULTS: DocsCfg = { codePrefix: 'L1V/PNJ-{ALIAS}', city: 'Bandung', taxPct: 11, seqStart: 1, minVendors: 2 };
+export interface DocsCfg { codePrefix: string; city: string; taxPct: number; seqStart: number; minVendors: number; signRequesterTitle: string; signKnow: string; signKnowTitle: string; signApprove: string; signApproveTitle: string }
+export const DOCS_DEFAULTS: DocsCfg = { codePrefix: 'L1V/PNJ-{ALIAS}', city: 'Bandung', taxPct: 11, seqStart: 1, minVendors: 2, signRequesterTitle: '', signKnow: '', signKnowTitle: '', signApprove: '', signApproveTitle: '' };
+const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 export async function getDocs(): Promise<DocsCfg> {
   const d = (await getSetting<any>('docs')) ?? {};
   return {
@@ -124,13 +125,15 @@ export async function getDocs(): Promise<DocsCfg> {
     taxPct: Number.isFinite(Number(d.taxPct)) && d.taxPct !== '' && d.taxPct != null ? Number(d.taxPct) : DOCS_DEFAULTS.taxPct,
     seqStart: Number.isInteger(Number(d.seqStart)) && Number(d.seqStart) >= 1 ? Number(d.seqStart) : DOCS_DEFAULTS.seqStart,
     minVendors: Number.isInteger(Number(d.minVendors)) && Number(d.minVendors) >= 1 ? Number(d.minVendors) : DOCS_DEFAULTS.minVendors,
+    // penandatangan bawaan PR (dapat diubah GA/Procurement saat menerbitkan)
+    signRequesterTitle: str(d.signRequesterTitle), signKnow: str(d.signKnow), signKnowTitle: str(d.signKnowTitle), signApprove: str(d.signApprove), signApproveTitle: str(d.signApproveTitle),
   };
 }
 
 /* ── Formulir Berlangganan (nomor registrasi, rekening, penandatangan bawaan) ── */
-export interface SubFormCfg { regPrefix: string; city: string; managerName: string; bankName: string; accName: string; accNo: string; footer: string; defaultPayment: 'CASH' | 'TRANSFER' | 'DEBIT'; ppnNote: string }
+export interface SubFormCfg { regSeqStart: number; regPrefix: string; city: string; managerName: string; bankName: string; accName: string; accNo: string; footer: string; defaultPayment: 'CASH' | 'TRANSFER' | 'DEBIT'; ppnNote: string }
 export const SUBFORM_DEFAULTS: SubFormCfg = {
-  regPrefix: 'SM', city: 'Bandung', managerName: 'M Gugi Granada',
+  regSeqStart: 1, regPrefix: 'SM', city: 'Bandung', managerName: 'M Gugi Granada',
   bankName: 'BANK BCA KCP Buahbatu BANDUNG', accName: 'Lintas Satu Visi PT', accNo: '7753555511',
   footer: 'Jl. Magenta Raya No. 26\nBandung, 40173, Indonesia, Tlp : 022-21000234\nWeb : www.sunmori.net Mail : info@liv.co.id',
   defaultPayment: 'TRANSFER', ppnNote: 'Include PPN 11%',
@@ -139,6 +142,7 @@ export async function getSubForm(): Promise<SubFormCfg> {
   const d = (await getSetting<any>('subform')) ?? {};
   const out: any = { ...SUBFORM_DEFAULTS };
   for (const k of Object.keys(SUBFORM_DEFAULTS) as (keyof SubFormCfg)[]) if (typeof d[k] === 'string' && d[k].trim()) out[k] = d[k].trim();
+  out.regSeqStart = Number.isInteger(Number(d.regSeqStart)) && Number(d.regSeqStart) >= 1 ? Number(d.regSeqStart) : 1;
   if (!['CASH', 'TRANSFER', 'DEBIT'].includes(out.defaultPayment)) out.defaultPayment = 'TRANSFER';
   return out as SubFormCfg;
 }

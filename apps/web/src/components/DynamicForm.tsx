@@ -17,6 +17,7 @@ export interface Field {
   itemCategory?: string;
   customerStatus?: string[];
   pickedOnly?: boolean;
+  plain?: boolean;
 }
 
 /* ───────── input khusus ───────── */
@@ -98,7 +99,7 @@ export function MaterialsInput({ value, onChange, category, woId, pickedOnly }: 
   );
 }
 
-export function PhotosInput({ value, onChange, woId, label, kind = 'REPORT' }: { value: string[]; onChange: (v: string[]) => void; woId?: string; label?: string; kind?: 'REPORT' | 'PROGRESS' }) {
+export function PhotosInput({ value, onChange, woId, label, kind = 'REPORT', plain }: { value: string[]; onChange: (v: string[]) => void; woId?: string; label?: string; kind?: 'REPORT' | 'PROGRESS'; plain?: boolean }) {
   const { user } = useAuth();
   const branding = useBranding();
   const [step, setStep] = useState('');
@@ -109,13 +110,13 @@ export function PhotosInput({ value, onChange, woId, label, kind = 'REPORT' }: {
     setErr('');
     try {
       const urls: string[] = [];
-      for (const f of Array.from(files)) urls.push(await uploadPhoto(f, { woId, label, kind, strict, onStep: setStep }));
+      for (const f of Array.from(files)) urls.push(await uploadPhoto(f, { woId, label, kind, strict, plain, onStep: setStep }));
       onChange([...value, ...urls]);
     } catch (e) { setErr((e as Error).message); } finally { setStep(''); }
   }
   return (
     <div className="space-y-2">
-      <input type="file" accept="image/*" capture="environment" multiple disabled={!!step} onChange={(e) => { pick(e.target.files); e.target.value = ''; }} className="text-sm" />
+      <input type="file" accept="image/*" {...(plain ? {} : { capture: 'environment' as const })} multiple disabled={!!step} onChange={(e) => { pick(e.target.files); e.target.value = ''; }} className="text-sm" />
       <p className="text-xs text-slate-500">📍 Lokasi GPS, waktu{branding.logoUrl ? ', dan logo' : ''} {branding.companyName} otomatis ditempel pada foto{strict && branding.requireGps ? ' (wajib untuk teknisi)' : ''}.</p>
       {step && <p className="text-xs text-brand-700">{step}</p>}
       <ErrorMsg>{err}</ErrorMsg>
@@ -164,21 +165,38 @@ function QcInput({ woId, value, onChange }: { woId?: string; value: any[]; onCha
 function CustomerSelect({ value, onChange, statuses }: { value: string; onChange: (v: string) => void; statuses?: string[] }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState<any[]>([]);
+  const [picked, setPicked] = useState<any | null>(null);
   useEffect(() => {
     const t = setTimeout(() => {
       const p = new URLSearchParams();
       if (q) p.set('q', q);
+      p.set('limit', '30');
       if (statuses) p.set('status', statuses.join(','));
-      api<any[]>(`/customers?${p}`).then(setRows).catch(() => {});
+      api<any>(`/customers?${p}`).then((r) => setRows(Array.isArray(r) ? r : r.data ?? [])).catch(() => {});
     }, 250);
     return () => clearTimeout(t);
   }, [q, statuses]);
+  // nilai awal (mis. dari tautan) tanpa pilihan lokal: ambil namanya agar terlihat
+  useEffect(() => { if (value && !picked) api<any>(`/customers/${value}`).then(setPicked).catch(() => {}); }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (value && picked) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-accent-500 bg-accent-50 px-3 py-2 text-sm dark:bg-slate-700">
+        <span className="min-w-0"><b>{picked.name}</b> <span className="text-slate-500">· {picked.code} · {picked.status}</span></span>
+        <button type="button" className="btn-ghost !px-2.5 !py-1 !text-xs" onClick={() => { onChange(''); setPicked(null); }}>Ganti</button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-1">
       <input className="input" placeholder="Cari nama / kode / IP pelanggan…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <Select className="input" value={value} onChange={(e) => onChange(e.target.value)} size={Math.min(6, Math.max(2, rows.length))}>
-        {rows.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name} ({c.status})</option>)}
-      </Select>
+      <ul className="max-h-56 divide-y overflow-y-auto rounded-lg border bg-white text-sm dark:bg-slate-800" role="listbox">
+        {rows.map((c) => (
+          <li key={c.id} role="option" aria-selected={false} className="cursor-pointer px-3 py-2 hover:bg-slate-100 active:bg-slate-200 dark:hover:bg-slate-700" onClick={() => { setPicked(c); onChange(c.id); }}>
+            <b>{c.name}</b> <span className="text-slate-500">· {c.code} · {c.status}</span>
+          </li>
+        ))}
+        {!rows.length && <li className="px-3 py-2 text-slate-400">{q ? 'Tidak ada pelanggan yang cocok' : 'Ketik untuk mencari pelanggan'}</li>}
+      </ul>
     </div>
   );
 }
@@ -263,7 +281,11 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   const { data: whs } = useFetch<any[]>(fields.some((f) => f.type === 'warehouse') ? '/warehouses' : null);
   const { data: pkgs } = useFetch<any[]>(fields.some((f) => f.type === 'package') ? '/packages' : null);
   const { data: areas } = useFetch<any[]>(fields.some((f) => f.type === 'area') ? '/areas' : null);
-  const set = (name: string, val: any) => setV((p) => ({ ...p, [name]: val }));
+  const set = (name: string, val: any) => {
+    setV((p) => ({ ...p, [name]: val }));
+    // galat inline hilang begitu isian diperbaiki; banner galat ikut hilang bila tak ada yang tersisa
+    setFe((p) => { if (!p[name]) return p; const { [name]: _x, ...rest } = p; if (!Object.keys(rest).length) setErr(''); return rest; });
+  };
   const hasCoords = fields.some((f) => f.name === 'lat') && fields.some((f) => f.name === 'lng');
   const [map, setMap] = useState(false);
   const [geoMsg, setGeoMsg] = useState('');
@@ -353,7 +375,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
             : f.type === 'customer' ? <CustomerSelect value={v[f.name]} onChange={(x) => set(f.name, x)} statuses={f.customerStatus} />
             : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} onPending={(t) => setPending((p) => ({ ...p, [f.name]: t }))} />
             : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} woId={woId} pickedOnly={f.pickedOnly} />
-            : f.type === 'photos' ? <PhotosInput value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
+            : f.type === 'photos' ? <PhotosInput plain={f.plain} value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
             : f.type === 'qc' ? <QcInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
           {fe[f.name] && <p className="mt-1 text-xs font-medium text-red-600" role="alert">{fe[f.name]}</p>}

@@ -6,6 +6,15 @@ import { ErrorMsg } from '@/components/ui';
 import { useBranding } from '@/lib/photo';
 import { TERMS } from '@/lib/terms';
 
+/** Paket terpilih + maks. 3 varian yang mirip (awalan sama, beda angka belakang) — sama dengan pilihan di form. */
+const split = (name: string) => { const m = /^(.*?)[-_ ]?(\d+(?:[.,]\d+)?)\s*(?:m|mb|mbps)?$/i.exec(name.trim()); return m ? { base: m[1].toLowerCase(), n: Number(m[2].replace(',', '.')) } : { base: name.toLowerCase(), n: NaN }; };
+function shortlist(all: any[], selected: string | null, max = 3) {
+  const cur = all.find((p) => p.name === selected);
+  if (!cur) return all.slice(0, 4); // belum memilih paket: tampilkan beberapa saja
+  const a = split(cur.name);
+  return [cur, ...all.filter((p) => p.name !== cur.name && split(p.name).base === a.base).sort((x, y) => Math.abs(split(x.name).n - a.n) - Math.abs(split(y.name).n - a.n) || x.name.localeCompare(y.name)).slice(0, max)].sort((x, y) => split(x.name).n - split(y.name).n);
+}
+
 const Box = ({ on }: { on: boolean }) => <span className="mr-1.5 inline-block w-[1.1em] text-center">{on ? '☑' : '☐'}</span>;
 const Bar = ({ a, b }: { a: string; b: string }) => <div className="bg-black px-1.5 py-[1px] text-[9pt] font-bold uppercase text-white">{a} <span className="mx-1">|</span> {b}</div>;
 const Line = ({ label, value, h = 'h-6' }: { label: string; value?: React.ReactNode; h?: string }) => (
@@ -23,7 +32,7 @@ export default function FormPrint({ params }: { params: Promise<{ id: string }> 
   const c = s.settings;
   const logo = brand.formLogoUrl ? fileUrl(brand.formLogoUrl) : '/sunmori-logo.png';
   const rp = (n: unknown) => (n == null ? '' : Math.round(Number(n)).toLocaleString('id-ID'));
-  const list = (pkgs ?? []).slice(0, 8);
+  const list = shortlist(pkgs ?? [], s.packageName);
   const inList = list.some((p) => p.name === s.packageName);
   return (
     <DocShell title={`Formulir ${s.regNo}`} back={`/subscriptions/${id}`}>

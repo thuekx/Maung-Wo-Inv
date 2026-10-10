@@ -75,8 +75,20 @@ export async function stampPhoto(file: File, o: { company: string; logoUrl?: str
  * Unggah foto: ambil GPS → tempel logo/koordinat → kirim beserta metadata GPS.
  * `strict` (teknisi FOC saat kebijakan GPS aktif): gagal GPS = foto ditolak.
  */
-export async function uploadPhoto(file: File, ctx: { woId?: string; label?: string; kind?: 'REPORT' | 'PROGRESS'; strict?: boolean; onStep?: (s: string) => void } = {}): Promise<string> {
+export async function uploadPhoto(file: File, ctx: { woId?: string; label?: string; kind?: 'REPORT' | 'PROGRESS'; strict?: boolean; plain?: boolean; onStep?: (s: string) => void } = {}): Promise<string> {
   const branding = await loadBranding();
+  if (ctx.plain) {
+    // bukti tangkapan layar (mis. speedtest): unggah apa adanya, tanpa GPS/banner
+    ctx.onStep?.('Mengunggah…');
+    const pf = new FormData();
+    pf.append('file', file, file.name || 'bukti.jpg');
+    if (ctx.woId) pf.append('woId', ctx.woId);
+    pf.append('kind', ctx.kind ?? 'REPORT');
+    const r = await fetch(`${API}/api/uploads`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: pf });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error ?? 'Upload gagal');
+    return j.url as string;
+  }
   ctx.onStep?.('Mengambil lokasi GPS…');
   let fix: Fix | null = null;
   try { fix = await getFix(); } catch (e) { if (ctx.strict && branding.requireGps) throw e; }

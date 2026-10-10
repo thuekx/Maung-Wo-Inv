@@ -36,7 +36,7 @@ export default function PrPrint({ params }: { params: Promise<{ id: string }> })
         <p className="mt-6">Demikian Surat Pengajuan ini saya buat, atas perhatian dan realisasinya saya ucapkan terima kasih.</p>
         <p className="mt-6 text-right">{pr.city}, {longDate(pr.docDate ?? new Date())}</p>
         <div className="mt-4 grid grid-cols-3 gap-4 text-center">
-          {[['Mengajukan', pr.signRequester, pr.signRequesterTitle], ['Mengetahui', pr.signKnow, ''], ['Menyetujui', pr.signApprove, '']].map(([h, name, title]) => (
+          {[['Mengajukan', pr.signRequester, pr.signRequesterTitle], ['Mengetahui', pr.signKnow, pr.signKnowTitle], ['Menyetujui', pr.signApprove, pr.signApproveTitle]].map(([h, name, title]) => (
             <div key={h as string}><div className="font-semibold">{h}</div><div className="h-20" /><div className="font-semibold underline">{name || ' '}</div>{title ? <div className="text-[10pt]">{title}</div> : null}</div>
           ))}
         </div>

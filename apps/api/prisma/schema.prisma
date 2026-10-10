@@ -492,7 +492,9 @@ model PurchaseRequest {
   signRequester      String? // Mengajukan (diisi procurement saat menerbitkan PDF)
   signRequesterTitle String?
   signKnow           String? // Mengetahui
+  signKnowTitle      String?
   signApprove        String? // Menyetujui
+  signApproveTitle   String?
   issuedAt           DateTime?
   approvedAt         DateTime?
   approvalRef        String? // no. PR/persetujuan di sistem lain (Accurate)

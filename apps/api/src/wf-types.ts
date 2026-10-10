@@ -18,6 +18,8 @@ export interface Field {
   customerStatus?: CustomerStatus[];
   /** materials: hanya item yang diambil teknisi di WO ini (laporan instalasi) */
   pickedOnly?: boolean;
+  /** photos: unggah apa adanya (tanpa GPS/banner), mis. tangkapan layar speedtest */
+  plain?: boolean;
 }
 
 /** Anggota tim pelaksana WO (teknisi utama atau salah satu dari tim). */

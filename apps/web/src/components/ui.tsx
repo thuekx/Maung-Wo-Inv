@@ -115,14 +115,10 @@ export function useNames() {
   return nameCache;
 }
 
+/** Kunci data tak dikenal: camelCase dipisah menjadi kata (nama variabel tidak pernah tampil mentah). */
+const humanize = (k: string) => { const t = k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); };
 const LABELS: Record<string, string> = {
-  itemId: 'Barang', warehouseId: 'Gudang', toWarehouseId: 'Gudang tujuan', sourceWarehouseId: 'Gudang asal', qty: 'Jumlah', serial: 'Nomor seri', serials: 'Perangkat (SN)', serialsNew: 'SN terpasang', serialsOld: 'SN dilepas',
-  cableMeters: 'Kabel terpakai (m)', opmDbm: 'Redaman OPM (dBm)', note: 'Catatan', photos: 'Foto', materials: 'Material', result: 'Hasil', items: 'Barang', lines: 'Rincian barang',
-  odp: 'ODP', odpPort: 'Port ODP', port: 'Port', vlan: 'VLAN', ip: 'IP internal', publicIp: 'IP publik', lat: 'Lintang', lng: 'Bujur', accuracy: 'Akurasi (m)',
-  pr: 'Purchase Request', reason: 'Alasan', techId: 'Teknisi', technicianId: 'Teknisi', pickup: 'Pengambilan material', at: 'Waktu', validation: 'Validasi teknis', packageName: 'Paket',
-  stockRequest: 'Permintaan barang', report: 'Laporan', activation: 'Aktivasi', reconciliation: 'Rekonsiliasi material', picked: 'Diambil', used: 'Terpakai', leftover: 'Sisa', installed: 'Terpasang',
-  pingMs: 'Ping / Latency (ms)', jitterMs: 'Jitter (ms)', downMbps: 'Download (Mbps)', upMbps: 'Upload (Mbps)', profile: 'Profil bandwidth', stable: 'Stabil', ontAuthorized: 'ONT di-authorize',
-  received: 'Diterima', transfer: 'Mutasi', notes: 'Catatan', ba: 'BA Digital', pop: 'POP', mainSplitter: 'Main splitter', signal: 'Signal', attenuation: 'Redaman', team: 'Tim pelaksana', steps: 'Langkah troubleshooting',
+  itemId: 'Barang', warehouseId: 'Gudang', toWarehouseId: 'Gudang tujuan', sourceWarehouseId: 'Gudang asal', qty: 'Jumlah', serial: 'Nomor seri', serials: 'Perangkat (SN)', serialsNew: 'SN terpasang', serialsOld: 'SN dilepas', cableMeters: 'Kabel terpakai (m)', opmDbm: 'Redaman OPM (dBm)', note: 'Catatan', photos: 'Foto', materials: 'Material', result: 'Hasil', items: 'Barang', lines: 'Rincian barang', odp: 'ODP', odpPort: 'Port ODP', port: 'Port', vlan: 'VLAN', ip: 'IP internal', publicIp: 'IP publik', lat: 'Lintang', lng: 'Bujur', accuracy: 'Akurasi (m)', pr: 'Purchase Request', reason: 'Alasan', techId: 'Teknisi', technicianId: 'Teknisi', pickup: 'Pengambilan material', at: 'Waktu', validation: 'Validasi teknis', packageName: 'Paket', stockRequest: 'Permintaan barang', report: 'Laporan', activation: 'Aktivasi', reconciliation: 'Rekonsiliasi material', picked: 'Diambil', used: 'Terpakai', leftover: 'Sisa', installed: 'Terpasang', pingMs: 'Ping / Latency (ms)', jitterMs: 'Jitter (ms)', downMbps: 'Download (Mbps)', upMbps: 'Upload (Mbps)', profile: 'Profil bandwidth', stable: 'Stabil', ontAuthorized: 'ONT di-authorize', signalDbm: 'Signal (dBm)', submittedBy: 'Dikirim oleh', category: 'Kategori', location: 'Lokasi', description: 'Uraian', teamHistory: 'Riwayat tim', from: 'Dari', to: 'Menjadi', by: 'Oleh', stockOk: 'Cek stok', fieldChange: 'Koreksi lapangan', results: 'Hasil', condition: 'Kondisi', sentTo: 'Dikirim ke', number: 'Nomor', received: 'Diterima', transfer: 'Mutasi', notes: 'Catatan', ba: 'BA Digital', pop: 'POP', mainSplitter: 'Main splitter', signal: 'Signal', attenuation: 'Redaman', team: 'Tim pelaksana', steps: 'Langkah troubleshooting',
 };
 
 /** id/SN mentah → teks terbaca (dari `refs` yang dikirim server per WO). */
@@ -148,10 +144,10 @@ export function DataView({ value, depth = 0, field }: { value: any; depth?: numb
     return <div className="space-y-1.5">{value.map((v, i) => <div key={i} className="rounded-lg border bg-slate-50 p-2.5"><DataView value={v} depth={depth + 1} /></div>)}</div>;
   }
   return (
-    <dl className="grid gap-x-4 gap-y-1.5 text-sm" style={{ gridTemplateColumns: 'minmax(7rem,max-content) 1fr' }}>
+    <dl className={`grid items-baseline gap-x-4 gap-y-1.5 text-sm ${depth ? 'border-l-2 border-slate-200 pl-3 dark:border-slate-600' : ''}`} style={{ gridTemplateColumns: 'minmax(7rem,9.5rem) minmax(0,1fr)' }}>
       {Object.entries(value).map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="text-slate-500">{LABELS[k] ?? k}</dt>
+          <dt className="text-slate-500">{LABELS[k] ?? humanize(k)}</dt>
           <dd className="min-w-0 break-words text-slate-900"><DataView value={v} depth={depth + 1} field={k} /></dd>
         </div>
       ))}
