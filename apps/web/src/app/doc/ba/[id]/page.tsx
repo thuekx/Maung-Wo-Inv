@@ -29,7 +29,7 @@ export default function BaPrint({ params }: { params: Promise<{ id: string }> })
   const number = ba?.number ?? wo.docs?.baNumber ?? `BAA/XXX/${wo.number}`;
   const row = (k: string, v: React.ReactNode) => <tr><td className="w-44 py-0.5 align-top">{k}</td><td className="w-4 align-top">:</td><td className="py-0.5">{v || '-'}</td></tr>;
   return (
-    <DocShell title={`BA ${number}`} back={`/work-orders/${id}`}>
+    <DocShell title={`BA ${number}`} fileName={String(number)} back={`/work-orders/${id}`}>
       {!ba && <p className="mx-auto mb-3 max-w-[210mm] rounded bg-amber-100 px-3 py-2 text-sm text-amber-900 print:hidden">Ini pratinjau — BA belum dikirim. Periksa isinya, lalu kembali ke WO dan klik &quot;Kirim BA Digital ke pelanggan&quot;.</p>}
       <DocPage>
         <h1 className="text-center text-[14pt] font-bold underline">BERITA ACARA AKTIVASI LAYANAN</h1>

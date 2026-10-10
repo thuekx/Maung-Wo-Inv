@@ -15,7 +15,7 @@ export default function PrPrint({ params }: { params: Promise<{ id: string }> })
   const td = 'border border-black px-2 py-1 align-top';
   const chosen = (l: any) => l.quotes.find((q: any) => q.chosen);
   return (
-    <DocShell title={`PR ${pr.number ?? '(draft)'}`} back={`/purchase-requests/${id}`}>
+    <DocShell title={`PR ${pr.number ?? '(draft)'}`} fileName={pr.number ?? `PR-draft-${String(id).slice(-6)}`} back={`/purchase-requests/${id}`}>
       {draft && <p className="mx-auto mb-3 max-w-[210mm] rounded bg-amber-100 px-3 py-2 text-sm text-amber-900 print:hidden">PR ini belum diterbitkan — nomor surat & penandatangan akan terisi setelah GA/Procurement menerbitkan PDF.</p>}
       <DocPage>
         <h1 className="text-center text-[15pt] font-bold tracking-wide">PENGAJUAN</h1>

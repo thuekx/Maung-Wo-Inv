@@ -35,7 +35,7 @@ export default function FormPrint({ params }: { params: Promise<{ id: string }> 
   const list = shortlist(pkgs ?? [], s.packageName);
   const inList = list.some((p) => p.name === s.packageName);
   return (
-    <DocShell title={`Formulir ${s.regNo}`} back={`/subscriptions/${id}`}>
+    <DocShell title={`Formulir ${s.regNo}`} fileName={String(s.regNo)} back={`/subscriptions/${id}`}>
       <style>{`@media print { .form-p1 { height: 296mm !important; min-height: 0 !important; overflow: hidden } }`}</style>
       <section className="doc-page form-p1 relative mx-auto mb-6 box-border bg-white text-black shadow-lg print:mb-0 print:shadow-none" style={{ width: '210mm', minHeight: '297mm', padding: '12mm 18mm 26mm', pageBreakAfter: 'always', breakAfter: 'page', fontSize: '10pt' }}>
         <img src={logo} alt="" className="absolute right-[18mm] top-[10mm] h-[24mm] w-auto" />
@@ -65,7 +65,7 @@ export default function FormPrint({ params }: { params: Promise<{ id: string }> 
           <td className="w-1/3 border border-black p-1.5 align-top"><b>Marketing</b><div className="h-[26mm]" /><div className="mx-2 border-b border-black pb-px">{s.marketingName}</div></td>
           <td className="w-1/3 border border-black p-1.5 align-top"><b>Manager Marketing</b><div className="flex h-[26mm] items-center justify-center">{brand.mgrSignUrl && <img src={fileUrl(brand.mgrSignUrl)} alt="" className="max-h-[24mm] max-w-[90%]" />}</div><div className="mx-2 border-b border-black pb-px font-semibold">{s.managerName}</div></td>
         </tr></tbody></table>
-        <div className="absolute bottom-[8mm] left-[18mm] right-[18mm] whitespace-pre-line text-center text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
+        <div className="absolute bottom-[8mm] left-[18mm] right-[18mm] whitespace-pre-line text-left text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
       </section>
       <section className="doc-page form-p1 relative mx-auto mb-6 box-border bg-white text-black shadow-lg print:mb-0 print:shadow-none" style={{ width: "210mm", minHeight: "297mm", padding: "10mm 14mm 22mm" }}>
         <div style={{ columnCount: 2, columnGap: '8mm', fontSize: '6.4pt', lineHeight: 1.2, textAlign: 'justify' }}>
@@ -74,7 +74,7 @@ export default function FormPrint({ params }: { params: Promise<{ id: string }> 
             : <div key={i} className="mb-0.5 flex gap-1.5 break-inside-avoid" style={{ paddingLeft: `${(t.lvl ?? 0) * 5}mm` }}><span className="w-4 shrink-0">{t.n}</span><span>{t.t}</span></div>)}
           <p className="mt-3 break-inside-avoid">{c.city}, {longDate(s.formDate)}</p>
         </div>
-        <div className="absolute bottom-[8mm] left-[14mm] right-[14mm] whitespace-pre-line text-center text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
+        <div className="absolute bottom-[8mm] left-[14mm] right-[14mm] whitespace-pre-line text-left text-[7.5pt] leading-tight text-slate-600">{c.footer}</div>
       </section>
     </DocShell>
   );

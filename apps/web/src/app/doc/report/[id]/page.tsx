@@ -44,7 +44,7 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
         </div>
   );
   return (
-    <DocShell title={`${install ? 'Laporan Instalasi' : 'Laporan Troubleshooting'} ${number}`} back={`/work-orders/${id}`}>
+    <DocShell title={`${install ? 'Laporan Instalasi' : 'Laporan Troubleshooting'} ${number}`} fileName={String(number)} back={`/work-orders/${id}`}>
       <DocPage>
         <h1 className="text-center text-[14pt] font-bold underline">{install ? 'LAPORAN INSTALASI' : 'LAPORAN TROUBLESHOOTING'}</h1>
         <div className="mb-5 text-center font-semibold">No. {number}</div>

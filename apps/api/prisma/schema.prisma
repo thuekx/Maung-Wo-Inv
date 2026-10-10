@@ -362,9 +362,41 @@ model Notification {
   error     String?
   createdAt DateTime     @default(now())
   sentAt    DateTime?
+  // WhatsApp via Kanca: id broadcast + status delivery dari Meta (sent/delivered/read/failed), diperbarui poller & webhook
+  providerRef    String?
+  providerStatus String?
+  providerMsgId  String? // wamid dari Meta (dicocokkan dengan event webhook)
 
   @@index([status, createdAt])
   @@index([createdAt])
+  @@index([providerRef])
+  @@index([providerMsgId])
+}
+
+// Pencatatan template WhatsApp (Kanca): UUID dari tombol "copy" di dashboard Kanca atau hasil sinkron GET /templates
+model WaTemplate {
+  id         String   @id @default(cuid())
+  templateId String   @unique // UUID template di Kanca
+  name       String
+  category   String? // UTILITY | AUTHENTICATION | MARKETING
+  status     String? // APPROVED | PENDING | REJECTED (dari Kanca / diisi manual)
+  body       String? // isi template ({{1}}, {{2}}) untuk pratinjau
+  varCount   Int      @default(1)
+  purpose    String? // catatan pemakaian, mis. "notifikasi WO", "BA"
+  source     String   @default("manual") // manual | kanca
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Log event webhook Kanca (idempoten per X-Kanca-Delivery-Id); dibersihkan otomatis >30 hari
+model KancaEvent {
+  id         String   @id @default(cuid())
+  deliveryId String?  @unique
+  event      String
+  payload    Json
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
 }
 
 // Event keluar ke aplikasi billing/finance eksisting (webhook bertanda tangan HMAC)

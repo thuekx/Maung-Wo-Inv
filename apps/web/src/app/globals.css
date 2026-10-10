@@ -96,3 +96,32 @@ body { @apply bg-slate-50 text-slate-800 antialiased; }
 
 /* halaman login: pola kontur gunung (emas) di atas navy */
 .contour { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='600' viewBox='0 0 900 600' fill='none' stroke='%23F59E0B' stroke-opacity='.35'%3E%3Cpath d='M-20 470C120 400 220 480 360 420S600 330 760 380 900 330 940 300'/%3E%3Cpath d='M-20 490C120 420 220 500 360 440S600 350 760 400 900 350 940 320'/%3E%3Cpath d='M-20 510C120 440 220 520 360 460S600 370 760 420 900 370 940 340'/%3E%3Cpath d='M-20 530C120 460 220 540 360 480S600 390 760 440 900 390 940 360'/%3E%3Cpath d='M-20 550C120 480 220 560 360 500S600 410 760 460 900 410 940 380'/%3E%3Cpath d='M-20 570C120 500 220 580 360 520S600 430 760 480 900 430 940 400'/%3E%3C/svg%3E"); background-size: cover; background-position: bottom; }
+
+/* Lembar dokumen (PR/BA/laporan/formulir) = kertas: selalu terang & hitam, juga saat mode gelap */
+.dark .doc-page { background-color: #fff; color: #000; color-scheme: light; }
+.dark .doc-page * { border-color: #cbd5e1; }
+.dark .doc-page .border-black, .dark .doc-page.border-black { border-color: #000; }
+.dark .doc-page .bg-white { background-color: #fff; }
+.dark .doc-page .bg-slate-50 { background-color: #f8fafc; }
+.dark .doc-page .bg-slate-100 { background-color: #f1f5f9; }
+.dark .doc-page .text-slate-800, .dark .doc-page .text-slate-700 { color: #1e293b; }
+.dark .doc-page .text-slate-600 { color: #475569; }
+.dark .doc-page .text-slate-500 { color: #64748b; }
+.dark .doc-page .text-slate-400 { color: #94a3b8; }
+.dark .doc-page .text-brand-900, .dark .doc-page .text-brand-800, .dark .doc-page .text-brand-700, .dark .doc-page .text-brand-600 { color: #0B1F3B; }
+.dark .doc-page .text-green-700 { color: #15803d; } .dark .doc-page .text-red-700, .dark .doc-page .text-red-600 { color: #b91c1c; } .dark .doc-page .text-amber-800 { color: #92400e; }
+
+/* Mode gelap — perbaikan kontras hasil audit */
+.dark .text-slate-900, .dark .text-slate-950, .dark .text-gray-900, .dark .text-gray-800, .dark .text-black { color: #f1f5f9; }
+.dark .text-gray-700, .dark .text-gray-600 { color: #c3cfe0; } .dark .text-gray-500 { color: #94a3b8; }
+.dark dd, .dark td, .dark th, .dark li, .dark label { color: inherit; }
+.dark .\!text-brand-700 { color: #9db8e6 !important; }
+.dark [class*="bg-accent-"].dark\:text-white { color: #fff; }
+.dark .text-accent-700, .dark .text-accent-600 { color: #fbbf24; }
+.dark .bg-slate-200 { background-color: #15294a; } .dark .bg-slate-300 { background-color: #1e3555; }
+.dark .text-orange-700, .dark .text-orange-600 { color: #fdba74; } .dark .text-yellow-700 { color: #fde68a; } .dark .text-emerald-700 { color: #6ee7b7; }
+.dark .bg-orange-100, .dark .bg-yellow-100 { background-color: rgb(245 158 11 / .18); } .dark .bg-emerald-100 { background-color: rgb(16 185 129 / .18); } .dark .bg-slate-900 { background-color: #050f1f; }
+.dark .doc-page .text-slate-900, .dark .doc-page .text-black { color: #000; }
+.dark .\!text-red-600 { color: #fca5a5 !important; } .dark .\!border-red-300 { border-color: rgb(239 68 68 / .5) !important; }
+.dark .bg-amber-50, .dark .bg-yellow-50 { background-color: rgb(245 158 11 / .15); } .dark .bg-blue-50, .dark .bg-sky-50 { background-color: rgb(59 130 246 / .15); } .dark .text-amber-700 { color: #fcd34d; } .dark .text-sky-900, .dark .text-blue-800 { color: #bae6fd; } .dark .text-amber-900 { color: #fde68a; }
+.dark .doc-page.text-black, .dark .doc-page .text-black, .dark .doc-page.text-slate-900 { color: #000; }

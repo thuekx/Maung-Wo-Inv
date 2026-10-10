@@ -24,18 +24,19 @@ import { systemApiRoutes } from './routes/sysapi';
 import { imgRoutes } from './routes/img';
 import { startWebUrlSync } from './settings';
 import { teamRoutes } from './routes/team';
-import { kancaRoutes } from './routes/kanca';
+import { kancaRoutes, kancaWebhook } from './routes/kanca';
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: config.corsOrigin.split(','), credentials: false }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '1mb', verify: (req, _res, buf) => { (req as any).rawBody = buf; } })); // rawBody: verifikasi HMAC webhook
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/uploads', express.static(config.uploadDir, { maxAge: '7d', index: false }));
 
 const api = express.Router();
+api.use(kancaWebhook); // tanpa JWT: webhook Kanca (tanda tangan HMAC)
 api.use(imgRoutes); // tanpa JWT: versi terkompresi gambar unggahan
 api.use(integrationRoutes); // tanpa JWT (pakai API key / secret)
 api.use(exportRoutes); // tanpa JWT (pakai EXPORT_API_KEY)

@@ -163,9 +163,9 @@ export const regYear3 = (d: Date) => String(d.getFullYear() % 1000).padStart(3, 
 export const getAppName = async () => (((await getSetting<any>('branding')) ?? {}).appName as string) || APP_NAME_DEFAULT;
 
 /* ── WhatsApp (gateway pihak ketiga; berbayar per pesan → ada sakelar ON/OFF) ── */
-export interface WhatsappCfg { enabled: boolean; provider: 'fonnte' | 'custom' | 'kanca'; baseUrl: string; token: string; headerName: string; bodyTemplate: string; source: 'db' | 'none'; /** Kanca: slug workspace, UUID template notifikasi, UUID channel (opsional), jumlah variabel template (1 = ringkasan, 2 = judul + isi) */ workspaceId: string; templateId: string; channelId: string; varMode: '1' | '2' }
+export interface WhatsappCfg { enabled: boolean; provider: 'fonnte' | 'custom' | 'kanca'; baseUrl: string; token: string; headerName: string; bodyTemplate: string; source: 'db' | 'none'; /** Kanca: slug workspace, UUID template notifikasi, UUID channel (opsional), jumlah variabel template (1 = ringkasan, 2 = judul + isi) */ workspaceId: string; templateId: string; channelId: string; varMode: '1' | '2'; webhookSecret: string }
 export const WA_FONNTE_URL = 'https://api.fonnte.com';
-export const WA_KANCA_URL = 'https://api.kanca.space';
+export const WA_KANCA_URL = 'https://kanca.space'; // sesuai URL yang tampil di dashboard Kanca (Integrasi → Inbound URL); dokumen API menyebut api.kanca.space
 export const WA_CUSTOM_BODY = '{"to":{{to}},"message":{{message}}}';
 export async function getWhatsapp(): Promise<WhatsappCfg> {
   const s = (await getSetting<any>('whatsapp')) ?? {};
@@ -181,6 +181,7 @@ export async function getWhatsapp(): Promise<WhatsappCfg> {
     templateId: typeof s.templateId === 'string' ? s.templateId.trim() : '',
     channelId: typeof s.channelId === 'string' ? s.channelId.trim() : '',
     varMode: s.varMode === '2' ? '2' : '1',
+    webhookSecret: decryptSecret(s.webhookSecret),
     source: s.token ? 'db' : 'none',
   };
 }

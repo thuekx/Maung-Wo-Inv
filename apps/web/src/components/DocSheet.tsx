@@ -23,9 +23,11 @@ export function DocPage({ children, className = '' }: { children: React.ReactNod
 }
 
 /** Pembungkus halaman cetak: cek login, sembunyikan chrome aplikasi saat dicetak, tombol Cetak. */
-export function DocShell({ title, back, children }: { title: string; back: string; children: React.ReactNode }) {
+export function DocShell({ title, fileName, back, children }: { title: string; /** nama berkas PDF saat "Simpan sebagai PDF" (= nomor dokumen) */ fileName?: string; back: string; children: React.ReactNode }) {
   const { user, ready } = useAuth();
   const router = useRouter();
+  // Chrome memakai <title> sebagai nama berkas PDF → samakan dengan nomor dokumen (karakter terlarang diganti '-')
+  useEffect(() => { const prev = document.title; document.title = (fileName ?? title).replace(/[\\/:*?"<>|]+/g, '-').trim(); return () => { document.title = prev; }; }, [fileName, title]);
   useEffect(() => { document.body.classList.add('free-print'); return () => document.body.classList.remove('free-print'); }, []);
   useEffect(() => { if (ready && !user) router.replace('/login'); }, [ready, user, router]);
   if (!ready || !user) return <p className="p-6 text-slate-500">Memuat…</p>;

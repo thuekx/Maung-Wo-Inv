@@ -82,7 +82,7 @@ const kancaErr = (r: { status: number; json: any }) => `Kanca ${r.status}${r.jso
 /** Variabel template WhatsApp tidak boleh berisi baris baru / spasi berderet (aturan Meta). */
 const waVar = (t: string) => t.replace(/\s*\n+\s*/g, ' | ').replace(/[ \t]{2,}/g, ' ').trim().slice(0, 900) || '-';
 
-export async function sendWhatsApp(to: string, text: string, cfgIn?: WhatsappCfg, force = false, parts?: { subject: string; body: string }) {
+export async function sendWhatsApp(to: string, text: string, cfgIn?: WhatsappCfg, force = false, parts?: { subject: string; body: string; /** dipanggil dengan id broadcast Kanca setelah antrian diterima */ onRef?: (broadcastId: string) => void }) {
   const c = cfgIn ?? (await getWhatsapp());
   if (!c.token || !c.baseUrl || (c.provider === 'kanca' && !c.workspaceId)) { console.log(`[whatsapp dry-run] → ${to}`); return 'dry-run'; }
   if (!c.enabled && !force) return 'disabled';
@@ -95,6 +95,7 @@ export async function sendWhatsApp(to: string, text: string, cfgIn?: WhatsappCfg
       ? await kancaCall(c, 'POST', '/broadcasts', { name: `Maung ${new Date().toISOString().slice(0, 19)}`, templateId: c.templateId, ...(c.channelId ? { channelId: c.channelId } : {}), recipients: [{ phoneNumber: number, variables: c.varMode === '2' ? { '1': waVar(sub), '2': waVar(body) } : { '1': waVar(`${sub}${sub ? ' — ' : ''}${body}`) } }] })
       : await kancaCall(c, 'POST', '/send', { channel: 'waba', ...(c.channelId ? { channelId: c.channelId } : {}), to: number, text });
     if (r.status >= 300) throw new Error(kancaErr(r));
+    if (r.json?.broadcastId) parts?.onRef?.(String(r.json.broadcastId));
     return 'sent';
   }
   let res: Response;

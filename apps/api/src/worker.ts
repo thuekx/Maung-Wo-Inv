@@ -8,6 +8,7 @@ import { sendEmail, sendTelegram, sendWhatsApp } from './senders';
 import { Effects } from './effects';
 import { getRadius, runSync } from './radius';
 import { putSetting, getSetting, startWebUrlSync } from './settings';
+import { cleanKancaEvents, syncKancaDelivery } from './kanca';
 
 startWebUrlSync(); // URL aplikasi dari Admin untuk tautan di notifikasi
 
@@ -19,7 +20,8 @@ new Worker(
     if (!n || n.status === 'SENT') return;
     try {
       const text = `${n.subject}\n\n${n.body}`;
-      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : n.channel === 'WHATSAPP' ? await sendWhatsApp(n.target, `${n.subject}\n\n${n.body}`, undefined, false, { subject: n.subject, body: n.body }) : await sendTelegram(n.target, text);
+      let ref: string | undefined;
+      const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : n.channel === 'WHATSAPP' ? await sendWhatsApp(n.target, `${n.subject}\n\n${n.body}`, undefined, false, { subject: n.subject, body: n.body, onRef: (id) => { ref = id; } }) : await sendTelegram(n.target, text);
       if (r === 'disabled') {
         const why = n.channel === 'WHATSAPP' ? 'Pengiriman WhatsApp dinonaktifkan (Admin → Pengaturan → WhatsApp → sakelar)' : 'Pengiriman email dinonaktifkan (Admin → Pengaturan → SMTP → sakelar Email aktif)';
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
@@ -30,7 +32,7 @@ new Worker(
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
         return;
       }
-      await prisma.notification.update({ where: { id: n.id }, data: { status: 'SENT', sentAt: new Date(), error: null } });
+      await prisma.notification.update({ where: { id: n.id }, data: { status: 'SENT', sentAt: new Date(), error: null, ...(ref ? { providerRef: ref, providerStatus: 'sent' } : {}) } });
     } catch (e) {
       await prisma.notification.update({ where: { id: n.id }, data: { status: 'FAILED', error: String(e).slice(0, 500) } });
       throw e; // BullMQ akan retry dengan exponential backoff
@@ -75,6 +77,7 @@ new Worker(
   async (job: Job) => {
     if (job.name === 'maintenance-reminder') {
       // pembersihan rutin harian: notifikasi dalam aplikasi lebih dari 90 hari
+      await cleanKancaEvents().catch(() => {});
       await prisma.inbox.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86400_000) } } }).catch((e) => console.error('bersihkan inbox gagal', e));
       // foto yang diunggah tetapi laporannya tidak pernah dikirim (tanpa WO > 2 hari): hapus berkas & catatan
       try {
@@ -103,6 +106,7 @@ new Worker(
     if (job.name === 'radius-sync-now') {
       try { const r = await runSync('MANUAL', job.data?.userId); console.log('[radius] sinkron manual selesai', r); } catch (e) { console.error('[radius] sinkron manual gagal:', (e as Error).message); }
     }
+    if (job.name === 'kanca-tick') { const n = await syncKancaDelivery().catch((e) => { console.error('[kanca] sinkron status gagal:', (e as Error).message); return 0; }); if (n) console.log(`[kanca] ${n} status delivery diperbarui`); }
     if (job.name === 'radius-tick') {
       // dipanggil tiap 5 menit: jalankan sinkron otomatis bila aktif dan sudah jatuh tempo
       const cfg = await getRadius();
@@ -131,6 +135,7 @@ new Worker(
 (async () => {
   await cronQueue.add('maintenance-reminder', {}, { repeat: { pattern: '0 8 * * *', tz: 'Asia/Jakarta' }, jobId: 'maintenance-reminder' });
   await cronQueue.add('radius-tick', {}, { repeat: { every: 300_000 }, jobId: 'radius-tick' });
+  await cronQueue.add('kanca-tick', {}, { repeat: { every: 120_000 }, jobId: 'kanca-tick' });
   await cronQueue.add('sweep', {}, { repeat: { every: 120_000 }, jobId: 'sweep' });
   console.log('Worker berjalan: notifications, billing-out, cron');
 })();
