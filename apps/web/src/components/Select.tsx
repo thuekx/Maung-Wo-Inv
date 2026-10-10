@@ -36,14 +36,20 @@ export function Select({ value, onChange, children, className = 'input', disable
   const btn = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
 
+  const place = () => {
+    const r = btn.current?.getBoundingClientRect();
+    if (r) setPos({ left: r.left, top: r.bottom + 4, width: Math.max(r.width, 220) });
+  };
   useEffect(() => {
     if (!open) return;
     const close = (e: Event) => { if (!box.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setOpen(false); };
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    const scroll = (e: Event) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc); window.addEventListener('scroll', scroll, true);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); window.removeEventListener('scroll', scroll, true); };
-  }, [open]);
+    // Di ponsel, papan ketik muncul saat kolom cari fokus dan memicu scroll/resize — jangan menutup daftar, cukup posisikan ulang.
+    const reflow = (e: Event) => { if (!box.current?.contains(e.target as Node)) place(); };
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', esc);
+    window.addEventListener('scroll', reflow, true); window.addEventListener('resize', place); window.visualViewport?.addEventListener('resize', place);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); window.removeEventListener('scroll', reflow, true); window.removeEventListener('resize', place); window.visualViewport?.removeEventListener('resize', place); };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (native)
     return <select {...rest} size={size} className={className} value={v} disabled={disabled} onChange={(e) => onChange?.({ target: { value: e.target.value } })}>{children}</select>;
@@ -52,12 +58,12 @@ export function Select({ value, onChange, children, className = 'input', disable
   const shown = opts.filter((o) => !q.trim() || o.label.toLowerCase().includes(q.trim().toLowerCase()));
   const toggle = () => {
     if (disabled) return;
-    const r = btn.current!.getBoundingClientRect();
-    setPos({ left: r.left, top: r.bottom + 4, width: Math.max(r.width, 220) });
+    place();
     setQ(''); setOpen((o) => !o);
   };
   const pick = (o: Opt) => { if (o.disabled) return; onChange?.({ target: { value: o.value } }); setOpen(false); };
-  const flip = pos && pos.top + 300 > window.innerHeight && pos.top > 320;
+  const vh = window.visualViewport?.height ?? window.innerHeight;
+  const flip = pos && pos.top + 300 > vh && pos.top > 320;
   return (
     <>
       <button type="button" ref={btn} disabled={disabled} onClick={toggle} aria-haspopup="listbox" aria-expanded={open} aria-label={rest['aria-label']}
@@ -67,8 +73,8 @@ export function Select({ value, onChange, children, className = 'input', disable
       </button>
       {open && pos && (
         <div ref={box} className="fixed z-[70] overflow-hidden rounded-lg border border-slate-300 bg-white shadow-xl dark:border-slate-600 dark:bg-slate-800"
-          style={{ left: Math.min(pos.left, window.innerWidth - pos.width - 8), width: pos.width, ...(flip ? { bottom: window.innerHeight - pos.top + 40 } : { top: pos.top }) }}>
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari…" className="input !rounded-none !border-0 !border-b"
+          style={{ left: Math.min(pos.left, window.innerWidth - pos.width - 8), width: pos.width, ...(flip ? { bottom: vh - pos.top + 40 } : { top: pos.top }) }}>
+          <input autoFocus={false} ref={(el) => { if (el && !el.dataset.f) { el.dataset.f = '1'; setTimeout(() => el.focus({ preventScroll: true }), 50); } }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari…" className="input !rounded-none !border-0 !border-b"
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (shown[0]) pick(shown[0]); } }} />
           <ul role="listbox" className="max-h-60 overflow-y-auto py-1 text-sm">
             {shown.map((o) => (
