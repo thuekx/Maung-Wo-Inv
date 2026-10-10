@@ -142,7 +142,7 @@ export function DataTable<T extends { id: string }>({
               ))}
             </tr>
           </thead>
-          <tbody className={`divide-y transition-opacity ${loading ? 'opacity-50' : ''}`}>
+          <tbody className={`divide-y ${loading ? 'opacity-50' : ''}`}>
             {rows.map((r) => (
               <tr key={rowKey ? rowKey(r) : r.id} className="hover:bg-slate-50">
                 {selectable && <td className="td"><input type="checkbox" aria-label="Pilih baris" checked={sel.includes(r.id)} onChange={() => onSelectedChange?.(sel.includes(r.id) ? sel.filter((x) => x !== r.id) : [...sel, r.id])} /></td>}
