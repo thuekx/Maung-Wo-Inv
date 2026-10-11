@@ -5,16 +5,22 @@
 ## Kalimat pembuka untuk sesi baru (salin-tempel)
 ```
 Lanjutkan proyek Maung-Wo-Inv (repo thuekx/Maung-Wo-Inv, branch main, sudah ter-clone di sesi ini).
-Baca dulu HANDOFF.md (bagian "STATUS TERKINI" dan "Panduan sesi berikutnya"), lalu docs/DEMO.md dan docs/RADIUS-API.md.
-Seluruh backlog 36 butir + batch F sudah selesai dan ter-deploy ke staging (commit 823190c, database demo baru).
-Tugas sekarang: bantu saya UAT/validasi di staging (per peran), perbaiki temuan saya ("catatan minor"), dan uji
-integrasi MSRadius dengan token asli. Jangan menambah fitur di luar yang saya minta; Bahasa Indonesia; identitas git
-thuekx <thuekx@kolu.web.id> tanpa trailer/atribusi Claude; uji sungguhan (API + browser) sebelum push;
-beri perintah update satu baris; perbarui HANDOFF.md di akhir.
+Baca dulu HANDOFF.md (bagian "STATUS TERKINI" dan "Panduan sesi berikutnya"), lalu docs/INSTALL.md,
+docs/RADIUS-API.md (bagian "Pembaruan: status & area") dan docs/SUPER-APPS.md.
+Aplikasi sudah LIVE di https://maung.liv.net.id (VM maung-apps, repo ~/Maung-Wo-Inv). Semua temuan UAT Live v1.0 dan
+integrasi MSRadius status/area sudah ter-push (commit terakhir 3c74e19 + handoff). Tugas sekarang: bantu saya
+memvalidasi hasil update di VM (Tarik data MSRadius -> kolom Status layanan, area, Form Berlangganan otomatis;
+Kanca asli; kamera HP), perbaiki temuan saya. Proyek CRM/sales ada di repo terpisah thuekx/maung-crm (sesi lain).
+Jangan menambah fitur di luar yang saya minta; Bahasa Indonesia; identitas git thuekx <thuekx@kolu.web.id> tanpa
+trailer/atribusi Claude; hanya branch main; uji sungguhan (API + browser) sebelum push; jangan minta saya menempel
+token/secret; beri perintah update satu baris (user biasa, tanpa sudo); perbarui HANDOFF.md di akhir.
 ```
 
-## STATUS TERKINI (2026-10-09)
-- **Kode**: `origin/main` = `823190c` (Batch A–F selesai). Staging **sudah di-deploy fresh** dengan data demo terbaru (semua secret `.env` dirotasi). Repo di staging: `/opt/staging/projects/Maung-Wo-Inv`; backup pra-reset (`.env` lama, dump DB, uploads) di `~/backups/maung-pre-clean-<stempel>/` pada VM.
+## STATUS TERKINI (2026-10-11)
+- **Kode**: `origin/main` = commit "Handoff" di atas `3c74e19`. **Produksi**: `https://maung.liv.net.id` (VM `maung-apps` 192.168.48.99, repo `~/Maung-Wo-Inv`, Caddy + Let's Encrypt). **Update VM**: `cd ~/Maung-Wo-Inv && git pull origin main && bash scripts/deploy.sh` (user biasa grup docker; 502/500 singkat saat container diganti itu normal; `bash scripts/diagnose.sh` bila ragu).
+- **Format MSRadius terkonfirmasi** (contoh baris asli): `status:"ONLINE"` (string) dan `area:"Panundaan"` (string nama area). Parser menangani teks/id/objek; area terisi bila namanya ada di Master Area (hasil sinkron `masterdata/area/list`) — bila kosong, cek kecocokan nama/kode Area.
+- **Belum teruji di perangkat/VM nyata**: kamera HP & fokus barcode 1D, redirect HTTP→HTTPS + `:80` berdampingan & penerbitan sertifikat, webhook/akun Kanca asli, cetak PDF nyata, Safari iOS, redaksi password oleh worker setelah email terkirim.
+- Keputusan terbuka: panel hak akses (matriks divisi/sub-role) di Admin — usulan menunggu keputusan pemilik. Pemilik perlu menghapus branch remote lama (penghapusan dari sandbox gagal).
 - **Password**: semua akun demo memakai satu `SEED_PASSWORD` di `.env` VM (`grep ^SEED_PASSWORD .env`; jangan ditempel ke chat). Akun: `admin` (Admin), `mkt` (Marketing·Supervisor), `noc` (NOC·Supervisor), `citra` (FOC·Manager), `budi` (FOC·Supervisor), `andi` (FOC·Staff), `ga` (GA·Manager), `fin` (Finance·Manager) — semua `@l1v.local`.
 - **Belum teruji (hanya bisa di staging)**: Docker penuh di sandbox, token MSRadius asli (hanya server tiruan 2.320 pelanggan), hasil cetak PDF nyata (PR, BA, Formulir Berlangganan; aktifkan "Grafik latar belakang"), GPS foto (butuh HTTPS), Telegram/SMTP (belum diisi → status NOT_SENT).
 - **Langkah pertama pemilik di staging**: ganti password admin → Admin → Pengaturan: isi MSRadius (token, Uji koneksi, Tarik data), hubungkan tiap Area ke gudang (Master Data → Area), isi SMTP/Telegram, cek logo/kop/formulir (Branding) → uji per peran sesuai `docs/DEMO.md`.
