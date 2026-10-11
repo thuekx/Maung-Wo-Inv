@@ -72,7 +72,7 @@ else
   if grep -q '^WEB_DOMAIN=.\+' .env; then FILES=(-f docker-compose.yml -f docker-compose.caddy.yml); echo "==> WEB_DOMAIN terdeteksi di .env → tetap memakai Caddy/HTTPS"; else FILES=(-f docker-compose.yml); fi
 fi
 
-echo "==> Build & start"
+echo "==> Build & start (selama beberapa menit aplikasi bisa sementara menampilkan error 502/500 — normal saat container diganti; tunggu skrip selesai)"
 docker compose "${FILES[@]}" up -d --build
 echo "==> Menunggu API siap"
 # Gate: lanjut hanya bila healthcheck container api (fetch /health via Node) berstatus healthy.

@@ -7,14 +7,23 @@
 }
 
 __DOMAIN__ {
-	reverse_proxy web:3000
+	reverse_proxy web:3000 {
+		lb_try_duration 20s
+		lb_try_interval 500ms
+	}
 }
 
 http://__DOMAIN__ {
-	reverse_proxy web:3000
+	reverse_proxy web:3000 {
+		lb_try_duration 20s
+		lb_try_interval 500ms
+	}
 }
 
 # akses lewat IP / hostname lain: HTTP biasa (jalur pemulihan)
 :80 {
-	reverse_proxy web:3000
+	reverse_proxy web:3000 {
+		lb_try_duration 20s
+		lb_try_interval 500ms
+	}
 }

@@ -32,7 +32,8 @@ export async function getSsl(): Promise<SslCfg> {
 
 /** Isi Caddyfile menurut konfigurasi + apakah sertifikat sudah terpasang (menentukan redirect). */
 export function buildCaddyfile(c: SslCfg, certOk: boolean) {
-  const proxy = '\treverse_proxy web:3000';
+  // lb_try_*: saat container web dibuat ulang (deploy/update) Caddy mencoba lagi sampai 20 dtk, bukan langsung 502
+  const proxy = '\treverse_proxy web:3000 {\n\t\tlb_try_duration 20s\n\t\tlb_try_interval 500ms\n\t}';
   const catchAll = `:80 {\n${proxy}\n}\n`; // akses lewat IP / hostname lain: HTTP biasa (jalur pemulihan)
   if (!c.enabled || !c.domain) return `{\n\tauto_https off\n}\n\n${catchAll}`;
   const redirect = c.forceRedirect && certOk;
