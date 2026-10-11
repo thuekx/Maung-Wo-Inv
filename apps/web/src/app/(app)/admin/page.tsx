@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { API, api, doDelete, download, fileUrl, imgUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { DEFAULT_LOGOS, loadBranding } from '@/lib/brand';
@@ -715,6 +715,45 @@ function DataCard() {
   );
 }
 
+/** Hak Akses: matriks fitur × sub-role per divisi. Admin selalu punya semua akses. */
+function AccessCard() {
+  const { data, reload } = useFetch<any>('/admin/access');
+  const [m, setM] = useState<Record<string, string[]> | null>(null);
+  const [div, setDiv] = useState('MKT');
+  const a = useAction();
+  useEffect(() => { if (data) setM(data.matrix); }, [data]);
+  if (!data || !m) return <p className="text-slate-500">Memuat…</p>;
+  const has = (k: string, t: string) => m[k]?.includes(t);
+  const toggle = (k: string, t: string) => setM((p) => { const cur = new Set(p![k]); if (cur.has(t)) cur.delete(t); else cur.add(t); return { ...p!, [k]: [...cur] }; });
+  const groups = [...new Set<string>(data.features.map((f: any) => f.group))];
+  const dirty = JSON.stringify(Object.fromEntries(Object.entries(m).map(([k, v]) => [k, [...v].sort()]))) !== JSON.stringify(Object.fromEntries(Object.entries(data.matrix as Record<string, string[]>).map(([k, v]) => [k, [...v].sort()])));
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Hak akses divisi & sub-role</h2>
+      <p className="text-sm text-slate-500">Atur menu & fitur yang dapat dipakai tiap divisi dan sub-role (Manager / Supervisor / Staff). Admin selalu memiliki semua akses. Perubahan berlaku paling lambat 10 detik; pengguna yang sedang login cukup memuat ulang halaman. Alur Work Order (siapa boleh membuat/menyetujui tiap tahap) tidak diubah di sini.</p>
+      <div className="flex flex-wrap gap-1">{data.divisions.map((d: string) => <button key={d} className={div === d ? 'btn' : 'btn-ghost'} onClick={() => setDiv(d)}>{ROLE_LABEL[d] ?? d}</button>)}</div>
+      <div className="overflow-x-auto"><table className="w-full text-sm">
+        <thead><tr><th className="th text-left">Fitur</th>{data.subRoles.map((s: string) => <th key={s} className="th w-24 text-center">{SUBROLE_LABEL[s] ?? s}</th>)}</tr></thead>
+        <tbody>{groups.map((g) => (
+          <Fragment key={g}>
+            <tr><td colSpan={4} className="bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800">{g}</td></tr>
+            {data.features.filter((f: any) => f.group === g).map((f: any) => (
+              <tr key={f.key} className="border-t"><td className="td"><div className="font-medium">{f.label}{f.custom && <span className="ml-2 text-xs font-normal text-amber-600">diubah</span>}</div><div className="text-xs text-slate-500">{f.desc}</div></td>
+                {data.subRoles.map((s: string) => <td key={s} className="td text-center"><input type="checkbox" className="h-4 w-4" checked={!!has(f.key, `${div}:${s}`)} onChange={() => toggle(f.key, `${div}:${s}`)} aria-label={`${f.label} — ${ROLE_LABEL[div]} ${SUBROLE_LABEL[s]}`} /></td>)}</tr>
+            ))}
+          </Fragment>
+        ))}</tbody>
+      </table></div>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn" disabled={a.busy || !dirty} onClick={() => a.run(async () => { await api('/admin/access', { method: 'PUT', body: { matrix: m } }); reload(); }, 'Hak akses disimpan.')}>Simpan</button>
+        <button className="btn-ghost" disabled={a.busy} onClick={() => { if (confirm('Kembalikan semua hak akses ke bawaan?')) a.run(async () => { await api('/admin/access/reset', { method: 'POST', body: {} }); reload(); }, 'Dikembalikan ke bawaan.'); }}>Kembalikan ke bawaan</button>
+        {dirty && <span className="text-xs text-amber-600">Ada perubahan belum disimpan</span>}
+      </div>
+      <Msg m={a.msg} />
+    </div>
+  );
+}
+
 /** Keamanan: batas sesi diam. */
 function SecurityCard({ d, reload }: { d: any; reload: () => void }) {
   const [m, setM] = useState<string>(String(d.security?.sessionMinutes ?? 30));
@@ -768,6 +807,7 @@ const SETTING_SECTIONS = [
   { key: 'assetinfo', label: 'Info aset (QR)' },
   { key: 'ssl', label: 'SSL & Domain' },
   { key: 'security', label: 'Keamanan' },
+  { key: 'access', label: 'Hak Akses' },
   { key: 'data', label: 'Data & Backup' },
 ] as const;
 
@@ -796,6 +836,7 @@ function Settings() {
         {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
         {sec === 'ssl' && <SslCard />}
         {sec === 'security' && <SecurityCard d={data} reload={reload} />}
+        {sec === 'access' && <AccessCard />}
         {sec === 'data' && <DataCard />}
       </div>
     </div>

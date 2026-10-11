@@ -8,7 +8,7 @@ import { rupiah } from '@/components/DocSheet';
 
 export default function Subscriptions() {
   const { user } = useAuth();
-  const canWrite = user?.role === 'ADMIN' || user?.role === 'MKT';
+  const canWrite = (user?.features ?? []).includes('subscriptions');
   const cols: Column<any>[] = [
     { key: 'regNo', header: 'Reg. No.', sort: 'regNo', className: 'font-mono', render: (s) => <Link href={`/subscriptions/${s.id}`} className="font-medium text-brand-700 hover:underline">{s.regNo}</Link> },
     { key: 'name', header: 'Nama', sort: 'name', render: (s) => s.name ?? <span className="text-slate-400">-</span> },

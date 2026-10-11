@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../access';
 import { z } from 'zod';
 import { AppError, fieldError, prisma } from '../db';
 import { authenticate, requireRole } from '../auth';
@@ -6,7 +7,7 @@ import { auditedDelete, auditedUpdate, changes, whoOf, writeAudit } from '../aud
 import { transact } from '../effects';
 import { countIf, pageParams, sendPage } from '../paging';
 import { getSubForm, putSetting, regYear3, SUBFORM_DEFAULTS } from '../settings';
-import { issueRegNo } from '../subscriptions';
+import { issueRegNo, peekRegNo } from '../subscriptions';
 
 /** Formulir Berlangganan digital: diterbitkan Marketing, tersimpan, dapat dicetak (PDF) untuk ditandatangani pelanggan. */
 export const subscriptionRoutes = Router();
@@ -31,6 +32,11 @@ subscriptionRoutes.put('/admin/settings/subform', requireRole('ADMIN'), async (r
   res.json(await getSubForm());
 });
 
+subscriptionRoutes.get('/subscriptions/next-regno', requireFeature('subscriptions'), async (req, res) => {
+  const d = req.query.date ? new Date(String(req.query.date)) : new Date();
+  res.json(await peekRegNo(Number.isNaN(d.getTime()) ? new Date() : d));
+});
+
 /* ── CRUD ── */
 const body = z.object({
   formDate: z.coerce.date().optional(),
@@ -45,8 +51,8 @@ const body = z.object({
   marketingName: opt(80), managerName: opt(80),
 });
 
-const canWrite = requireRole('MKT');
-const readers = requireRole('MKT'); // Formulir Berlangganan hanya Marketing (dan Admin)
+const canWrite = requireFeature('subscriptions');
+const readers = requireFeature('subscriptions'); // Formulir Berlangganan hanya Marketing (dan Admin)
 
 
 subscriptionRoutes.get('/subscriptions', readers, async (req, res) => {
@@ -76,7 +82,17 @@ subscriptionRoutes.post('/subscriptions', canWrite, async (req, res) => {
   const who = whoOf(req);
   const { formDate: _fd, ...rest } = b;
   const row = await transact(async (fx) => {
-    const regNo = await issueRegNo(fx.tx, date); // nomor registrasi otomatis
+    // Nomor: kosong → otomatis; bila diisi sama dengan nomor berikutnya → pakai urutan; bila diisi lain → dicatat sesuai isian (tetap harus unik)
+    const suffix = z.preprocess(nul, z.string().trim().regex(/^[0-9]{1,6}$/, 'Hanya angka (maks. 6 digit)').nullable().optional()).parse(req.body?.regSuffix);
+    let regNo: string;
+    if (suffix) {
+      const want = `${cfg.regPrefix}${regYear3(date)}${suffix.padStart(4, '0')}`;
+      if ((await peekRegNo(date)).regNo === want) regNo = await issueRegNo(fx.tx, date);
+      else {
+        if (await fx.tx.subscription.findUnique({ where: { regNo: want } })) throw fieldError('regSuffix', `Nomor ${want} sudah dipakai formulir lain`, 409);
+        regNo = want;
+      }
+    } else regNo = await issueRegNo(fx.tx, date);
     const r = await fx.tx.subscription.create({ data: { ...rest, regNo, formDate: date, payment: b.payment ?? cfg.defaultPayment, managerName: b.managerName === undefined ? cfg.managerName : b.managerName, marketingName: b.marketingName === undefined ? req.user!.name : b.marketingName, createdById: req.user!.id } as any });
     await writeAudit(fx, who, { action: 'CREATE', entity: 'formulir berlangganan', entityId: r.id, summary: `${who.name} menerbitkan formulir berlangganan ${regNo}${r.name ? ` (${r.name})` : ''}` });
     return r;

@@ -5,7 +5,7 @@ import { api, getToken, setToken } from './api';
 const LAST = 'maung_last_active'; // waktu aktivitas terakhir (dibagi antar tab)
 const now = () => Date.now();
 
-export interface Me { id: string; name: string; email: string; role: string; subRole: string; avatarUrl?: string | null; telegramLinked: boolean; mustChangePassword?: boolean; /** akun asli Admin yang sedang bertindak sebagai `role` */ realAdmin?: boolean }
+export interface Me { id: string; name: string; email: string; role: string; subRole: string; avatarUrl?: string | null; telegramLinked: boolean; mustChangePassword?: boolean; /** fitur yang boleh dipakai (Admin → Hak Akses) */ features?: string[]; /** akun asli Admin yang sedang bertindak sebagai `role` */ realAdmin?: boolean }
 interface AuthCtx { user: Me | null; ready: boolean; login(email: string, password: string, remember?: boolean): Promise<void>; logout(): void }
 
 const Ctx = createContext<AuthCtx>(null as unknown as AuthCtx);
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (r.sessionMinutes) setSessMin(r.sessionMinutes);
     try { localStorage.setItem(LAST, String(now())); } catch { /* abaikan */ }
     lastRefresh.current = now();
-    setUser(r.user);
+    try { const m = await api<Me>('/auth/me'); setUser({ ...r.user, features: m.features }); } catch { setUser(r.user); }
   }, []);
   const logout = useCallback(() => { setToken(null); setUser(null); window.location.href = '/login'; }, []);
 

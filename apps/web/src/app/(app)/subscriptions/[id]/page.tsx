@@ -16,7 +16,7 @@ export default function SubscriptionDetail({ params }: { params: Promise<{ id: s
   const { data: s, error } = useFetch<any>(`/subscriptions/${id}`);
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!s) return <p className="text-slate-500">Memuat…</p>;
-  const canWrite = user?.role === 'ADMIN' || user?.role === 'MKT';
+  const canWrite = (user?.features ?? []).includes('subscriptions');
   return (
     <div className="space-y-4">
       <PageHeader pretitle="Formulir Berlangganan" title={s.regNo} sub={`${s.name ?? 'Tanpa nama'} · diterbitkan ${fmtDate(s.createdAt)} oleh ${s.createdBy.name}`}>

@@ -9,6 +9,7 @@ import { AppError, fieldError, prisma } from '../db';
 import { requireRole } from '../auth';
 import { config } from '../config';
 import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, refreshWebUrl, webUrl, getSessionMinutes, WA_FONNTE_URL } from '../settings';
+import { DIVISIONS, FEATURES, SUBROLES, defaultTokens, effectiveMatrix, getOverrides, saveOverrides } from '../access';
 import { fromHeader, sendTelegram, sendWhatsApp, telegramApi, waNumber } from '../senders';
 
 /** Pengaturan yang dikelola Admin: SMTP, Telegram, logo/branding, kebijakan GPS. Dipasang SETELAH authenticate. */
@@ -298,3 +299,24 @@ adminRoutes.put('/admin/settings/app', async (req, res) => {
   await refreshWebUrl();
   res.json(await overview());
 });
+
+/* ── Hak Akses: matriks fitur × divisi × sub-role ── */
+adminRoutes.get('/admin/access', requireRole('ADMIN'), async (_req, res) => {
+  const [matrix, ov] = await Promise.all([effectiveMatrix(), getOverrides()]);
+  res.json({ divisions: DIVISIONS, subRoles: SUBROLES, features: FEATURES.map((f) => ({ key: f.key, group: f.group, label: f.label, desc: f.desc, defaults: defaultTokens(f), custom: !!ov[f.key] })), matrix });
+});
+adminRoutes.put('/admin/access', requireRole('ADMIN'), async (req, res) => {
+  const valid = new Set(DIVISIONS.flatMap((d) => SUBROLES.map((s) => `${d}:${s}`)));
+  const b = z.object({ matrix: z.record(z.string(), z.array(z.string())) }).parse(req.body);
+  const next: Record<string, string[]> = {};
+  for (const f of FEATURES) {
+    const t = b.matrix[f.key];
+    if (!t) continue;
+    const set = [...new Set(t.filter((x) => valid.has(x)))].sort();
+    if (JSON.stringify(set) !== JSON.stringify([...defaultTokens(f)].sort())) next[f.key] = set; // hanya simpan yang berbeda dari bawaan
+  }
+  await saveOverrides(next, req.user!.id);
+  await prisma.auditLog.create({ data: { userId: req.user!.id, userName: req.user!.name, role: req.user!.role, action: 'UPDATE', entity: 'hak akses', summary: `${req.user!.name} mengubah matriks hak akses (${Object.keys(next).length} fitur berbeda dari bawaan)` } }).catch(() => {});
+  res.json({ ok: true });
+});
+adminRoutes.post('/admin/access/reset', requireRole('ADMIN'), async (req, res) => { await saveOverrides({}, req.user!.id); res.json({ ok: true }); });

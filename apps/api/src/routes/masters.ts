@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../access';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import multer from 'multer';
@@ -46,7 +47,7 @@ const customerBody = z.object({
   activatedAt: z.preprocess(nul, z.coerce.date().nullable().optional()),
 });
 
-masterRoutes.post('/customers', requireRole('MKT'), async (req, res) => {
+masterRoutes.post('/customers', requireFeature('customers.manage'), async (req, res) => {
   const b = customerBody.parse(req.body);
   const who = whoOf(req);
   const c = await transact(async (fx) => {
@@ -73,7 +74,7 @@ masterRoutes.post('/customers', requireRole('MKT'), async (req, res) => {
   res.status(201).json(c);
 });
 
-masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res) => {
+masterRoutes.patch('/customers/:id', requireFeature('customers.edit'), async (req, res) => {
   const id = String(req.params.id);
   const { allowDuplicate: _ad, ...b } = customerBody.partial().parse(req.body);
   const who = whoOf(req);
@@ -109,7 +110,7 @@ masterRoutes.patch('/customers/:id', requireRole('MKT', 'NOC'), async (req, res)
  *  - punya riwayat WO yang sudah selesai → DIARSIPKAN (hilang dari daftar & pencarian, riwayat tetap utuh; Admin dapat memulihkan);
  *  - masih ada WO berjalan atau aset terpasang → ditolak dengan alasan jelas.
  */
-masterRoutes.delete('/customers/:id', requireRole('MKT'), async (req, res) => {
+masterRoutes.delete('/customers/:id', requireFeature('customers.manage'), async (req, res) => {
   const id = String(req.params.id);
   const c = await prisma.customer.findUnique({ where: { id }, include: { _count: { select: { workOrders: true } } } });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
@@ -234,7 +235,7 @@ masterRoutes.get('/customers/import-template.xlsx', async (_req, res) => {
 });
 
 /** Ekspor dialirkan per batch (cursor) ke XLSX stream: memori tetap kecil walau jutaan baris. */
-masterRoutes.get('/customers/export.xlsx', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) => {
+masterRoutes.get('/customers/export.xlsx', requireFeature('customers'), async (req, res) => {
   const q = z.object({ q: z.string().optional(), status: z.string().optional() }).parse(req.query);
   const status = q.status ? q.status.split(',') : undefined;
   const where = { archivedAt: null, ...(status ? { status: { in: status as CustomerStatus[] } } : {}), ...(q.q ? { OR: [{ name: { contains: q.q, mode: 'insensitive' as const } }, { code: { contains: q.q, mode: 'insensitive' as const } }, { phone: { contains: q.q } }, { ip: { contains: q.q } }] } : {}) };
@@ -257,7 +258,7 @@ masterRoutes.get('/customers/export.xlsx', requireRole('MKT', 'NOC', 'FIN', 'GA'
   await wb.commit();
 });
 
-masterRoutes.post('/customers/import', requireRole('MKT', 'NOC'), upload.single('file'), async (req, res) => {
+masterRoutes.post('/customers/import', requireFeature('customers.edit'), upload.single('file'), async (req, res) => {
   if (!req.file) throw new AppError(400, 'Pilih file .xlsx / .csv');
   const dryRun = req.query.dryRun === '1';
   const who = whoOf(req);
@@ -365,7 +366,7 @@ masterRoutes.get('/packages', async (req, res) => {
   ]);
   res.json(rows.map((p) => ({ ...p, customers: used.find((u) => u.packageName === p.name)?._count ?? 0 })));
 });
-const pkgRoles = requireRole('MKT'); // NOC tidak mengelola master data
+const pkgRoles = requireFeature('master.packages'); // NOC tidak mengelola master data
 const pkgBody = z.object({ name: z.string().trim().min(2).max(80), description: z.preprocess(nul, z.string().trim().max(200).nullable().optional()), active: z.boolean().optional(), sortOrder: z.coerce.number().int().min(0).max(9999).optional() });
 masterRoutes.post('/packages', pkgRoles, async (req, res) => {
   const b = pkgBody.parse(req.body);
@@ -399,7 +400,7 @@ masterRoutes.delete('/packages/:id', pkgRoles, async (req, res) => {
 });
 
 /* ═════════════ Master merk & tipe aset ═════════════ */
-const gaRoles = requireRole('GA');
+const gaRoles = requireFeature('master.ga');
 masterRoutes.get('/asset-brands', async (_req, res) => {
   res.json(await prisma.assetBrand.findMany({ include: { models: { orderBy: { name: 'asc' } }, _count: { select: { assets: true } } }, orderBy: { name: 'asc' } }));
 });

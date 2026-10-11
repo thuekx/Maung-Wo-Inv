@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { featuresFor, requireFeature } from '../access';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -12,7 +13,7 @@ import { authenticate, publicUser, requireRole, signToken } from '../auth';
 import { config } from '../config';
 import { connection, requeueNotification } from '../queue';
 import { workflows } from '../workflows';
-import { getBranding, getSessionMinutes, getTelegram } from '../settings';
+import { getBranding, getSessionMinutes, getTelegram, webUrl } from '../settings';
 import { auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { transact } from '../effects';
 import { buildDashboard, mineWhere } from '../dashboard';
@@ -33,6 +34,43 @@ core.post(
       : await (async () => { const m = await prisma.user.findMany({ where: { email: { startsWith: `${id}@` }, active: true }, take: 2 }); return m.length === 1 ? m[0] : null; })();
     if (!u || !u.active || !(await bcrypt.compare(password, u.passwordHash))) throw new AppError(401, 'Email atau password salah');
     res.json({ token: signToken(u, await getSessionMinutes()), user: publicUser(u), sessionMinutes: await getSessionMinutes() });
+  },
+);
+
+/* ── lupa password: tautan sekali pakai (30 mnt) dikirim ke email terdaftar (+Telegram bila terhubung) ── */
+const resetSecret = () => `${config.jwtSecret}:pwreset`;
+const pwStamp = (hash: string) => crypto.createHash('sha256').update(hash).digest('hex').slice(0, 16); // token gugur begitu password berubah
+core.post(
+  '/auth/forgot',
+  rateLimit({ windowMs: 15 * 60_000, limit: 8, standardHeaders: true, legacyHeaders: false }),
+  async (req, res) => {
+    const { email } = z.object({ email: z.string().trim().min(1).max(120) }).parse(req.body);
+    const id = email.toLowerCase();
+    const u = id.includes('@')
+      ? await prisma.user.findUnique({ where: { email: id } })
+      : await (async () => { const m = await prisma.user.findMany({ where: { email: { startsWith: `${id}@` }, active: true }, take: 2 }); return m.length === 1 ? m[0] : null; })();
+    if (u && u.active && u.email !== 'system@l1v.local') {
+      const token = jwt.sign({ sub: u.id, st: pwStamp(u.passwordHash) }, resetSecret(), { expiresIn: '30m' });
+      await transact(async (fx) => {
+        await fx.notify({ userIds: [u.id], inbox: false, subject: '🔑 Atur ulang password', body: `Halo ${u.name},\n\nAda permintaan atur ulang password untuk akun ${u.email}. Buka tautan berikut (berlaku 30 menit, sekali pakai):\n${webUrl()}/reset-password?token=${token}\n\nJika bukan Anda yang meminta, abaikan pesan ini — password Anda tidak berubah.` });
+        await writeAudit(fx, { id: u.id, name: u.name, role: u.role }, { action: 'PASSWORD_RESET', entity: 'user', summary: `${u.name} meminta tautan atur ulang password (lupa password)` });
+      });
+    }
+    // jawaban selalu sama agar daftar akun tidak bisa ditebak
+    res.json({ ok: true });
+  },
+);
+core.post(
+  '/auth/reset',
+  rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false }),
+  async (req, res) => {
+    const { token, password } = z.object({ token: z.string().min(10), password: z.string().min(8, 'Minimal 8 karakter').max(200) }).parse(req.body);
+    let sub = '', st = '';
+    try { const p = jwt.verify(token, resetSecret()) as { sub: string; st: string }; sub = p.sub; st = p.st; } catch { throw new AppError(400, 'Tautan tidak valid atau sudah kedaluwarsa. Minta tautan baru.'); }
+    const u = await prisma.user.findUnique({ where: { id: sub } });
+    if (!u || !u.active || pwStamp(u.passwordHash) !== st) throw new AppError(400, 'Tautan tidak valid atau sudah dipakai. Minta tautan baru.');
+    await prisma.user.update({ where: { id: u.id }, data: { passwordHash: await bcrypt.hash(password, 10), mustChangePassword: false } });
+    res.json({ ok: true });
   },
 );
 
@@ -61,7 +99,7 @@ core.get('/auth/introspect', (req, res) => {
   res.json({ active: true, sub: u.id, name: u.name, email: u.email, role: u.role, subRole: u.subRole, exp });
 });
 
-core.get('/auth/me', async (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null, sessionMinutes: await getSessionMinutes() }));
+core.get('/auth/me', async (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), features: await featuresFor(req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null, sessionMinutes: await getSessionMinutes() }));
 
 /** Perpanjang sesi (dipanggil klien selama pengguna aktif). Token yang sudah kedaluwarsa tidak bisa diperpanjang. */
 core.post('/auth/refresh', async (req, res) => {
@@ -165,7 +203,7 @@ core.patch('/users/:id', requireRole('ADMIN'), async (req, res) => {
 });
 
 /* ── customers ── */
-core.get('/customers', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) => {
+core.get('/customers', requireFeature('customers'), async (req, res) => {
   const q = req.query.q ? String(req.query.q).trim() : '';
   const status = req.query.status ? String(req.query.status).split(',') : undefined;
   const packageName = req.query.packageName ? String(req.query.packageName) : undefined;

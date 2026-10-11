@@ -609,6 +609,7 @@ model SyncRun {
   missing    Int       @default(0)
   packages   Int       @default(0)
   areas      Int       @default(0)
+  forms      Int       @default(0)
   error      String?
   userId     String?
 

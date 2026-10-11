@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../access';
 import { z } from 'zod';
 import { AppError, fieldError, prisma } from '../db';
 import { authenticate, requireRole } from '../auth';
@@ -38,7 +39,7 @@ radiusRoutes.post('/admin/radius/test', requireRole('ADMIN'), async (_req, res) 
 });
 
 /** Mulai sinkron manual (dikerjakan worker; UI memantau lewat /radius/status). */
-radiusRoutes.post('/radius/sync', requireRole('MKT'), async (req, res) => {
+radiusRoutes.post('/radius/sync', requireFeature('customers.manage'), async (req, res) => {
   const cfg = await getRadius();
   if (!cfg.token) throw new AppError(400, 'Token MSRadius belum diisi — minta Admin mengisinya di Pengaturan → MSRadius');
   if (await syncRunning()) throw new AppError(409, 'Sinkron sedang berjalan');
@@ -46,14 +47,14 @@ radiusRoutes.post('/radius/sync', requireRole('MKT'), async (req, res) => {
   res.status(202).json({ queued: true });
 });
 
-radiusRoutes.get('/radius/status', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (_req, res) => {
+radiusRoutes.get('/radius/status', requireFeature('customers'), async (_req, res) => {
   const cfg = await getRadius();
   const last = await prisma.syncRun.findFirst({ orderBy: { startedAt: 'desc' } });
   res.json({ configured: !!cfg.token, enabled: cfg.enabled, autoForm: cfg.autoForm, intervalMin: cfg.intervalMin, running: await syncRunning(), last });
 });
 
 /** Tarik data satu pelanggan dari MSRadius berdasarkan kode (mis. pelanggan manual yang akunnya baru dibuat di MSRadius). */
-radiusRoutes.post('/customers/:id/radius-pull', requireRole('MKT'), async (req, res) => {
+radiusRoutes.post('/customers/:id/radius-pull', requireFeature('customers.manage'), async (req, res) => {
   const c = await prisma.customer.findUnique({ where: { id: String(req.params.id) } });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
   const cfg = await getRadius();

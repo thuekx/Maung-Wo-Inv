@@ -79,7 +79,7 @@ export type RadiusStatus = 'WAITING' | 'ONLINE' | 'OFFLINE' | 'ISOLIR' | 'DISABL
 export const RADIUS_STATUS_INFO: Record<RadiusStatus, { label: string; desc: string }> = {
   WAITING: { label: 'Waiting', desc: 'Pelanggan baru — memicu Form Berlangganan' },
   ONLINE: { label: 'Online', desc: 'Layanan aktif & internet berjalan' },
-  OFFLINE: { label: 'Offline', desc: 'Masalah internet di sisi pelanggan (mungkin dimatikan/terputus)' },
+  OFFLINE: { label: 'Need Check', desc: 'Offline — perlu dicek: kemungkinan masalah internet di sisi pelanggan' },
   ISOLIR: { label: 'Isolir', desc: 'Layanan ditangguhkan (suspend)' },
   DISABLE: { label: 'Disable', desc: 'Pelanggan di-terminate' },
 };
@@ -237,14 +237,14 @@ export async function createWaitingForms(): Promise<number> {
   if (!cfg.autoForm) return 0;
   const sys = await prisma.user.findUnique({ where: { email: 'system@l1v.local' } });
   if (!sys) return 0;
-  const cands = await prisma.customer.findMany({ where: { source: 'RADIUS', radiusStatus: 'WAITING', archivedAt: null, status: 'PROSPECT' }, take: 300, orderBy: { createdAt: 'asc' } });
+  const cands = await prisma.customer.findMany({ where: { source: 'RADIUS', radiusStatus: 'WAITING', archivedAt: null }, take: 5000, orderBy: { createdAt: 'asc' } });
   if (!cands.length) return 0;
   const ids = cands.map((c) => c.id);
   const has = new Set([
     ...(await prisma.subscription.findMany({ where: { customerId: { in: ids } }, select: { customerId: true } })).map((x) => x.customerId!),
     ...(await prisma.workOrder.findMany({ where: { customerId: { in: ids }, type: 'NEW_INSTALL' }, select: { customerId: true } })).map((x) => x.customerId!),
   ]);
-  const todo = cands.filter((c) => !has.has(c.id));
+  const todo = cands.filter((c) => !has.has(c.id)).slice(0, 500);
   if (!todo.length) return 0;
   const pkgs = new Map((await prisma.package.findMany({ where: { name: { in: [...new Set(todo.map((c) => c.packageName))] } } })).map((p) => [p.name, p]));
   const made: { regNo: string; name: string }[] = [];

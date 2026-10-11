@@ -20,7 +20,7 @@ export default function PoDetail({ params }: { params: Promise<{ id: string }> }
   const [mt, setMt] = useState<Record<string, { on: boolean; days: string }>>({});
   const [edit, setEdit] = useState(false);
   const router = useRouter();
-  const canReceive = ['ADMIN', 'GA'].includes(user?.role ?? '');
+  const canReceive = (user?.features ?? []).includes('procurement.manage');
 
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!po) return <p className="text-slate-500">Memuat…</p>;

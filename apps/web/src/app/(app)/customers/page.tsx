@@ -88,12 +88,12 @@ export default function Customers() {
   const [err, setErr] = useState('');
   const [rk, setRk] = useState(0);
   const [arch, setArch] = useState(false);
-  const { data: rs, reload: reloadRs } = useFetch<any>(['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(user?.role ?? '') ? '/radius/status' : null);
+  const { data: rs, reload: reloadRs } = useFetch<any>((user?.features ?? []).includes('customers') ? '/radius/status' : null);
   const pull = async () => { try { await api('/radius/sync', { body: {} }); toast.info('Sinkron MSRadius dimulai di latar belakang (±20 detik)…'); setTimeout(() => { reloadRs(); setRk((x) => x + 1); }, 22000); } catch (e) { toast.error((e as Error).message); } };
   const { data: pkgs } = useFetch<any[]>('/packages?all=1');
   const role = user?.role ?? '';
-  const canEdit = ['ADMIN', 'MKT'].includes(role); // NOC tidak menambah/impor pelanggan (hanya data jaringan lewat WO / edit terbatas)
-  const canExport = ['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(role);
+  const canEdit = (user?.features ?? []).includes('customers.manage'); // NOC tidak menambah/impor pelanggan (hanya data jaringan lewat WO / edit terbatas)
+  const canExport = (user?.features ?? []).includes('customers');
   const restore = async (c: any) => { try { await api(`/customers/${c.id}/restore`, { body: {} }); toast.success(`${c.name} dipulihkan dari arsip.`); setRk((x) => x + 1); } catch (e) { toast.error((e as Error).message); } };
   const cols: Column<any>[] = [
     { key: 'code', header: 'Kode', sort: 'code', render: (c) => <Link className="font-medium text-brand-700 hover:underline" href={`/customers/${c.id}`}>{c.code}</Link> },

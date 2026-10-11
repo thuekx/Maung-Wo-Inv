@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { fileUrl, imgUrl } from '@/lib/api';
+import { api, fileUrl, imgUrl } from '@/lib/api';
 import { PasswordInput } from '@/components/PasswordInput';
 import { useBranding } from '@/lib/brand';
 import { ThemeSwitch } from '@/lib/theme';
@@ -21,6 +21,12 @@ export default function LoginPage() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [help, setHelp] = useState(false);
+  const [sent, setSent] = useState(false);
+  async function forgot() {
+    if (!id.trim()) { setErr('Isi Email atau Username di atas, lalu klik "Lupa password?" lagi.'); return; }
+    setBusy(true); setErr('');
+    try { await api('/auth/forgot', { body: { email: id.trim() } }); setSent(true); setHelp(true); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -68,9 +74,9 @@ export default function LoginPage() {
           <button className="btn-secondary w-full !py-2.5" disabled={busy}>{busy ? 'Masuk…' : 'Masuk'}</button>
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center gap-2 text-slate-600"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-brand-900" /> Ingat saya</label>
-            <button type="button" className="btn-link" onClick={() => setHelp(!help)}>Lupa password?</button>
+            <button type="button" className="btn-link" onClick={forgot} disabled={busy}>Lupa password?</button>
           </div>
-          {help && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">Hubungi Admin untuk mengatur ulang password Anda. Setelah itu Anda akan diminta menggantinya saat masuk.</p>}
+          {help && sent && <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600" role="status">Jika akun terdaftar, tautan atur ulang password (berlaku 30 menit) dikirim ke email terdaftar{' '}dan Telegram bila sudah terhubung di profil. Tidak menerima? Hubungi Admin.</p>}
         </form>
         <ThemeSwitch />
       </section>

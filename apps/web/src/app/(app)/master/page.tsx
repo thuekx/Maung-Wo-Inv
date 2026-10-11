@@ -167,17 +167,19 @@ function AreaForm({ area, whs, onDone }: { area: any; whs: any[]; onDone: () => 
 
 export default function Master() {
   const { user } = useAuth();
-  const role = user?.role ?? '';
-  const [tab, setTab] = useState(['GA'].includes(role) ? 'brands' : 'packages');
-  if (!['ADMIN', 'MKT', 'GA'].includes(role)) return <ErrorMsg>Akses ditolak</ErrorMsg>;
+  const feats = user?.features ?? [];
+  const pk = feats.includes('master.packages'), ga = feats.includes('master.ga');
+  const [tab, setTab] = useState(ga ? 'brands' : 'packages');
+  if (user && !pk && !ga) return <ErrorMsg>Akses ditolak</ErrorMsg>;
+  const tabs = [...(pk ? [{ key: 'packages', label: 'Paket / jasa' }] : []), ...(ga ? [{ key: 'areas', label: 'Area' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }] : [])];
   return (
     <>
       <PageHeader pretitle="Data" title="Master Data" sub="Paket/jasa langganan, area, merk & tipe perangkat, dan vendor" />
-      {role !== 'MKT' && <Tabs value={tab} onChange={setTab} tabs={[{ key: 'packages', label: 'Paket / jasa' }, { key: 'areas', label: 'Area' }, { key: 'brands', label: 'Merk & tipe aset' }, { key: 'vendors', label: 'Vendor' }]} />}
-      {tab === 'packages' && <Packages canManage={['ADMIN', 'MKT'].includes(role)} />}
-      {role !== 'MKT' && tab === 'areas' && <Areas canManage={['ADMIN', 'GA'].includes(role)} />}
-      {role !== 'MKT' && tab === 'vendors' && <Vendors canManage={['ADMIN', 'GA'].includes(role)} />}
-      {role !== 'MKT' && tab === 'brands' && <Brands canManage={['ADMIN', 'GA'].includes(role)} />}
+      {tabs.length > 1 && <Tabs value={tab} onChange={setTab} tabs={tabs} />}
+      {pk && tab === 'packages' && <Packages canManage={pk} />}
+      {ga && tab === 'areas' && <Areas canManage={ga} />}
+      {ga && tab === 'vendors' && <Vendors canManage={ga} />}
+      {ga && tab === 'brands' && <Brands canManage={ga} />}
     </>
   );
 }

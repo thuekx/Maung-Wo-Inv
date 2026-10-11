@@ -30,6 +30,7 @@ export function SubForm({ initial, id, onSaved }: { initial: SubDraft; id?: stri
   const [busy, setBusy] = useState(false);
   const { data: cfg } = useFetch<any>('/subscription-settings');
   const { data: pkgs } = useFetch<any[]>('/packages');
+  const { data: next } = useFetch<{ regNo: string; suffix: string }>(id ? null : `/subscriptions/next-regno?date=${v.formDate || ''}`);
   const set = (k: keyof SubDraft, val: string) => setV((p) => ({ ...p, [k]: val }));
   const year = v.formDate ? new Date(v.formDate) : new Date();
   const prefix = cfg ? `${cfg.regPrefix}${String(year.getFullYear() % 1000).padStart(3, '0')}` : '…';
@@ -56,8 +57,11 @@ export function SubForm({ initial, id, onSaved }: { initial: SubDraft; id?: stri
         <div className="grid gap-3 sm:grid-cols-2">
           {field('formDate', 'Tanggal', { type: 'date' })}
           <div><label className="mb-1 block text-sm font-medium">Reg. No.</label>
-            <div className="rounded-lg border bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700 dark:bg-slate-800">{id ? 'Nomor tetap (otomatis saat dibuat)' : `${prefix}… otomatis`}</div>
-            <p className="mt-0.5 text-xs text-slate-500">Nomor registrasi dibuat otomatis berurutan saat formulir disimpan (awalan <b>{prefix}</b>).</p></div>
+            {id ? <div className="rounded-lg border bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700 dark:bg-slate-800">Nomor tetap (tidak dapat diubah)</div> : (
+              <div className="flex items-center gap-1"><span className="rounded-lg border bg-slate-50 px-3 py-2 font-mono text-sm dark:bg-slate-800">{prefix}</span>
+                <input className="input font-mono" inputMode="numeric" maxLength={6} value={v.regSuffix} placeholder={next?.suffix ?? '…'} onChange={(e) => set('regSuffix', e.target.value.replace(/\D/g, ''))} /></div>)}
+            {fe.regSuffix && <p className="mt-1 text-xs text-red-600">{fe.regSuffix}</p>}
+            {!id && <p className="mt-0.5 text-xs text-slate-500">Dikosongkan = nomor otomatis berikutnya (<b>{next?.regNo ?? '…'}</b>, mengikuti nomor terakhir/awal di Admin). Bila diisi lain, tercatat sesuai isian — tidak boleh sama dengan nomor yang sudah ada.</p>}</div>
         </div>
       </div>
       <div className="card space-y-3">

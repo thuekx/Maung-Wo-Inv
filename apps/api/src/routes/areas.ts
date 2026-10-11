@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../access';
 import { z } from 'zod';
 import { AppError, fieldError, prisma } from '../db';
 import { authenticate, requireRole } from '../auth';
@@ -8,7 +9,7 @@ import { transact } from '../effects';
 /** Master Area: bersumber dari MSRadius (masterdata/area/list) atau manual; tiap area dihubungkan ke gudang penyuplainya. */
 export const areaRoutes = Router();
 areaRoutes.use(authenticate);
-const gaOnly = requireRole('GA');
+const gaOnly = requireFeature('master.ga');
 
 areaRoutes.get('/areas', async (req, res) => {
   const all = req.query.all === '1';

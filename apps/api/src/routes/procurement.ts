@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../access';
 import { z } from 'zod';
 import { AppError, fieldError, prisma, Tx } from '../db';
 import { actorOf, authenticate, requireRole } from '../auth';
@@ -13,7 +14,7 @@ import { areaAlias } from '../docnum';
 export const procurementRoutes = Router();
 procurementRoutes.use(authenticate);
 
-const gaOnly = requireRole('GA');
+const gaOnly = requireFeature('procurement.manage');
 const nul = (v: unknown) => (v === '' ? null : v);
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 

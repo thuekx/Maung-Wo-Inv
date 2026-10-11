@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../access';
 import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { actorOf, authenticate } from '../auth';
@@ -142,7 +143,7 @@ woRoutes.post('/work-orders/:id/actions/:key', async (req, res) => {
 });
 
 /** Cek stok untuk Permintaan Barang: ketersediaan tiap barang di gudang tujuan dan di gudang lain (dipakai GA saat review). */
-woRoutes.get('/work-orders/:id/stock-check', requireRole('GA'), async (req, res) => {
+woRoutes.get('/work-orders/:id/stock-check', requireFeature('inventory'), async (req, res) => {
   const wo = await prisma.workOrder.findUnique({ where: { id: String(req.params.id) } });
   if (!wo || wo.type !== 'STOCK_REQUEST') throw new AppError(404, 'Bukan Permintaan Barang');
   const d = wo.data as any;

@@ -347,7 +347,7 @@ function Inventory() {
   const { user } = useAuth();
   const sp = useSearchParams();
   const [tab, setTab] = useState(sp.get('tab') ?? 'stock');
-  const canManage = ['ADMIN', 'GA'].includes(user?.role ?? '');
+  const canManage = (user?.features ?? []).includes('inventory.manage');
   void fmtDate;
   return (
     <>

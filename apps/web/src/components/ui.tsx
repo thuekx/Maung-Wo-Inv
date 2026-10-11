@@ -159,7 +159,7 @@ export function DataView({ value, depth = 0, field }: { value: any; depth?: numb
 export const RADIUS_STATUS: Record<string, { label: string; tone: 'green' | 'amber' | 'red' | 'blue' | 'slate'; desc: string }> = {
   WAITING: { label: 'Waiting', tone: 'amber', desc: 'Pelanggan baru — memicu Form Berlangganan' },
   ONLINE: { label: 'Online', tone: 'green', desc: 'Layanan aktif & internet berjalan' },
-  OFFLINE: { label: 'Offline', tone: 'red', desc: 'Masalah internet di sisi pelanggan (mungkin dimatikan/terputus)' },
+  OFFLINE: { label: 'Need Check', tone: 'red', desc: 'Offline — perlu dicek: kemungkinan masalah internet di sisi pelanggan' },
   ISOLIR: { label: 'Isolir', tone: 'blue', desc: 'Layanan ditangguhkan (suspend)' },
   DISABLE: { label: 'Disable', tone: 'slate', desc: 'Pelanggan di-terminate' },
 };
