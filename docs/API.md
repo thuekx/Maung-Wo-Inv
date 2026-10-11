@@ -22,7 +22,8 @@ Base URL: `https://<domain-aplikasi>` (mode SSL satu domain; web meneruskan `/ap
 | Path | Isi | Filter `since` |
 |---|---|---|
 | `GET /api/export` | Daftar resource dan parameter | – |
-| `GET /api/export/customers` | Pelanggan: kode, kontak, alamat, paket, status, ODP/port/VLAN/IP, `activatedAt`, `warehouseCode` | `createdAt` |
+| `GET /api/export/customers` | Pelanggan: `code`, `name`, `phone`, alamat, paket, `status`, `radiusStatus`, `salesName`, ODP/port/VLAN/IP, `activatedAt`, `warehouseCode`, `areaName`, `createdAt` | `createdAt` |
+| `GET /api/export/subscriptions` | Formulir Berlangganan: `regNo`, `formDate`, `name`, `phone`, `packageName`, `source` (MANUAL/RADIUS), `marketingName`, `customerCode` (dari pelanggan terkait), `woNumber` (dari WO terkait), `createdAt`. **Tanpa data biaya** (kolom dipilih eksplisit) | `createdAt` |
 | `GET /api/export/work-orders` | WO + `customerCode/Name`, pembuat, teknisi, `data` (JSON isian form). `?include=events` menambah riwayat transisi | `updatedAt` |
 | `GET /api/export/items` | Master barang: SKU, kategori, satuan, `tracked`, `minStock` | – |
 | `GET /api/export/warehouses` | Gudang (pusat/cabang/mobile) | – |

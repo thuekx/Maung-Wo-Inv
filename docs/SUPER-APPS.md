@@ -18,6 +18,12 @@ Tujuan: beberapa aplikasi (WO + Inventori, **Sales Tracking**, dst.) terasa satu
 | 4 | **Event antar-aplikasi** (webhook/antrian): mis. kontrak sales disetujui → WO Pasang Baru terbentuk | Alur lintas aplikasi |
 | 5 | Pencarian global & dashboard gabungan | Super apps penuh |
 
+## Satu pintu (visi launcher)
+Tujuan: pengguna hanya mengenal **satu alamat (`maung.liv.net.id`) dan satu login**; setelah masuk memilih aplikasi lewat ikon (WO & Inventori, CRM/Sales, dst.) seperti beranda super-app. Dibangun bertahap:
+1. **Identitas tunggal** — WO adalah penerbit login/peran; aplikasi lain memvalidasi token lewat `GET /api/auth/introspect` (lihat di bawah). Hak akses per divisi/sub-role dikelola di Admin → Hak Akses.
+2. **Satu pintu jaringan** — Caddy meneruskan tiap aplikasi (`proxy/sites/*.caddy` + jaringan `maung_edge`, lihat docs/INSTALL.md). Aplikasi tetap container/database terpisah (terisolasi), hanya web-nya yang tampil di depan.
+3. **Launcher** (belum dibuat) — beranda setelah login berisi ikon aplikasi yang boleh diakses peran pengguna; setiap ikon membuka aplikasinya dengan sesi yang sama (token yang sama, atau penukaran token singkat). Keputusan yang masih perlu: apakah tiap aplikasi di subdomain sendiri (`crm.liv.net.id`, mudah, perlu penerusan token) atau di jalur satu domain (`maung.liv.net.id/crm`, sesi/cookie otomatis sama, perlu pengaturan basePath tiap aplikasi).
+
 ## Validasi token (tahap 1)
 ```
 GET /api/auth/introspect

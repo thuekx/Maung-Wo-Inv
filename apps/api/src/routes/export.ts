@@ -49,8 +49,27 @@ const resources: Record<string, Resource> = {
     description: 'Data pelanggan (kode, kontak, paket, status, ODP/port/VLAN/IP, tanggal aktivasi)',
     sinceField: 'createdAt',
     fetch: async (q) => {
-      const rows = await prisma.customer.findMany({ ...page(q, 'createdAt'), include: { warehouse: { select: { code: true } } } });
-      return rows.map(({ warehouse, ...c }) => ({ ...c, warehouseCode: warehouse?.code ?? null }));
+      const rows = await prisma.customer.findMany({ ...page(q, 'createdAt'), include: { warehouse: { select: { code: true } }, area: { select: { name: true } } } });
+      return rows.map(({ warehouse, area, ...c }) => ({ ...c, warehouseCode: warehouse?.code ?? null, areaName: area?.name ?? null }));
+    },
+  },
+  subscriptions: {
+    description: 'Formulir Berlangganan (Reg. No., tanggal, nama, telepon, paket, sumber, marketing, kode pelanggan, nomor WO). Tanpa data biaya.',
+    sinceField: 'createdAt',
+    fetch: async (q) => {
+      // select eksplisit: kolom biaya (installFee/monthlyFee) dan data lain yang tidak diminta tidak pernah ikut keluar
+      const rows = await prisma.subscription.findMany({
+        ...page(q, 'createdAt'),
+        select: { id: true, regNo: true, formDate: true, name: true, phone: true, packageName: true, source: true, marketingName: true, customerId: true, woId: true, createdAt: true },
+      });
+      const cids = [...new Set(rows.map((r) => r.customerId).filter((x): x is string => !!x))];
+      const wids = [...new Set(rows.map((r) => r.woId).filter((x): x is string => !!x))];
+      const [cs, ws] = await Promise.all([
+        cids.length ? prisma.customer.findMany({ where: { id: { in: cids } }, select: { id: true, code: true } }) : [],
+        wids.length ? prisma.workOrder.findMany({ where: { id: { in: wids } }, select: { id: true, number: true } }) : [],
+      ]);
+      const code = new Map(cs.map((c) => [c.id, c.code])), num = new Map(ws.map((w) => [w.id, w.number]));
+      return rows.map(({ customerId, woId, ...s }) => ({ ...s, customerCode: customerId ? code.get(customerId) ?? null : null, woNumber: woId ? num.get(woId) ?? null : null }));
     },
   },
   'work-orders': {

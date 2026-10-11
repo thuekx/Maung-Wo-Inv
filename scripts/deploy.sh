@@ -72,6 +72,11 @@ else
   if grep -q '^WEB_DOMAIN=.\+' .env; then FILES=(-f docker-compose.yml -f docker-compose.caddy.yml); echo "==> WEB_DOMAIN terdeteksi di .env → tetap memakai Caddy/HTTPS"; else FILES=(-f docker-compose.yml); fi
 fi
 
+# Jaringan tepi bersama untuk Caddy + aplikasi lain di VM ini (hanya dibuat bila ada; aman diulang; tidak menyentuh .env)
+if printf '%s ' "${FILES[@]}" | grep -q 'docker-compose.caddy.yml'; then
+  docker network inspect maung_edge >/dev/null 2>&1 || { docker network create maung_edge >/dev/null && echo "==> Jaringan Docker bersama 'maung_edge' dibuat"; }
+fi
+
 echo "==> Build & start (selama beberapa menit aplikasi bisa sementara menampilkan error 502/500 — normal saat container diganti; tunggu skrip selesai)"
 if ! docker compose "${FILES[@]}" up -d --build; then
   echo; echo "!! Gagal memulai. Log migrasi database (penyebab paling umum):"; docker compose "${FILES[@]}" logs --tail 40 migrate 2>&1 || true

@@ -6,6 +6,9 @@
 	auto_https disable_redirects
 }
 
+# Aplikasi lain di VM ini (mis. CRM) cukup menaruh satu berkas *.caddy di proxy/sites/ — tidak ditimpa penulisan otomatis.
+import /etc/caddy/sites/*.caddy
+
 __DOMAIN__ {
 	reverse_proxy web:3000 {
 		lb_try_duration 20s

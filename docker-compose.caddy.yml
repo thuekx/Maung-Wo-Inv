@@ -27,10 +27,17 @@ services:
       - ./proxy/caddy-entrypoint.sh:/caddy-entrypoint.sh:ro
       - ./proxy/Caddyfile.init:/init/Caddyfile.init:ro
       - caddyconf:/etc/caddy
+      - ./proxy/sites:/etc/caddy/sites:ro  # berkas *.caddy aplikasi lain (di-import oleh Caddyfile)
       - caddy_data:/data
       - caddy_config:/config
     ports: ["80:80", "443:443", "443:443/udp"]
+    networks: [default, edge] # edge = jaringan bersama dengan aplikasi lain (hanya container web mereka yang ikut; DB/Redis tetap privat)
     depends_on: [web, api]
+
+networks:
+  edge:
+    name: maung_edge
+    external: true # dibuat otomatis oleh scripts/deploy.sh (docker network create maung_edge)
 
 volumes:
   caddyconf:

@@ -67,6 +67,29 @@ Lalu buka **https://wo.perusahaan.co.id** → login `admin@l1v.local` (password 
 - **Jalur pemulihan:** `http://<IP-server>` selalu melayani HTTP biasa. Jika halaman Admin tak terjangkau lewat domain, buka lewat IP lalu perbaiki pengaturan.
 - **Pemulihan darurat tanpa Admin:** `docker compose exec caddy sh -c 'printf ":80 {\n\treverse_proxy web:3000\n}\n" > /etc/caddy/Caddyfile'` (HTTP saja; Caddy memuat ulang otomatis).
 
+### Aplikasi lain di VM yang sama (satu pintu, mis. CRM)
+Caddy (satu-satunya yang membuka port 80/443) juga dapat meneruskan domain aplikasi lain tanpa disentuh penulisan otomatis Admin:
+1. `deploy.sh` membuat jaringan Docker bersama **`maung_edge`** (sekali, aman diulang). Hanya Caddy dan container **web** aplikasi lain yang ikut; database/Redis tiap aplikasi tetap di jaringan privatnya.
+2. Di compose aplikasi lain, sambungkan container web-nya ke jaringan itu dengan **nama service yang unik** (mis. `crm-web`):
+   ```yaml
+   services:
+     crm-web:
+       networks: [default, edge]
+   networks:
+     edge: { name: maung_edge, external: true }
+   ```
+3. Taruh **satu berkas** `proxy/sites/crm.caddy` di repo Maung-Wo-Inv di VM (dipasang read-only ke Caddy; `Caddyfile` utama meng-`import` `/etc/caddy/sites/*.caddy`):
+   ```
+   crm.liv.net.id {
+   	reverse_proxy crm-web:3000
+   }
+   ```
+4. Muat ulang Caddy (**`caddy --watch` hanya memantau `Caddyfile` utama, bukan berkas yang di-import**):
+   `docker compose -f docker-compose.yml -f docker-compose.caddy.yml exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`
+- Alamat situs di berkas `.caddy` tidak boleh sama dengan domain WO (Caddy menolak memuat; konfigurasi lama tetap berjalan, WO tidak mati).
+- Aplikasi yang berdiri sendiri (VM lain) cukup memakai `reverse_proxy <IP-VM-lain>:<port>` di berkas yang sama — tidak perlu jaringan bersama.
+- Baris `import` otomatis ditambahkan ke Caddyfile lama di volume (entrypoint) dan selalu ditulis oleh Admin → SSL & Domain; domain/sertifikat WO tidak berubah.
+
 ## 4. Konfigurasi lanjutan (semua lewat Admin)
 1. **Admin → Pengaturan → Email (SMTP)**, **Telegram**, **WhatsApp (Fonnte / Kanca)** — masukkan kredensial lalu *Kirim tes*.
 2. **Admin → Tampilan & brand**: logo, warna, teks login.
