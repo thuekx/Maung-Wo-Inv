@@ -69,7 +69,7 @@ fi
 
 MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
 SWAP=""; if [ "$MEM_MB" -lt 3500 ]; then warn "RAM ${MEM_MB} MB (< 3,5 GB) — build bisa gagal tanpa swap."; yn "Tambahkan swap 2 GB?" y && SWAP=2G; fi
-FW=n; yn "Atur firewall otomatis (buka SSH, 80, 443, 9443)?" y && FW=y
+FW=n; yn "Atur firewall otomatis (buka port SSH, 80, 443, 9443)? — port SSH akan ditanyakan agar tidak terkunci" y && FW=y
 PORT=n; yn "Pasang Portainer (UI Docker, port 9443)?" y && PORT=y
 DEMO=0; yn "Isi data demo untuk uji coba (jangan untuk produksi)?" n && DEMO=1
 

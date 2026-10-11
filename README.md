@@ -69,7 +69,7 @@ sudo timedatectl set-timezone Asia/Jakarta          # waktu jadwal & cron
 
 # 1) Docker Engine + Compose plugin + Portainer (apt / dnf otomatis menyesuaikan OS)
 sudo bash scripts/install-server.sh
-#    opsi: SETUP_FIREWALL=1 | SETUP_SWAP=2G | SKIP_PORTAINER=1 | INSTALL_NODE=1 (Node 24 untuk dev)
+#    opsi: SETUP_FIREWALL=1 (menanyakan port SSH) | SSH_PORT=2222 | SETUP_SWAP=2G | SKIP_PORTAINER=1 | INSTALL_NODE=1 (Node 24 untuk dev)
 newgrp docker                                        # atau logout/login agar grup docker aktif
 
 # 2) Buat .env (secret acak), build, jalankan, seed data awal

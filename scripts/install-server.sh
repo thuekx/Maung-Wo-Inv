@@ -3,7 +3,8 @@
 # Didukung: Ubuntu 22.04 / 24.04 / 26.04+ (dan turunan: Mint, Pop!_OS), Debian 12/13, RHEL-keluarga (Rocky, AlmaLinux, CentOS Stream, Fedora).
 # OS lain: skrip mencoba installer resmi Docker (get.docker.com) setelah konfirmasi.
 # Pakai:  sudo bash scripts/install-server.sh                      # Docker + Portainer
-#         sudo SETUP_FIREWALL=1 bash scripts/install-server.sh     # + firewall (SSH, 80, 443 [+9443 Portainer])
+#         sudo SETUP_FIREWALL=1 bash scripts/install-server.sh     # + firewall (port SSH [ditanyakan/terdeteksi], 80, 443 [+9443 Portainer])
+#         sudo SETUP_FIREWALL=1 SSH_PORT=2222 bash scripts/install-server.sh   # port SSH ditentukan manual (tanpa pertanyaan)
 #         sudo SETUP_SWAP=2G   bash scripts/install-server.sh      # + swap (server RAM ≤ 2 GB agar build tidak "Killed")
 #         sudo SKIP_PORTAINER=1 bash scripts/install-server.sh     # tanpa Portainer
 #         sudo INSTALL_NODE=1  bash scripts/install-server.sh      # + Node.js 24 (hanya untuk dev/typecheck di server)
@@ -109,20 +110,54 @@ if [ "${SKIP_PORTAINER:-0}" != 1 ]; then
   fi
 fi
 
+# ── Port SSH: dideteksi dari layanan yang BENAR-BENAR mendengarkan (termasuk ssh.socket), sesi SSH aktif, dan sshd_config ──
+detect_ssh_ports() {
+  local out=""
+  # 1) port yang sedang didengarkan sshd / systemd (socket activation di Ubuntu 22.10+)
+  out+=" $(ss -ltnp 2>/dev/null | awk '/"sshd"|"systemd"/ && /users:/ {n=split($4,a,":"); print a[n]}' | grep -E '^[0-9]+$' | tr '\n' ' ')"
+  out+=" $(systemctl show ssh.socket sshd.socket -p Listen 2>/dev/null | grep -oE '[:]([0-9]+)[^0-9]|\[::\]:[0-9]+|0\.0\.0\.0:[0-9]+' | grep -oE '[0-9]+$' | tr '\n' ' ')"
+  # 2) port yang dipakai sesi SSH Anda SAAT INI (field ke-4 SSH_CONNECTION = port server)
+  [ -n "${SSH_CONNECTION:-}" ] && out+=" $(echo "$SSH_CONNECTION" | awk '{print $4}')"
+  # 3) sshd -T / sshd_config
+  out+=" $( (sshd -T 2>/dev/null || true) | awk '/^port /{print $2}' | tr '\n' ' ')"
+  out+=" $(grep -rhE '^[[:space:]]*Port[[:space:]]+[0-9]+' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/ 2>/dev/null | awk '{print $2}' | tr '\n' ' ')"
+  echo "$out" | tr ' ' '\n' | grep -E '^[0-9]+$' | awk '$1>=1 && $1<=65535' | sort -un | tr '\n' ' ' | sed 's/ $//'
+}
+
 if [ "${SETUP_FIREWALL:-0}" = 1 ]; then
   echo "==> Firewall"
+  # PENTING: aturan SSH harus ada SEBELUM firewall diaktifkan, kalau tidak sesi/akses SSH terkunci.
+  SSH_PORTS="${SSH_PORT:-}"
+  if [ -z "$SSH_PORTS" ]; then
+    DET="$(detect_ssh_ports)"; DET="${DET:-22}"
+    if [ -t 0 ]; then
+      echo "   Port SSH terdeteksi: ${DET// /, }"
+      read -r -p "   Port SSH yang dipakai (pisahkan koma bila lebih dari satu) [${DET// /,}]: " ans
+      SSH_PORTS="${ans:-${DET// /,}}"
+    else
+      SSH_PORTS="${DET// /,}"; echo "   (non-interaktif) memakai port SSH terdeteksi: $SSH_PORTS"
+    fi
+  fi
+  SSH_PORTS="$(echo "$SSH_PORTS" | tr ', ' '\n\n' | grep -E '^[0-9]+$' | awk '$1>=1 && $1<=65535' | sort -un | tr '\n' ' ' | sed 's/ $//')"
+  [ -n "$SSH_PORTS" ] || { echo "Port SSH tidak valid — firewall TIDAK diaktifkan agar akses tidak terkunci."; exit 1; }
+  # sesi SSH aktif yang memakai port di luar daftar → tambahkan otomatis
+  CUR="$(echo "${SSH_CONNECTION:-}" | awk '{print $4}')"
+  if [ -n "$CUR" ] && ! echo " $SSH_PORTS " | grep -q " $CUR "; then echo "   Sesi SSH Anda memakai port $CUR — ditambahkan ke aturan."; SSH_PORTS="$SSH_PORTS $CUR"; fi
   if command -v ufw >/dev/null 2>&1 || [ "$FAMILY" = apt ]; then
     command -v ufw >/dev/null 2>&1 || apt-get install -y ufw
-    ufw allow OpenSSH            # WAJIB sebelum enable agar SSH tidak terkunci
+    for p in $SSH_PORTS; do ufw allow "$p"/tcp comment 'SSH'; done      # SEBELUM enable
     ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 443/udp
     [ "${SKIP_PORTAINER:-0}" = 1 ] || ufw allow 9443/tcp
+    ufw status | grep -qE "^($(echo $SSH_PORTS | tr ' ' '|'))(/tcp)? +ALLOW" || { echo "Aturan SSH tidak terpasang — firewall TIDAK diaktifkan."; exit 1; }
     ufw --force enable
   elif [ "$FAMILY" = dnf ]; then
     dnf install -y firewalld; systemctl enable --now firewalld
-    firewall-cmd --permanent --add-service=ssh --add-service=http --add-service=https
+    for p in $SSH_PORTS; do firewall-cmd --permanent --add-port="$p"/tcp; done
+    firewall-cmd --permanent --add-service=http --add-service=https
     [ "${SKIP_PORTAINER:-0}" = 1 ] || firewall-cmd --permanent --add-port=9443/tcp
     firewall-cmd --reload
   fi
+  echo "   Firewall aktif. Port SSH diizinkan: ${SSH_PORTS// /, }"
   echo "   Mode tanpa SSL (http://IP:3000) memerlukan port 3000 terbuka: sudo ufw allow 3000/tcp"
 fi
 

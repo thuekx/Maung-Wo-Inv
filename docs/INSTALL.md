@@ -89,6 +89,7 @@ Backup harian + pulihkan: README §4 *Catatan operasional*. Pembaruan keamanan O
 | Gejala | Penyebab / solusi |
 |---|---|
 | Sertifikat tidak terbit / Admin menampilkan "Menunggu sertifikat" | DNS belum mengarah ke IP server, port 80/443 tertutup (cek firewall **penyedia VPS** juga), proxy CDN aktif, atau 80/443 dipakai proses lain. Lihat `docker compose logs caddy`. Let's Encrypt membatasi percobaan gagal — perbaiki DNS/port lalu tunggu beberapa menit |
+| Tidak bisa SSH setelah firewall aktif | Port SSH Anda bukan 22 dan belum diizinkan. Dari konsol/VNC VM: `sudo ss -ltnp | grep -E 'sshd|systemd'` (lihat port), lalu `sudo ufw allow <port>/tcp`. `install-server.sh` kini mendeteksi & menanyakan port SSH sebelum mengaktifkan ufw (`SSH_PORT=2222` untuk non-interaktif) |
 | `permission denied ... docker.sock` | `newgrp docker` atau login ulang |
 | Build web "Killed" | RAM kurang → `sudo SETUP_SWAP=2G bash scripts/install-server.sh` |
 | `deploy.sh` mengeluh port 80/443 dipakai | `sudo systemctl disable --now nginx apache2` lalu ulangi |
