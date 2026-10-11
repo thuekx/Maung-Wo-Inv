@@ -1,5 +1,7 @@
 'use client';
 import { Fragment, useEffect, useState } from 'react';
+import { APP_ICONS, APP_ICON_ALIAS, AppIcon } from '@/components/appIcons';
+import { Icon } from '@/components/icons';
 import { API, api, doDelete, download, fileUrl, imgUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { DEFAULT_LOGOS, loadBranding } from '@/lib/brand';
@@ -716,6 +718,47 @@ function DataCard() {
   );
 }
 
+/** Pemilih ikon dengan pratinjau: kisi ikon (Lucide, ISC) per kelompok + pratinjau ubin seperti di beranda. */
+function IconPicker({ value, onChange, name, description }: { value: string; onChange: (v: string) => void; name: string; description: string }) {
+  const [open, setOpen] = useState(false);
+  const cur = APP_ICON_ALIAS[value] ?? value;
+  const groups = [...new Set(APP_ICONS.map((i) => i.group))];
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="label !mb-0">Ikon</span>
+        <button type="button" className="btn-ghost !px-3 !py-2" onClick={() => setOpen(!open)} aria-expanded={open}>
+          <span className="flex items-center gap-2"><AppIcon name={cur} size={22} /><span className="text-sm">{APP_ICONS.find((i) => i.key === cur)?.label ?? 'Pilih ikon'}</span><Icon name="chevronDown" size={14} /></span>
+        </button>
+        {/* pratinjau ubin seperti di beranda */}
+        <div className="card flex w-56 flex-col items-start p-3">
+          <span className="mb-2 grid h-11 w-11 place-items-center rounded-xl bg-accent-500/15 text-accent-600"><AppIcon name={cur} size={24} /></span>
+          <span className="text-sm font-semibold text-slate-800">{name || 'Nama aplikasi'}</span>
+          {description && <span className="mt-0.5 text-xs text-slate-500">{description}</span>}
+        </div>
+      </div>
+      {open && (
+        <div className="space-y-3 rounded-lg border p-3">
+          {groups.map((g) => (
+            <div key={g}>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{g}</div>
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                {APP_ICONS.filter((i) => i.group === g).map((i) => (
+                  <button type="button" key={i.key} title={i.label} aria-label={i.label} aria-pressed={cur === i.key} onClick={() => { onChange(i.key); setOpen(false); }}
+                    className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] leading-tight transition hover:bg-slate-50 dark:hover:bg-slate-800 ${cur === i.key ? 'border-accent-500 bg-accent-500/10 text-accent-600' : 'border-slate-200 text-slate-600'}`}>
+                    <AppIcon name={i.key} size={24} /><span className="line-clamp-2 text-center">{i.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="text-[11px] text-slate-400">Ikon: Lucide (lisensi ISC, bebas dipakai komersial). Tambah ikon lain: scripts/gen-app-icons.py.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Aplikasi (beranda satu pintu): daftar aplikasi lain di jalur domain yang sama. Siapa yang melihat ikonnya diatur di Hak Akses. */
 function AppsCard() {
   const { data, reload } = useFetch<any>('/admin/launcher');
@@ -733,13 +776,14 @@ function AppsCard() {
       {apps.length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Belum ada aplikasi lain.</p>}
       {apps.map((x, i) => (
         <div key={i} className="space-y-2 rounded-lg border p-3">
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-3">
             <label className="text-sm"><span className="label">ID</span><input className="input font-mono" value={x.id} onChange={(e) => upd(i, 'id', e.target.value.toLowerCase())} placeholder="crm" /></label>
             <label className="text-sm"><span className="label">Nama</span><input className="input" value={x.name} onChange={(e) => upd(i, 'name', e.target.value)} placeholder="CRM Sales & Marketing" /></label>
             <label className="text-sm"><span className="label">Jalur</span><input className="input font-mono" value={x.path} onChange={(e) => upd(i, 'path', e.target.value.toLowerCase())} placeholder="/crm" /></label>
-            <label className="text-sm"><span className="label">Ikon</span><select className="input" value={x.icon} onChange={(e) => upd(i, 'icon', e.target.value)}>{data.icons.map((ic: string) => <option key={ic}>{ic}</option>)}</select></label>
+
           </div>
           <label className="block text-sm"><span className="label">Keterangan singkat</span><input className="input" value={x.description} onChange={(e) => upd(i, 'description', e.target.value)} placeholder="Aktivitas lapangan sales & marketing" /></label>
+          <IconPicker value={x.icon} onChange={(v) => upd(i, 'icon', v)} name={x.name} description={x.description} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={x.enabled} onChange={(e) => upd(i, 'enabled', e.target.checked)} /> Tampil di beranda</label>
             <button className="btn-ghost !border-red-300 !text-red-600" onClick={() => setApps((p) => p!.filter((_, j) => j !== i))}>Hapus</button>

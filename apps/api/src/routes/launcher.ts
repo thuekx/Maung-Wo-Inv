@@ -14,7 +14,8 @@ import { transact } from '../effects';
 export const launcherRoutes = Router();
 
 const WO_APP = { id: 'wo', name: 'Work Order & Inventori', description: 'Work order, pelanggan, inventori, pengadaan', icon: 'clipboard', path: '/' };
-const ICONS = ['users', 'clipboard', 'dashboard', 'box', 'receipt', 'layers', 'trend', 'pin', 'camera', 'qr', 'inbox', 'clock'] as const;
+import { APP_ICON_KEYS } from '../appIcons';
+const ICONS = APP_ICON_KEYS;
 /** Jalur milik aplikasi WO sendiri — tidak boleh dipakai aplikasi lain. */
 export const RESERVED_PATHS = new Set(['api', 'uploads', 'login', 'reset-password', 'a', 'doc', 'qr-print', 'brand', '_next', 'apps', 'admin', 'work-orders', 'customers', 'inventory', 'subscriptions', 'purchase-requests', 'purchase-orders', 'master', 'my-stock', 'tim-saya', 'laporan', 'riwayat-gangguan', 'api-msradius', 'api-sistem', 'api-kanca', 'profile', 'notifications', 'health', 'favicon.ico', 'icon.svg']);
 
@@ -25,7 +26,7 @@ launcherRoutes.get('/launcher', authenticate, async (req, res) => {
 });
 
 launcherRoutes.get('/admin/launcher', authenticate, requireRole('ADMIN'), async (_req, res) => {
-  res.json({ apps: await getLauncherApps(), icons: ICONS, reserved: [...RESERVED_PATHS].filter((p) => !p.includes('.')) });
+  res.json({ apps: await getLauncherApps(), reserved: [...RESERVED_PATHS].filter((p) => !p.includes('.')) });
 });
 
 const appSchema = z.object({

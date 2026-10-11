@@ -6,7 +6,8 @@ import { useAuth } from '@/lib/auth';
 import { imgUrl, roleText, useFetch } from '@/lib/api';
 import { useBranding } from '@/lib/brand';
 import { ThemeToggle } from '@/lib/theme';
-import { Icon, IconName, MarkM } from '@/components/icons';
+import { Icon, MarkM } from '@/components/icons';
+import { AppIcon } from '@/components/appIcons';
 import { Avatar } from '@/components/ui';
 
 interface LauncherApp { id: string; name: string; description: string; icon: string; path: string }
@@ -44,7 +45,7 @@ export default function AppsHome() {
           {data.apps.map((a) => {
             const inner = (
               <>
-                <span className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-accent-500/15 text-accent-600"><Icon name={a.icon as IconName} size={28} /></span>
+                <span className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-accent-500/15 text-accent-600"><AppIcon name={a.icon} size={28} /></span>
                 <span className="text-sm font-semibold text-slate-800">{a.name}</span>
                 {a.description && <span className="mt-1 text-xs text-slate-500">{a.description}</span>}
               </>
