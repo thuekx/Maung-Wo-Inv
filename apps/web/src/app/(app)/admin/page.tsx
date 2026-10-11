@@ -10,7 +10,7 @@ import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/comp
 import { Select } from '@/components/Select';
 import { PasswordInput } from '@/components/PasswordInput';
 
-function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string }[]; onClose: () => void }) {
+function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string; sentTo?: string[] }[]; onClose: () => void }) {
   const csv = () => {
     const body = 'nama,email,password_sementara\n' + list.map((u) => `"${u.name}",${u.email},${u.password ?? ''}`).join('\n');
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([body], { type: 'text/csv' })); a.download = 'password-sementara.csv'; a.click();
@@ -20,8 +20,8 @@ function PwResult({ list, onClose }: { list: { name: string; email: string; pass
     <Modal title="Password berhasil direset" onClose={onClose} wide>
       <div className="space-y-3 text-sm">
         {hasPw ? <p className="rounded-lg bg-amber-100 px-3 py-2 text-amber-800">Catat/unduh sekarang — password acak <b>hanya ditampilkan sekali</b> dan tidak dapat dilihat lagi.</p> : <p>Password disetel sama untuk semua user yang dipilih.</p>}
-        <Table head={['Nama', 'Email', 'Password sementara']}>
-          {list.map((u) => <tr key={u.email}><td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td font-mono">{u.password ?? '(sesuai yang Anda isi)'}</td></tr>)}
+        <Table head={['Nama', 'Email', 'Password sementara', 'Dikirim ke']}>
+          {list.map((u) => <tr key={u.email}><td className="td">{u.name}</td><td className="td">{u.email}</td><td className="td font-mono">{u.password ?? '(sesuai yang Anda isi)'}</td><td className="td text-xs">{u.sentTo?.length ? u.sentTo.map((c) => c === 'email' ? 'Email' : 'Telegram').join(' + ') : <span className="text-slate-400">tidak dikirim</span>}</td></tr>)}
         </Table>
         <div className="flex gap-2">{hasPw && <button className="btn-ghost" onClick={csv}>⬇ Unduh CSV</button>}<button className="btn" onClick={onClose}>Selesai</button></div>
       </div>
@@ -44,7 +44,7 @@ function Users() {
   const [pw, setPw] = useState<any>(null); // {ids}
   const [result, setResult] = useState<any[] | null>(null);
   const [sel, setSel] = useState<string[]>([]);
-  const [opt, setOpt] = useState({ mode: 'random', password: '', mustChange: true, notify: true, sendPassword: false });
+  const [opt, setOpt] = useState({ mode: 'random', password: '', mustChange: true, notify: true, sendPassword: true });
   const [err, setErr] = useState('');
   const users = data?.filter((u) => u.email !== 'system@l1v.local') ?? [];
   const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -93,8 +93,8 @@ function Users() {
             <label className="flex items-center gap-2"><input type="radio" checked={opt.mode === 'same'} onChange={() => setOpt({ ...opt, mode: 'same' })} /> Satu password yang sama:</label>
             {opt.mode === 'same' && <PasswordInput className="input" placeholder="min 8 karakter" value={opt.password} onChange={(e) => setOpt({ ...opt, password: e.target.value })} />}
             <label className="flex items-center gap-2"><input type="checkbox" checked={opt.mustChange} onChange={(e) => setOpt({ ...opt, mustChange: e.target.checked })} /> Wajib ganti password saat login berikutnya</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={opt.notify} onChange={(e) => setOpt({ ...opt, notify: e.target.checked })} /> Kirim notifikasi ke user (email + Telegram)</label>
-            {opt.notify && <label className="ml-6 flex items-center gap-2"><input type="checkbox" checked={opt.sendPassword} onChange={(e) => setOpt({ ...opt, sendPassword: e.target.checked })} /> Sertakan password sementara di pesan <span className="text-xs text-amber-700">(kurang aman — email/chat dapat tersimpan)</span></label>}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={opt.notify} onChange={(e) => setOpt({ ...opt, notify: e.target.checked })} /> Kirim ke user lewat email (+ Telegram bila sudah terhubung)</label>
+            {opt.notify && <label className="ml-6 flex items-center gap-2"><input type="checkbox" checked={opt.sendPassword} onChange={(e) => setOpt({ ...opt, sendPassword: e.target.checked })} /> Sertakan password sementara di pesan <span className="text-xs text-slate-500">(dikirim ke <b>email terdaftar</b>, dan ke <b>Telegram</b> bila sudah terhubung di profil user; tidak disimpan di kotak masuk aplikasi & dihapus dari log setelah terkirim)</span></label>}
             <ErrorMsg>{err}</ErrorMsg>
             <button className="btn" onClick={doReset}>Reset sekarang</button>
           </div>
@@ -423,7 +423,7 @@ function RadiusCard() {
   const upd = (k: string, val: unknown) => setV({ ...cur, [k]: val });
   const save = async () => {
     setErr(''); setBusy(true);
-    try { await api('/admin/radius', { method: 'PUT', body: { baseUrl: cur.baseUrl, token: token || undefined, enabled: cur.enabled, intervalMin: Number(cur.intervalMin) } }); toast.success('Pengaturan MSRadius disimpan'); setToken(''); setV(null); await reload(); }
+    try { await api('/admin/radius', { method: 'PUT', body: { baseUrl: cur.baseUrl, token: token || undefined, enabled: cur.enabled, intervalMin: Number(cur.intervalMin), autoForm: cur.autoForm !== false } }); toast.success('Pengaturan MSRadius disimpan'); setToken(''); setV(null); await reload(); }
     catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   const test = async () => { setErr(''); setBusy(true); try { const r = await api<any>('/admin/radius/test', { body: {} }); toast.success(`Koneksi MSRadius OK (${r.users} user terdaftar di master).`); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); } };
@@ -436,6 +436,7 @@ function RadiusCard() {
         <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Token API {cur.tokenSet && <span className="text-xs font-normal text-slate-500">(tersimpan {cur.tokenHint} — kosongkan bila tidak diganti)</span>}</label><PasswordInput className="input font-mono" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={cur.tokenSet ? '••••••••' : 'tempel token di sini'} /></div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cur.enabled} onChange={(e) => upd('enabled', e.target.checked)} /> Sinkron otomatis</label>
         <div><label className="mb-1 block text-sm font-medium">Interval otomatis (menit)</label><input className="input" type="number" min={5} max={1440} value={cur.intervalMin} onChange={(e) => upd('intervalMin', e.target.value)} /></div>
+        <label className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" className="mt-1" checked={cur.autoForm !== false} onChange={(e) => upd('autoForm', e.target.checked)} /><span><b>Buat Formulir Berlangganan otomatis</b> untuk pelanggan berstatus <b>Waiting</b> di MSRadius<span className="block text-xs text-slate-500">Satu formulir per pelanggan (tidak ganda), sumber "MSRadius"; Marketing mendapat notifikasi lalu melanjutkannya menjadi WO Pasang Baru. Status layanan MSRadius (Waiting/Online/Offline/Isolir/Disable) dan area pelanggan ikut disinkron.</span></span></label>
         <p className="text-xs text-slate-500 sm:col-span-2">Nama pelanggan dirapikan otomatis: garis bawah (_) dianggap spasi, dan nama huruf besar semua dijadikan huruf kapital di awal kata (PANJI_AGUNG → Panji Agung).</p>
       </div>
       <ErrorMsg>{err}</ErrorMsg>

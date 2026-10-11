@@ -6,6 +6,7 @@ import { auditedDelete, auditedUpdate, changes, whoOf, writeAudit } from '../aud
 import { transact } from '../effects';
 import { countIf, pageParams, sendPage } from '../paging';
 import { getSubForm, putSetting, regYear3, SUBFORM_DEFAULTS } from '../settings';
+import { issueRegNo } from '../subscriptions';
 
 /** Formulir Berlangganan digital: diterbitkan Marketing, tersimpan, dapat dicetak (PDF) untuk ditandatangani pelanggan. */
 export const subscriptionRoutes = Router();
@@ -47,7 +48,6 @@ const body = z.object({
 const canWrite = requireRole('MKT');
 const readers = requireRole('MKT'); // Formulir Berlangganan hanya Marketing (dan Admin)
 
-const regNoOf = async (date: Date, suffix: string) => `${(await getSubForm()).regPrefix}${regYear3(date)}${suffix}`;
 
 subscriptionRoutes.get('/subscriptions', readers, async (req, res) => {
   const q = z.object({ q: z.string().optional() }).parse(req.query);
@@ -65,7 +65,8 @@ subscriptionRoutes.get('/subscriptions/:id', readers, async (req, res) => {
   const s = await prisma.subscription.findUnique({ where: { id: String(req.params.id) }, include: { createdBy: { select: { id: true, name: true } } } });
   if (!s) throw new AppError(404, 'Formulir tidak ditemukan');
   const wo = s.woId ? await prisma.workOrder.findUnique({ where: { id: s.woId }, select: { id: true, number: true, status: true } }) : null;
-  res.json({ ...s, wo, settings: await getSubForm() });
+  const customer = s.customerId ? await prisma.customer.findUnique({ where: { id: s.customerId }, select: { id: true, code: true, areaId: true, lat: true, lng: true, status: true, radiusStatus: true } }) : null;
+  res.json({ ...s, wo, customer, settings: await getSubForm() });
 });
 
 subscriptionRoutes.post('/subscriptions', canWrite, async (req, res) => {
@@ -75,15 +76,7 @@ subscriptionRoutes.post('/subscriptions', canWrite, async (req, res) => {
   const who = whoOf(req);
   const { formDate: _fd, ...rest } = b;
   const row = await transact(async (fx) => {
-    // nomor registrasi otomatis: awalan + 3 digit tahun + urutan (urutan pertama diatur Admin), per tahun
-    const key = `SUBREG-${date.getFullYear()}`;
-    let regNo = '';
-    for (let n = 0; n < 50; n++) {
-      let c = await fx.tx.counter.upsert({ where: { key }, create: { key, value: cfg.regSeqStart }, update: { value: { increment: 1 } } });
-      if (c.value < cfg.regSeqStart) c = await fx.tx.counter.update({ where: { key }, data: { value: cfg.regSeqStart } }); // Admin menaikkan nomor mulai
-      regNo = await regNoOf(date, String(c.value).padStart(4, '0'));
-      if (!(await fx.tx.subscription.findUnique({ where: { regNo } }))) break;
-    }
+    const regNo = await issueRegNo(fx.tx, date); // nomor registrasi otomatis
     const r = await fx.tx.subscription.create({ data: { ...rest, regNo, formDate: date, payment: b.payment ?? cfg.defaultPayment, managerName: b.managerName === undefined ? cfg.managerName : b.managerName, marketingName: b.marketingName === undefined ? req.user!.name : b.marketingName, createdById: req.user!.id } as any });
     await writeAudit(fx, who, { action: 'CREATE', entity: 'formulir berlangganan', entityId: r.id, summary: `${who.name} menerbitkan formulir berlangganan ${regNo}${r.name ? ` (${r.name})` : ''}` });
     return r;

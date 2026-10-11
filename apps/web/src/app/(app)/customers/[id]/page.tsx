@@ -6,7 +6,7 @@ import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
-import { Badge, custTone, DataGrid, ErrorMsg, Modal, PageHeader, Table } from '@/components/ui';
+import { Badge, custTone, DataGrid, ErrorMsg, Modal, PageHeader, RadiusStatusBadge, Table } from '@/components/ui';
 import { customerFields, NETWORK_FIELDS } from '../page';
 
 export default function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +22,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
     <div className="space-y-4">
       <PageHeader pretitle="Pelanggan" title={`${c.name}`} sub={c.code}>
         <Badge tone={custTone(c.status)}>{c.status}</Badge>
+        {c.radiusStatus && <RadiusStatusBadge s={c.radiusStatus} />}
         {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost" onClick={async () => { try { const r = await api<any>(`/customers/${c.id}/radius-pull`, { body: {} }); toast.success(`Data MSRadius ditarik (${r.updated ? 'diperbarui' : 'sudah sama'}).`); await reload(); } catch (e) { toast.error((e as Error).message); } }}>⟳ Tarik dari MSRadius</button>}
         {['ADMIN', 'MKT', 'NOC'].includes(role) && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}
         {['ADMIN', 'MKT'].includes(role) && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/customers/${c.id}`, `pelanggan ${c.name}`)) router.replace('/customers'); }}>🗑 Hapus</button>}

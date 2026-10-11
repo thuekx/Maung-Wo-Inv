@@ -33,7 +33,9 @@ new Worker(
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
         return;
       }
-      await prisma.notification.update({ where: { id: n.id }, data: { status: 'SENT', sentAt: new Date(), error: null, ...(ref ? { providerRef: ref, providerStatus: 'sent' } : {}) } });
+      // pesan berisi password sementara: setelah terkirim, password dihapus dari catatan notifikasi
+      const redact = n.subject.startsWith('🔑 Password') ? { body: n.body.replace(/(Password sementara: ).*/, '$1••••••••') } : {};
+      await prisma.notification.update({ where: { id: n.id }, data: { status: 'SENT', sentAt: new Date(), error: null, ...redact, ...(ref ? { providerRef: ref, providerStatus: 'sent' } : {}) } });
     } catch (e) {
       await prisma.notification.update({ where: { id: n.id }, data: { status: 'FAILED', error: String(e).slice(0, 500) } });
       throw e; // BullMQ akan retry dengan exponential backoff

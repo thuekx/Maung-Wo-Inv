@@ -263,6 +263,7 @@ const newInstall: Workflow = {
   async create(tx, input) {
     const i = z
       .object({
+        customerId: z.string().min(1).optional(), // pelanggan yang sudah ada (mis. berstatus Waiting dari MSRadius) — dipakai ulang, tidak dibuat baru
         customerCode: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9._/-]+$/, 'Hanya huruf, angka, . _ / -').optional()),
         name: z.string().trim().min(2).max(120, 'Maksimal 120 karakter'),
         phone: z.string().trim().min(6).max(20, 'Maksimal 20 karakter').regex(/^[0-9+][0-9 +()-]*$/, 'Hanya angka, spasi, + ( ) -'),
@@ -283,6 +284,14 @@ const newInstall: Workflow = {
     const wh = await tx.warehouse.findFirst({ where: { id: area?.warehouseId ?? i.warehouseId!, kind: { not: 'MOBILE' }, active: true } });
     if (!wh) throw new AppError(400, 'Gudang tidak valid');
     if (!(await tx.package.findFirst({ where: { name: i.packageName, active: true } }))) throw new AppError(400, `Paket "${i.packageName}" tidak ada di Master Paket / sudah nonaktif`);
+    if (i.customerId) {
+      // Lanjutan dari Formulir Berlangganan otomatis (pelanggan Waiting di MSRadius): pakai pelanggan yang sudah ada
+      const ex = await tx.customer.findUnique({ where: { id: i.customerId } });
+      if (!ex || ex.archivedAt) throw new AppError(404, 'Pelanggan tidak ditemukan');
+      if (ex.status !== 'PROSPECT') throw new AppError(409, `Pelanggan ${ex.name} berstatus ${ex.status} — WO Pasang Baru hanya untuk pelanggan baru (Prospect/Waiting)`);
+      await tx.customer.update({ where: { id: ex.id }, data: { email: i.email || ex.email, lat: i.lat ?? ex.lat, lng: i.lng ?? ex.lng, areaId: area?.id ?? ex.areaId, warehouseId: wh.id } });
+      return { title: `Pasang baru – ${ex.name}`, customerId: ex.id, data: { packageName: i.packageName, notes: i.notes } };
+    }
     const code = i.customerCode ?? (await nextNumber(tx, 'CUST'));
     if (i.customerCode && (await tx.customer.findUnique({ where: { code } }))) throw fieldError('customerCode', `Kode pelanggan ${code} sudah ada — cari di menu Pelanggan`, 409);
     const customer = await tx.customer.create({

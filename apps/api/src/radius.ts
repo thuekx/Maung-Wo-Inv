@@ -1,6 +1,9 @@
 import { prisma } from './db';
 import { connection } from './queue';
-import { decryptSecret, encryptSecret, getSetting, putSetting } from './settings';
+import { decryptSecret, encryptSecret, getSetting, getSubForm, putSetting, webUrl } from './settings';
+import { transact } from './effects';
+import { writeAudit } from './audit';
+import { issueRegNo } from './subscriptions';
 
 /**
  * Integrasi MSRadius — BACA-SAJA. Sistem ini tidak pernah menulis ke MSRadius.
@@ -8,7 +11,7 @@ import { decryptSecret, encryptSecret, getSetting, putSetting } from './settings
  * Batas MSRadius: 10 request/60 dtk per token → satu putaran sinkron hanya memakai 2 request dengan jeda ≥ 7 dtk.
  */
 
-export interface RadiusCfg { baseUrl: string; token: string; enabled: boolean; intervalMin: number; lastAutoAt: number | null }
+export interface RadiusCfg { baseUrl: string; token: string; enabled: boolean; intervalMin: number; lastAutoAt: number | null; autoForm: boolean }
 export const RADIUS_DEFAULT_URL = 'http://radius.liv.net.id/api/radius';
 
 export async function getRadius(): Promise<RadiusCfg> {
@@ -19,12 +22,13 @@ export async function getRadius(): Promise<RadiusCfg> {
     enabled: s.enabled !== false, // bawaan: otomatis aktif begitu token diisi
     intervalMin: Number.isInteger(Number(s.intervalMin)) && Number(s.intervalMin) >= 5 ? Number(s.intervalMin) : 60,
     lastAutoAt: typeof s.lastAutoAt === 'number' ? s.lastAutoAt : null,
+    autoForm: s.autoForm !== false, // bawaan: pelanggan Waiting → Formulir Berlangganan dibuat otomatis
   };
 }
 
-export async function saveRadius(p: { baseUrl: string; token?: string; enabled: boolean; intervalMin: number }, userId: string) {
+export async function saveRadius(p: { baseUrl: string; token?: string; enabled: boolean; intervalMin: number; autoForm?: boolean }, userId: string) {
   const cur = (await getSetting<any>('radius')) ?? {};
-  await putSetting('radius', { ...cur, baseUrl: p.baseUrl, enabled: p.enabled, intervalMin: p.intervalMin, ...(p.token ? { token: encryptSecret(p.token) } : {}) }, userId);
+  await putSetting('radius', { ...cur, baseUrl: p.baseUrl, enabled: p.enabled, intervalMin: p.intervalMin, ...(p.autoForm === undefined ? {} : { autoForm: p.autoForm }), ...(p.token ? { token: encryptSecret(p.token) } : {}) }, userId);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -70,7 +74,38 @@ function dateOf(v: unknown): Date | null {
 }
 const registered = (notes: unknown) => { const m = /(\d{4}-\d{2}-\d{2})/.exec(str(notes)); return m ? new Date(`${m[1]}T00:00:00+07:00`) : null; };
 
-export interface Mapped { code: string; name: string; phone: string; address: string; lat: number | null; lng: number | null; packageName: string; radiusName: string; radiusIp: string | null; expiredAt: Date | null; resellerName: string | null; salesName: string | null; suspended: boolean; registeredAt: Date | null }
+/** Status layanan dari MSRadius (databilling/data → status). */
+export type RadiusStatus = 'WAITING' | 'ONLINE' | 'OFFLINE' | 'ISOLIR' | 'DISABLE';
+export const RADIUS_STATUS_INFO: Record<RadiusStatus, { label: string; desc: string }> = {
+  WAITING: { label: 'Waiting', desc: 'Pelanggan baru — memicu Form Berlangganan' },
+  ONLINE: { label: 'Online', desc: 'Layanan aktif & internet berjalan' },
+  OFFLINE: { label: 'Offline', desc: 'Masalah internet di sisi pelanggan (mungkin dimatikan/terputus)' },
+  ISOLIR: { label: 'Isolir', desc: 'Layanan ditangguhkan (suspend)' },
+  DISABLE: { label: 'Disable', desc: 'Pelanggan di-terminate' },
+};
+/** Normalisasi nilai `status` MSRadius (toleran huruf besar/kecil & sinonim). Tidak dikenal → null. */
+export function normStatus(v: unknown): RadiusStatus | null {
+  const t = str(typeof v === 'object' && v !== null ? ((v as any).name ?? (v as any).status ?? (v as any).label ?? '') : v).toLowerCase();
+  if (!t) return null;
+  if (/wait|pending|baru|new/.test(t)) return 'WAITING';
+  if (/^on/.test(t) || t === 'active' || t === 'aktif') return 'ONLINE';
+  if (/^off/.test(t)) return 'OFFLINE';
+  if (/isolir|isolat|suspend/.test(t)) return 'ISOLIR';
+  if (/disable|nonaktif|non-aktif|terminate|inactive/.test(t)) return 'DISABLE';
+  return null;
+}
+/** Area pelanggan dari MSRadius: bisa teks nama, id, atau objek {id,name}. */
+export function areaRefOf(r: any): { code: string | null; name: string | null } | null {
+  const v = r?.area ?? r?.area_name ?? r?.nama_area ?? r?.id_area ?? r?.area_id;
+  if (v === null || v === undefined || v === '' || v === '-') return null;
+  if (typeof v === 'object') { const code = str((v as any).id ?? (v as any).id_area ?? (v as any).code), name = str((v as any).name ?? (v as any).nama ?? (v as any).area); return code || name ? { code: code || null, name: name || null } : null; }
+  const t = str(v);
+  return /^\d+$/.test(t) ? { code: t, name: null } : { code: null, name: t };
+}
+/** Status Maung yang setara dengan status MSRadius (null = tidak mengubah). */
+export const customerStatusFor = (st: RadiusStatus | null) => (st === 'WAITING' ? 'PROSPECT' : st === 'ONLINE' || st === 'OFFLINE' ? 'ACTIVE' : st === 'ISOLIR' ? 'SUSPENDED' : st === 'DISABLE' ? 'TERMINATED' : null) as 'PROSPECT' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | null;
+
+export interface Mapped { code: string; name: string; phone: string; address: string; lat: number | null; lng: number | null; packageName: string; radiusName: string; radiusIp: string | null; expiredAt: Date | null; resellerName: string | null; salesName: string | null; suspended: boolean; registeredAt: Date | null; radiusStatus: RadiusStatus | null; areaRef: { code: string | null; name: string | null } | null }
 
 export function mapRow(r: any, _pretty?: boolean): Mapped | null {
   const code = str(r?.kode);
@@ -92,12 +127,14 @@ export function mapRow(r: any, _pretty?: boolean): Mapped | null {
     salesName: str(r.name_kurir) || null,
     suspended: ['1', 'true'].includes(str(r.disabled_username).toLowerCase()),
     registeredAt: registered(r.notess),
+    radiusStatus: normStatus(r.status),
+    areaRef: areaRefOf(r),
   };
 }
 
 const rowsOf = (d: any): any[] => (Array.isArray(d) ? d : d && typeof d === 'object' ? Object.values(d) : []);
 
-export interface SyncStats { created: number; updated: number; unchanged: number; skipped: number; missing: number; packages: number; areas: number }
+export interface SyncStats { forms?: number; created: number; updated: number; unchanged: number; skipped: number; missing: number; packages: number; areas: number }
 
 /** Terapkan baris MSRadius ke tabel Customer (upsert by `kode`); kolom milik Maung (email, ODP, port, VLAN, IP internal, gudang) tidak disentuh. */
 export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyCode?: string; syncRunId?: string } = {}): Promise<SyncStats> {
@@ -113,15 +150,21 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
     mapped.push(m);
   }
   const busy = new Set((await prisma.workOrder.findMany({ where: { closedAt: null, customerId: { not: null } }, select: { customerId: true } })).map((w) => w.customerId!));
-  const existing = new Map((await prisma.customer.findMany({ where: opts.onlyCode ? { code: opts.onlyCode } : {}, select: { id: true, code: true, name: true, phone: true, address: true, lat: true, lng: true, packageName: true, radiusIp: true, expiredAt: true, resellerName: true, salesName: true, status: true, source: true, missingFromApi: true, activatedAt: true } })).map((c) => [c.code, c]));
+  const existing = new Map((await prisma.customer.findMany({ where: opts.onlyCode ? { code: opts.onlyCode } : {}, select: { id: true, code: true, name: true, phone: true, address: true, lat: true, lng: true, packageName: true, radiusIp: true, expiredAt: true, resellerName: true, salesName: true, status: true, source: true, missingFromApi: true, activatedAt: true, radiusStatus: true, areaId: true, warehouseId: true } })).map((c) => [c.code, c]));
+  // Area: nama/kode dari MSRadius → Master Area (area sudah disinkron lebih dulu dari masterdata/area/list)
+  const areaRows = await prisma.area.findMany();
+  const areaByCode = new Map(areaRows.filter((a) => a.code).map((a) => [a.code!, a]));
+  const areaByName = new Map(areaRows.map((a) => [a.name.toLowerCase(), a]));
+  const areaOf = (m: Mapped) => (m.areaRef ? (m.areaRef.code && areaByCode.get(m.areaRef.code)) || (m.areaRef.name && areaByName.get(m.areaRef.name.toLowerCase())) || null : null);
   const now = new Date();
   const CH = 200;
   for (let i = 0; i < mapped.length; i += CH) {
     await prisma.$transaction(async (tx) => {
       for (const m of mapped.slice(i, i + CH)) {
         const cur = existing.get(m.code);
+        const area = areaOf(m);
         if (!cur) {
-          const made = await tx.customer.create({ data: { code: m.code, name: m.name, phone: m.phone, address: m.address, lat: m.lat, lng: m.lng, packageName: m.packageName, status: m.suspended ? 'SUSPENDED' : 'ACTIVE', source: 'RADIUS', radiusName: m.radiusName, radiusIp: m.radiusIp, expiredAt: m.expiredAt, resellerName: m.resellerName, salesName: m.salesName, activatedAt: m.registeredAt, syncedAt: now } });
+          const made = await tx.customer.create({ data: { code: m.code, name: m.name, phone: m.phone, address: m.address, lat: m.lat, lng: m.lng, packageName: m.packageName, status: customerStatusFor(m.radiusStatus) ?? (m.suspended ? 'SUSPENDED' : 'ACTIVE'), radiusStatus: m.radiusStatus, areaId: area?.id ?? null, warehouseId: area?.warehouseId ?? null, source: 'RADIUS', radiusName: m.radiusName, radiusIp: m.radiusIp, expiredAt: m.expiredAt, resellerName: m.resellerName, salesName: m.salesName, activatedAt: m.registeredAt, syncedAt: now } });
           await tx.customerChange.create({ data: { customerId: made.id, field: '*', oldValue: null, newValue: 'Dibuat dari MSRadius', source: 'RADIUS', syncRunId: opts.syncRunId ?? null } });
           st.created++;
           continue;
@@ -141,10 +184,19 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
         if (cur.source !== 'RADIUS') data.source = 'RADIUS';
         if (cur.missingFromApi) data.missingFromApi = false;
         if (!cur.activatedAt && m.registeredAt) data.activatedAt = m.registeredAt;
-        if (!busy.has(cur.id) && (cur.status === 'ACTIVE' || cur.status === 'SUSPENDED')) {
-          const want = m.suspended ? 'SUSPENDED' : 'ACTIVE';
+        // status layanan MSRadius (Waiting/Online/Offline/Isolir/Disable) — disimpan apa adanya + dipetakan ke status Maung
+        if (m.radiusStatus && cur.radiusStatus !== m.radiusStatus) data.radiusStatus = m.radiusStatus;
+        const isBusy = busy.has(cur.id); // ada WO berjalan → status pelanggan dikelola alur WO, tidak ditimpa
+        const target = customerStatusFor(m.radiusStatus);
+        if (target) {
+          const allowed = isBusy || target === 'PROSPECT' ? false : target === 'ACTIVE' ? ['PROSPECT', 'ACTIVE', 'SUSPENDED'].includes(cur.status) : target === 'SUSPENDED' ? cur.status === 'ACTIVE' : ['ACTIVE', 'SUSPENDED'].includes(cur.status);
+          if (allowed && cur.status !== target) data.status = target;
+        } else if (!isBusy && (cur.status === 'ACTIVE' || cur.status === 'SUSPENDED')) {
+          const want = m.suspended ? 'SUSPENDED' : 'ACTIVE'; // tanpa field status: pakai disabled_username
           if (cur.status !== want) data.status = want;
         }
+        // area per pelanggan dari MSRadius (hanya bila terisi & dikenal di Master Area) → gudang penyuplai ikut diturunkan dari Area
+        if (area && cur.areaId !== area.id) { data.areaId = area.id; if (!isBusy && area.warehouseId && cur.warehouseId !== area.warehouseId) data.warehouseId = area.warehouseId; }
         if (Object.keys(data).length) {
           await tx.customer.update({ where: { id: cur.id }, data: { ...data, syncedAt: now } as any });
           // riwayat: simpan nilai lama → baru untuk tiap kolom yang berubah (kecuali penanda teknis)
@@ -157,6 +209,8 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
       }
     }, { timeout: 120_000 });
   }
+  st.forms = await createWaitingForms(); // pelanggan berstatus Waiting → Formulir Berlangganan otomatis
+
   if (!opts.onlyCode) {
     // tidak ada lagi di MSRadius → hanya ditandai (tidak dihapus).
     // Pengaman: respons kosong/terpotong (mis. gangguan di sisi MSRadius) tidak boleh menandai pelanggan massal.
@@ -171,6 +225,42 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
     if (goneRows.length) await prisma.customerChange.createMany({ data: goneRows.map((g) => ({ customerId: g.id, field: 'missingFromApi', oldValue: 'false', newValue: 'true', source: 'RADIUS', syncRunId: opts.syncRunId ?? null })) });
   }
   return st;
+}
+
+/**
+ * Pelanggan baru berstatus **Waiting** di MSRadius → Formulir Berlangganan dibuat otomatis (sumber RADIUS) agar Marketing dapat
+ * melanjutkannya menjadi WO Pasang Baru. Idempoten: satu formulir per pelanggan; tidak dibuat bila pelanggan sudah punya
+ * formulir atau pernah punya WO Pasang Baru. Dapat dimatikan di Admin → Pengaturan → MSRadius.
+ */
+export async function createWaitingForms(): Promise<number> {
+  const cfg = await getRadius();
+  if (!cfg.autoForm) return 0;
+  const sys = await prisma.user.findUnique({ where: { email: 'system@l1v.local' } });
+  if (!sys) return 0;
+  const cands = await prisma.customer.findMany({ where: { source: 'RADIUS', radiusStatus: 'WAITING', archivedAt: null, status: 'PROSPECT' }, take: 300, orderBy: { createdAt: 'asc' } });
+  if (!cands.length) return 0;
+  const ids = cands.map((c) => c.id);
+  const has = new Set([
+    ...(await prisma.subscription.findMany({ where: { customerId: { in: ids } }, select: { customerId: true } })).map((x) => x.customerId!),
+    ...(await prisma.workOrder.findMany({ where: { customerId: { in: ids }, type: 'NEW_INSTALL' }, select: { customerId: true } })).map((x) => x.customerId!),
+  ]);
+  const todo = cands.filter((c) => !has.has(c.id));
+  if (!todo.length) return 0;
+  const pkgs = new Map((await prisma.package.findMany({ where: { name: { in: [...new Set(todo.map((c) => c.packageName))] } } })).map((p) => [p.name, p]));
+  const made: { regNo: string; name: string }[] = [];
+  await transact(async (fx) => {
+    for (const c of todo) {
+      const date = new Date();
+      const regNo = await issueRegNo(fx.tx, date);
+      const pk = pkgs.get(c.packageName);
+      const phone = /^[0-9+][0-9 +()-]*$/.test(c.phone) ? c.phone.slice(0, 20) : null;
+      await fx.tx.subscription.create({ data: { regNo, formDate: date, name: c.name, address: c.address === '-' ? null : c.address, phone, packageName: c.packageName, monthlyFee: pk?.priceSell ?? null, marketingName: c.salesName ?? null, referral: 'MSRadius (status Waiting)', serviceNote: `Otomatis dari MSRadius — kode ${c.code}`, source: 'RADIUS', customerId: c.id, createdById: sys.id, managerName: (await getSubForm()).managerName, payment: (await getSubForm()).defaultPayment } });
+      await writeAudit(fx, { id: sys.id, name: 'Sistem (MSRadius)', role: 'ADMIN' }, { action: 'CREATE', entity: 'formulir berlangganan', summary: `Formulir ${regNo} dibuat otomatis untuk pelanggan Waiting ${c.name} (${c.code})` });
+      made.push({ regNo, name: c.name });
+    }
+    await fx.notify({ roles: ['MKT'], subject: `${made.length} pelanggan baru (Waiting) — Formulir Berlangganan dibuat otomatis`, body: `${made.slice(0, 15).map((m) => `• ${m.regNo} — ${m.name}`).join('\n')}${made.length > 15 ? `\n… dan ${made.length - 15} lainnya` : ''}\nLanjutkan menjadi WO Pasang Baru: ${webUrl()}/subscriptions` });
+  });
+  return made.length;
 }
 
 /** Master paket dari databilling/profile (tanpa harga modal/komisi); tidak pernah menonaktifkan paket. */

@@ -120,6 +120,7 @@ model Customer {
   expiredAt      DateTime?
   resellerName   String?
   salesName      String?
+  radiusStatus   String? // status layanan dari MSRadius: WAITING | ONLINE | OFFLINE | ISOLIR | DISABLE (apa adanya dari API)
   missingFromApi Boolean        @default(false) // tidak ada lagi di MSRadius pada sinkron terakhir (tidak dihapus otomatis)
   syncedAt       DateTime?
   activatedAt    DateTime?
@@ -133,6 +134,7 @@ model Customer {
 
   @@index([areaId])
   @@index([status])
+  @@index([radiusStatus])
   @@index([archivedAt])
   @@index([publicIp])
   @@index([createdAt])
@@ -651,11 +653,13 @@ model Subscription {
   createdById   String
   customerId    String?
   woId          String?
+  source        String   @default("MANUAL") // MANUAL | RADIUS (dibuat otomatis dari pelanggan berstatus Waiting di MSRadius)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   createdBy User @relation(fields: [createdById], references: [id])
 
+  @@index([customerId])
   @@index([createdAt])
   @@index([name])
 }

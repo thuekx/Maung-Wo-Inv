@@ -169,9 +169,10 @@ core.get('/customers', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) 
   const q = req.query.q ? String(req.query.q).trim() : '';
   const status = req.query.status ? String(req.query.status).split(',') : undefined;
   const packageName = req.query.packageName ? String(req.query.packageName) : undefined;
+  const radiusStatus = req.query.radiusStatus ? String(req.query.radiusStatus).toUpperCase().split(',') : undefined; // WAITING,ONLINE,OFFLINE,ISOLIR,DISABLE
   const archivedView = req.query.archived === '1' && req.user!.role === 'ADMIN'; // Admin dapat melihat arsip
   const pp = pageParams(req, {
-    sorts: { code: (d) => ({ code: d }), name: (d) => ({ name: d }), phone: (d) => ({ phone: d }), packageName: (d) => ({ packageName: d }), status: (d) => ({ status: d }), ip: (d) => ({ ip: d }), createdAt: (d) => ({ createdAt: d }) },
+    sorts: { code: (d) => ({ code: d }), name: (d) => ({ name: d }), phone: (d) => ({ phone: d }), packageName: (d) => ({ packageName: d }), status: (d) => ({ status: d }), radiusStatus: (d) => ({ radiusStatus: d }), ip: (d) => ({ ip: d }), createdAt: (d) => ({ createdAt: d }) },
     defaultSort: { key: 'createdAt', dir: 'desc' },
     legacyLimit: 100,
   });
@@ -179,6 +180,7 @@ core.get('/customers', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (req, res) 
     archivedAt: archivedView ? { not: null } : null,
     ...(status ? { status: { in: status as any } } : {}),
     ...(packageName ? { packageName } : {}),
+    ...(radiusStatus ? { radiusStatus: { in: radiusStatus } } : {}),
     ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' as const } }, { code: { contains: q, mode: 'insensitive' as const } }, { phone: { contains: q } }, { ip: { contains: q } }] } : {}),
   };
   const [rows, total] = await Promise.all([

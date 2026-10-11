@@ -155,6 +155,16 @@ export function DataView({ value, depth = 0, field }: { value: any; depth?: numb
   );
 }
 
+/** Status layanan dari MSRadius (kolom "Status layanan" di tabel pelanggan). */
+export const RADIUS_STATUS: Record<string, { label: string; tone: 'green' | 'amber' | 'red' | 'blue' | 'slate'; desc: string }> = {
+  WAITING: { label: 'Waiting', tone: 'amber', desc: 'Pelanggan baru — memicu Form Berlangganan' },
+  ONLINE: { label: 'Online', tone: 'green', desc: 'Layanan aktif & internet berjalan' },
+  OFFLINE: { label: 'Offline', tone: 'red', desc: 'Masalah internet di sisi pelanggan (mungkin dimatikan/terputus)' },
+  ISOLIR: { label: 'Isolir', tone: 'blue', desc: 'Layanan ditangguhkan (suspend)' },
+  DISABLE: { label: 'Disable', tone: 'slate', desc: 'Pelanggan di-terminate' },
+};
+export const RadiusStatusBadge = ({ s }: { s?: string | null }) => (s && RADIUS_STATUS[s] ? <span title={RADIUS_STATUS[s].desc}><Badge tone={RADIUS_STATUS[s].tone}>{RADIUS_STATUS[s].label}</Badge></span> : <span className="text-slate-400">-</span>);
+
 export const custTone = (s: string): 'green' | 'amber' | 'red' | 'blue' | 'slate' =>
   s === 'ACTIVE' ? 'green' : s === 'SUSPENDED' ? 'amber' : s === 'TERMINATED' || s === 'TERMINATING' ? 'red' : s === 'INSTALLING' ? 'blue' : 'slate';
 

@@ -4,6 +4,8 @@ import { enqueue, QueuedJob } from './queue';
 import { getTelegram } from './settings';
 
 export interface NotifyOpts {
+  /** false = jangan simpan di kotak masuk dalam aplikasi (mis. pesan berisi password sementara) */
+  inbox?: boolean;
   roles?: Role[];
   userIds?: (string | null | undefined)[];
   emails?: string[]; // penerima eksternal (mis. pelanggan)
@@ -52,7 +54,7 @@ export class Effects {
     for (const t of o.telegrams ?? []) add('TELEGRAM', t);
 
     // kotak masuk dalam aplikasi (lonceng): sekali per pengguna, tidak bergantung pada sukses kirim email/Telegram
-    if (users.length) await this.tx.inbox.createMany({ data: users.map((u) => ({ userId: u.id, subject: o.subject, body: o.body, woId: o.woId })) });
+    if (users.length && o.inbox !== false) await this.tx.inbox.createMany({ data: users.map((u) => ({ userId: u.id, subject: o.subject, body: o.body, woId: o.woId })) });
 
     for (const row of rows) {
       const n = await this.tx.notification.create({ data: row });

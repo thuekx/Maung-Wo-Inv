@@ -466,7 +466,7 @@ const pwOpts = z.object({
   password: z.string().min(8).max(72).optional(), // kosong → acak per user
   mustChange: z.boolean().default(true),
   notify: z.boolean().default(true),
-  sendPassword: z.boolean().default(false), // sertakan password di email/Telegram (kurang aman)
+  sendPassword: z.boolean().default(true), // password sementara dikirim ke email terdaftar (+ Telegram bila sudah terhubung di profil)
 });
 
 async function resetPasswords(req: import('express').Request, ids: string[], o: z.infer<typeof pwOpts>) {
@@ -480,13 +480,14 @@ async function resetPasswords(req: import('express').Request, ids: string[], o: 
       if (o.notify)
         await fx.notify({
           userIds: [u.id],
+          inbox: false, // password sementara tidak disimpan di kotak masuk aplikasi
           subject: `🔑 Password akun ${await getAppName()} diubah oleh Admin`,
           body: `Halo ${u.name},\n\nPassword akun Anda (${u.email}) telah diubah oleh ${who.name}.${o.sendPassword ? `\nPassword sementara: ${plain}` : '\nHubungi Admin untuk mendapatkan password baru.'}${o.mustChange ? '\nAnda diminta mengganti password saat login berikutnya.' : ''}\n${webUrl()}\n\nJika Anda tidak mengharapkan perubahan ini, segera hubungi Admin.`,
         });
     }
     await writeAudit(fx, who, { action: 'PASSWORD_RESET', entity: 'user', summary: `${who.name} mereset password ${plans.length} user: ${plans.map((p) => p.u.email).join(', ')}`.slice(0, 500) });
   });
-  return plans.map((p) => ({ id: p.u.id, name: p.u.name, email: p.u.email, password: p.plain }));
+  return plans.map((p) => ({ id: p.u.id, name: p.u.name, email: p.u.email, password: p.plain, sentTo: o.notify ? ['email', ...(p.u.telegramChatId ? ['telegram'] : [])] : [] }));
 }
 
 masterRoutes.post('/users/:id/reset-password', requireRole('ADMIN'), async (req, res) => {

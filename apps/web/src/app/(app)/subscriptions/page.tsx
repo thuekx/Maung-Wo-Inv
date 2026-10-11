@@ -16,6 +16,7 @@ export default function Subscriptions() {
     { key: 'fee', header: 'Biaya/bulan', className: 'whitespace-nowrap text-right', render: (s) => (s.monthlyFee != null ? rupiah(s.monthlyFee) : '-') },
     { key: 'formDate', header: 'Tanggal', sort: 'formDate', render: (s) => fmtDate(s.formDate).split(',')[0] },
     { key: 'by', header: 'Marketing', render: (s) => s.marketingName ?? s.createdBy?.name },
+    { key: 'source', header: 'Sumber', className: 'text-xs', render: (s) => (s.source === 'RADIUS' ? <Badge tone="blue">Otomatis (MSRadius)</Badge> : <Badge tone="slate">Manual</Badge>) },
     { key: 'wo', header: 'WO', render: (s) => (s.woId ? <Badge tone="green">sudah jadi WO</Badge> : <Badge tone="slate">belum</Badge>) },
   ];
   return (

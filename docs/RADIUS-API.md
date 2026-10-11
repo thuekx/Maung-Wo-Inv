@@ -79,3 +79,20 @@ Sumber: dokumen "Authentication API" (15 hal) dari pemilik proyek. **PDF tidak a
 - **Nama**: garis bawah (`_`) selalu dianggap spasi; bila hasilnya semua huruf besar/kecil → Title Case (`PANJI_AGUNG` → `Panji Agung`). Nama mentah tetap tersimpan di `radiusName`. Opsi "Rapikan nama" dihapus (selalu aktif).
 - **Sinkron otomatis aktif bawaan** begitu token diisi (tiap 60 menit); tombol **Tarik data MSRadius** tetap ada untuk "sekarang juga" — aman dari ganda: upsert per `kode`, dikunci Redis (satu sinkron berjalan), tombol nonaktif selama berjalan.
 - **Data yang "terkunci"**: hanya nama, telepon, alamat, paket (dan kode) pelanggan MSRadius yang tidak dapat diubah di Maung — ubah di MSRadius, lalu tarik. Email, ODP, port, VLAN, IP internal, IP publik, area, dan GPS tetap diisi/diubah di Maung. Input manual dicegah ganda: nama/telepon yang sama dengan pelanggan yang ada meminta konfirmasi.
+
+
+## Pembaruan: `status` & `area` pada `databilling/data`
+MSRadius kini mengirim **status layanan** dan **area** per pelanggan. Maung menyimpannya apa adanya dan memetakannya:
+
+| `status` MSRadius | Arti | Kolom "Status layanan" | Status Maung (bila tidak ada WO berjalan) |
+|---|---|---|---|
+| Waiting | Pelanggan baru → memicu Form Berlangganan | Waiting | Prospect (tidak menurunkan pelanggan yang sudah aktif) |
+| Online | Layanan aktif & internet berjalan | Online | Active |
+| Offline | Masalah internet sisi pelanggan (mungkin dimatikan/terputus) | Offline | Active |
+| Isolir | Suspend | Isolir | Suspended |
+| Disable | Terminate | Disable | Terminated |
+
+- **Waiting → Formulir Berlangganan otomatis** (sumber "MSRadius", satu formulir per pelanggan, tanpa duplikat; Marketing diberi notifikasi). Dari formulir itu Marketing menekan **Buat WO Pasang Baru**; WO memakai **pelanggan yang sama** (tidak membuat pelanggan baru). Dapat dimatikan: Admin → Pengaturan → MSRadius.
+- **Area** per pelanggan diambil dari MSRadius bila terisi dan dikenal di Master Area (nama atau kode); gudang penyuplai diturunkan dari Area.
+- Parsing toleran: `status` tidak peka huruf besar/kecil (sinonim: aktif/active, isolated/suspend, disabled/terminate); `area` dapat berupa teks nama, id, atau objek `{id,name}`. Bila format asli berbeda, kirim 1 contoh baris dari **Admin → API MSRadius → databilling/data → Ambil contoh** agar pemetaan disesuaikan.
+- Setiap perubahan status/area tercatat di **Riwayat perubahan data** pelanggan.

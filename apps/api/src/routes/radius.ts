@@ -14,7 +14,7 @@ radiusRoutes.use(authenticate);
 const view = async () => {
   const cfg = await getRadius();
   const runs = await prisma.syncRun.findMany({ orderBy: { startedAt: 'desc' }, take: 10 });
-  return { baseUrl: cfg.baseUrl, defaultUrl: RADIUS_DEFAULT_URL, tokenSet: !!cfg.token, tokenHint: cfg.token ? `••••${cfg.token.slice(-4)}` : '', enabled: cfg.enabled, intervalMin: cfg.intervalMin, running: await syncRunning(), runs };
+  return { baseUrl: cfg.baseUrl, defaultUrl: RADIUS_DEFAULT_URL, tokenSet: !!cfg.token, tokenHint: cfg.token ? `••••${cfg.token.slice(-4)}` : '', enabled: cfg.enabled, autoForm: cfg.autoForm, intervalMin: cfg.intervalMin, running: await syncRunning(), runs };
 };
 
 radiusRoutes.get('/admin/radius', requireRole('ADMIN'), async (_req, res) => res.json(await view()));
@@ -25,6 +25,7 @@ radiusRoutes.put('/admin/radius', requireRole('ADMIN'), async (req, res) => {
     token: z.string().trim().max(500).optional(),
     enabled: z.boolean(),
     intervalMin: z.coerce.number().int().min(5, 'Minimal 5 menit').max(1440, 'Maksimal 1440 menit'),
+    autoForm: z.boolean().optional(),
   }).parse(req.body);
   const who = whoOf(req);
   await saveRadius(b, req.user!.id);
@@ -48,7 +49,7 @@ radiusRoutes.post('/radius/sync', requireRole('MKT'), async (req, res) => {
 radiusRoutes.get('/radius/status', requireRole('MKT', 'NOC', 'FIN', 'GA'), async (_req, res) => {
   const cfg = await getRadius();
   const last = await prisma.syncRun.findFirst({ orderBy: { startedAt: 'desc' } });
-  res.json({ configured: !!cfg.token, enabled: cfg.enabled, intervalMin: cfg.intervalMin, running: await syncRunning(), last });
+  res.json({ configured: !!cfg.token, enabled: cfg.enabled, autoForm: cfg.autoForm, intervalMin: cfg.intervalMin, running: await syncRunning(), last });
 });
 
 /** Tarik data satu pelanggan dari MSRadius berdasarkan kode (mis. pelanggan manual yang akunnya baru dibuat di MSRadius). */

@@ -44,7 +44,7 @@ function NewWo() {
       <div className="card max-w-2xl">
         <DynamicForm
           fields={wf.createFields}
-          initial={sub ? { name: sub.name ?? '', phone: sub.phone ?? '', email: sub.email ?? '', address: sub.address ?? '', packageName: sub.packageName ?? '', notes: `Dari formulir berlangganan ${sub.regNo}` } : undefined}
+          initial={sub ? { name: sub.name ?? '', phone: sub.phone ?? '', email: sub.email ?? '', address: sub.address ?? '', packageName: sub.packageName ?? '', ...(sub.customer ? { customerCode: sub.customer.code, areaId: sub.customer.areaId ?? '', lat: sub.customer.lat ?? '', lng: sub.customer.lng ?? '' } : {}), notes: `Dari formulir berlangganan ${sub.regNo}${sub.source === 'RADIUS' ? ' (otomatis dari MSRadius — status Waiting)' : ''}` } : undefined}
           submitLabel="Ajukan WO"
           onSubmit={async (input) => {
             const r = await api<{ id: string }>('/work-orders', { body: { type: wf.type, input: fromForm ? { ...input, subscriptionId: fromForm } : input } });

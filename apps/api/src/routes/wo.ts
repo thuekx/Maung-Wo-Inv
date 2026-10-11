@@ -59,6 +59,12 @@ woRoutes.post('/work-orders', async (req, res) => {
   const { type, input } = z.object({ type: z.enum(['NEW_INSTALL', 'TROUBLE', 'SUSPEND', 'UNSUSPEND', 'TERMINATE', 'STOCK_REQUEST', 'STOCK_RETURN', 'MAINTENANCE']), input: z.record(z.any()) }).parse(req.body);
   const u = req.user!;
   const subId = type === 'NEW_INSTALL' && typeof input.subscriptionId === 'string' ? input.subscriptionId : null;
+  if (subId && !input.customerId) {
+    // formulir otomatis dari MSRadius (Waiting) sudah terkait pelanggan → WO memakai pelanggan itu
+    const sub = await prisma.subscription.findUnique({ where: { id: subId }, select: { customerId: true, woId: true } });
+    if (sub?.woId) throw new AppError(409, 'Formulir ini sudah menjadi WO Pasang Baru');
+    if (sub?.customerId) input.customerId = sub.customerId;
+  }
   const created = await transact(async (fx) => {
     const r = await createWorkOrder(fx, { type, actor: actorOf(req), input });
     if (subId) {
