@@ -101,9 +101,9 @@ compose ps --format '{{.Service}}={{.State}}' 2>/dev/null | tr '\n' ' ' | sed 's
 phase 3 "Backup volume Caddy (caddyconf)"
 if [ "$HAS_CADDY" = 1 ]; then
   docker volume inspect "$CONF_VOL" >/dev/null 2>&1 || die "volume $CONF_VOL tidak ditemukan"
-  docker run --rm -v "$CONF_VOL":/src:ro -v "$BK_DIR":/out alpine sh -c "tar czf /out/$(basename "$BK_FILE") -C /src ." >/dev/null 2>&1 || die "backup volume caddyconf gagal"
+  # container berjalan sebagai root → berkas dimiliki root; serahkan ke pemilik sebenarnya (chown di dalam container) lalu batasi izin
+  docker run --rm -e OWN="$(id -u):$(id -g)" -v "$CONF_VOL":/src:ro -v "$BK_DIR":/out alpine sh -c "tar czf /out/$(basename "$BK_FILE") -C /src . && chown \$OWN /out/$(basename "$BK_FILE") && chmod 600 /out/$(basename "$BK_FILE")" >/dev/null 2>&1 || die "backup volume caddyconf gagal"
   [ -s "$BK_FILE" ] || die "berkas backup kosong"
-  chmod 600 "$BK_FILE"
   ok "backup: $BK_FILE ($(du -h "$BK_FILE" | cut -f1))"
   docker run --rm -v "$CONF_VOL":/src:ro alpine sh -c 'cat /src/Caddyfile' > "$BK_DIR/Caddyfile-before-$TS.txt" 2>/dev/null && ok "salinan Caddyfile lama: $BK_DIR/Caddyfile-before-$TS.txt"
 else warn "dilewati (tanpa Caddy)"; fi
