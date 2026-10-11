@@ -62,11 +62,28 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           ))}
         </Table>
       </section>
+      <ChangeHistory id={c.id} />
       {edit && (
         <Modal title={`Edit pelanggan ${c.code}`} onClose={() => setEdit(false)}>
           <DynamicForm fields={customerFields(['ADMIN', 'NOC'].includes(role), true).filter((f) => (role !== 'NOC' || NETWORK_FIELDS.includes(f.name)) && (c.source !== 'RADIUS' || !['name', 'phone', 'address', 'packageName', 'code'].includes(f.name)))} initial={c} sendEmpty submitLabel="Simpan perubahan" onSubmit={async (v) => { await api(`/customers/${c.id}`, { method: 'PATCH', body: v }); setEdit(false); await reload(); }} />
         </Modal>
       )}
     </div>
+  );
+}
+
+const FIELD_LABEL: Record<string, string> = { '*': 'Pelanggan', name: 'Nama', phone: 'Telepon', address: 'Alamat', packageName: 'Paket', status: 'Status', radiusIp: 'IP (MSRadius)', expiredAt: 'Masa aktif sampai', resellerName: 'Reseller', salesName: 'Sales', missingFromApi: 'Hilang dari MSRadius', activatedAt: 'Tanggal aktif', lat: 'Lat', lng: 'Lng' };
+/** Riwayat perubahan dari sinkron MSRadius: nilai lama tidak hilang saat data diperbarui. */
+function ChangeHistory({ id }: { id: string }) {
+  const { data } = useFetch<any[]>(`/customers/${id}/changes`);
+  if (!data?.length) return null;
+  const v = (x: string | null) => (x === null || x === '' ? '—' : /^\d{4}-\d\d-\d\dT/.test(x) ? fmtDate(x) : x);
+  return (
+    <section>
+      <h2 className="mb-2 font-semibold">Riwayat perubahan data</h2>
+      <Table head={['Waktu', 'Kolom', 'Sebelumnya', 'Menjadi', 'Sumber']}>
+        {data.map((h) => <tr key={h.id}><td className="td whitespace-nowrap text-xs">{fmtDate(h.createdAt)}</td><td className="td">{FIELD_LABEL[h.field] ?? h.field}</td><td className="td text-slate-500">{v(h.oldValue)}</td><td className="td">{v(h.newValue)}</td><td className="td text-xs">{h.source}</td></tr>)}
+      </Table>
+    </section>
   );
 }

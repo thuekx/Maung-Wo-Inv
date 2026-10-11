@@ -579,6 +579,21 @@ model PrQuote {
 }
 
 /// Riwayat sinkron dari MSRadius (baca-saja)
+// Riwayat perubahan data pelanggan dari sinkron MSRadius (nilai lama tidak hilang saat data diperbarui)
+model CustomerChange {
+  id         String   @id @default(cuid())
+  customerId String
+  field      String // name | phone | address | packageName | status | expiredAt | ... | missingFromApi | * (dibuat)
+  oldValue   String?
+  newValue   String?
+  source     String   @default("RADIUS") // RADIUS | APP
+  syncRunId  String?
+  createdAt  DateTime @default(now())
+
+  @@index([customerId, createdAt])
+  @@index([syncRunId])
+}
+
 model SyncRun {
   id         String    @id @default(cuid())
   trigger    String // MANUAL | AUTO | TEST

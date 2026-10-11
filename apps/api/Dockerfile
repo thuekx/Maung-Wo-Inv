@@ -18,7 +18,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN mkdir -p uploads
+RUN mkdir -p uploads backups
 EXPOSE 4000
 # Command diatur di docker-compose.yml: migrate → "prisma migrate deploy", api → index.js, worker → worker.js
 CMD ["node", "dist/src/index.js"]

@@ -12,6 +12,7 @@ services:
       CADDY_CONF_DIR: /caddy-conf
     volumes:
       - uploads:/app/uploads
+      - backups:/app/backups
       - caddyconf:/caddy-conf
   web:
     ports: !override []

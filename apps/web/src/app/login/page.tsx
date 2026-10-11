@@ -1,8 +1,9 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { fileUrl, imgUrl } from '@/lib/api';
+import { PasswordInput } from '@/components/PasswordInput';
 import { useBranding } from '@/lib/brand';
 import { ThemeSwitch } from '@/lib/theme';
 import { Icon, MarkM } from '@/components/icons';
@@ -15,6 +16,8 @@ export default function LoginPage() {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
+  const [expired, setExpired] = useState(false);
+  useEffect(() => { setExpired(new URLSearchParams(window.location.search).get('expired') === '1'); }, []);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [help, setHelp] = useState(false);
@@ -58,8 +61,9 @@ export default function LoginPage() {
           <label className="relative block">
             <span className="sr-only">Password</span>
             <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
-            <input className="input !pl-10" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+            <PasswordInput className="input !pl-10" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
           </label>
+          {expired && !err && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">Sesi berakhir karena tidak ada aktivitas. Silakan login kembali.</p>}
           {err && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{err}</p>}
           <button className="btn-secondary w-full !py-2.5" disabled={busy}>{busy ? 'Masuk…' : 'Masuk'}</button>
           <div className="flex items-center justify-between text-sm">

@@ -27,6 +27,7 @@ import { startSslWatcher } from './ssl';
 import { teamRoutes } from './routes/team';
 import { kancaRoutes, kancaWebhook } from './routes/kanca';
 import { sslRoutes } from './routes/ssl';
+import { dataRoutes } from './routes/data';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -56,6 +57,7 @@ api.use(reportRoutes);
 api.use(systemApiRoutes);
 api.use(kancaRoutes);
 api.use(sslRoutes);
+api.use(dataRoutes);
 api.use(subscriptionRoutes);
 app.use('/api', api);
 

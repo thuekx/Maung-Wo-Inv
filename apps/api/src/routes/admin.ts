@@ -8,7 +8,7 @@ import nodemailer from 'nodemailer';
 import { AppError, fieldError, prisma } from '../db';
 import { requireRole } from '../auth';
 import { config } from '../config';
-import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, refreshWebUrl, webUrl, WA_FONNTE_URL } from '../settings';
+import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, refreshWebUrl, webUrl, getSessionMinutes, WA_FONNTE_URL } from '../settings';
 import { fromHeader, sendTelegram, sendWhatsApp, telegramApi, waNumber } from '../senders';
 
 /** Pengaturan yang dikelola Admin: SMTP, Telegram, logo/branding, kebijakan GPS. Dipasang SETELAH authenticate. */
@@ -27,6 +27,7 @@ async function overview() {
     whatsapp: { enabled: wa.enabled, provider: wa.provider, baseUrl: wa.baseUrl, workspaceId: wa.workspaceId, templateId: wa.templateId, channelId: wa.channelId, varMode: wa.varMode, headerName: wa.headerName, bodyTemplate: wa.bodyTemplate, hasToken: !!wa.token, tokenHint: hint(wa.token), source: wa.source },
     assetInfo,
     webUrl: webUrl(),
+    security: { sessionMinutes: await getSessionMinutes() },
     appUrl: { value: (((await getSetting<any>('app'))?.publicUrl as string) || ''), envValue: config.webUrl },
   };
 }
@@ -282,6 +283,14 @@ adminRoutes.delete('/admin/settings/branding/logo', async (req, res) => {
 });
 
 /* ── Kebijakan aplikasi ── */
+/* ── Keamanan (batas sesi diam) ── */
+adminRoutes.put('/admin/settings/security', async (req, res) => {
+  const { sessionMinutes } = z.object({ sessionMinutes: z.coerce.number().int().min(5, 'Minimal 5 menit').max(720, 'Maksimal 720 menit (12 jam)') }).parse(req.body);
+  const old = (await getSetting<any>('security')) ?? {};
+  await putSetting('security', { ...old, sessionMinutes }, req.user!.id);
+  res.json(await overview());
+});
+
 adminRoutes.put('/admin/settings/app', async (req, res) => {
   const body = z.object({ requireGps: z.boolean().optional(), optimizeImages: z.boolean().optional(), publicUrl: z.string().trim().max(200).refine((v) => v === '' || /^https?:\/\/[^\s/]+[^\s]*$/.test(v), 'URL harus diawali http:// atau https://').optional() }).parse(req.body);
   const old = (await getSetting<any>('app')) ?? {};

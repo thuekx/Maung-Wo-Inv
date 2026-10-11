@@ -74,6 +74,8 @@ Lalu buka **https://wo.perusahaan.co.id** → login `admin@l1v.local` (password 
 4. Webhook Telegram / Kanca memakai URL `https://wo.perusahaan.co.id/api/...` (lihat halaman API Kanca & pengaturan Telegram).
 
 ## 5. Pembaruan & perawatan
+**Backup data:** Admin → Pengaturan → **Data & Backup** (backup manual/otomatis harian, unduh/unggah, restore, purge data uji, data demo, backup foto). Simpan salinan backup di luar server.
+
 ```bash
 cd Maung-Wo-Inv && git pull origin main && bash scripts/deploy.sh      # data & sertifikat tetap; mode (domain/IP) otomatis dipertahankan
 docker compose ps                                                      # semua running/healthy

@@ -133,3 +133,7 @@ curl -X POST https://<domain-aplikasi>/api/integrations/billing/events \
 | `GET /api/admin/kanca/overview` | Admin | Konfigurasi Kanca + info, wallet, template, 20 pesan terbaru (tiap bagian dengan status sendiri) |
 | `GET /api/admin/kanca/broadcast/:id` | Admin | Status broadcast Kanca (id atau nama) |
 | `PUT /api/admin/kanca/template` | Admin | Pilih template notifikasi |
+| `POST /api/auth/refresh` | token | Perpanjang sesi (batas diam dari Admin → Keamanan) |
+| `POST /api/stock/transfer` | GA/Admin | Transfer stok antar gudang tanpa WO |
+| `GET /api/customers/:id/changes` | MKT/NOC/FIN/GA/Admin | Riwayat perubahan data pelanggan (MSRadius) |
+| `/api/admin/data/*` | Admin asli | overview, backup, backups/:name/(download\|restore), backups/upload, purge, demo, uploads.tar.gz, uploads/restore |

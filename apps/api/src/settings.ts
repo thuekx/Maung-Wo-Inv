@@ -114,6 +114,13 @@ export async function getBranding() {
   };
 }
 
+/* ── Keamanan: batas sesi diam (menit) ── */
+export async function getSessionMinutes(): Promise<number> {
+  const s = (await getSetting<any>('security')) ?? {};
+  const m = Number(s.sessionMinutes);
+  return Number.isFinite(m) && m >= 5 && m <= 720 ? Math.round(m) : 30;
+}
+
 /* ── URL aplikasi (tautan di email/notifikasi) ──
  * Bisa diatur Admin (Admin → Tampilan); kosong → pakai WEB_URL dari .env. Disegarkan berkala agar API & worker selalu sinkron. */
 let runtimeWebUrl = config.webUrl;

@@ -26,8 +26,10 @@ async function main() {
     ['GA / Procurement', 'ga@l1v.local', 'GA', 'MANAGER'],
     ['Finance', 'fin@l1v.local', 'FIN', 'MANAGER'],
   ];
-  for (const [name, email, role, subRole] of users)
-    await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, role, subRole, passwordHash: hash } });
+  // SEED_USERS=0 (dipakai tombol "isi ulang master" di Admin → Data & Backup): jangan membuat ulang akun demo
+  if (process.env.SEED_USERS !== '0')
+    for (const [name, email, role, subRole] of users)
+      await prisma.user.upsert({ where: { email }, update: {}, create: { name, email, role, subRole, passwordHash: hash } });
 
   // Master paket/jasa awal (dapat ditambah/dikurangi di menu Master Paket)
   for (const [i, name] of PACKAGES.entries()) await prisma.package.upsert({ where: { name }, update: {}, create: { name, sortOrder: i } });
@@ -59,7 +61,7 @@ async function main() {
   for (const [sku, name] of [['CAR', 'Mobil Operasional'], ['MOTOR', 'Motor Operasional'], ['LAPTOP', 'Laptop Kantor'], ['AC', 'AC'], ['FURN', 'Meja/Kursi'], ['TOOLS', 'Alat Pertukangan']] as const) await item(sku, name, 'GA', { isVehicle: sku === 'CAR' || sku === 'MOTOR' });
 
   // Demo stok awal (hanya jika masih kosong)
-  if ((await prisma.stockLevel.count()) === 0) {
+  if (process.env.SEED_USERS !== '0' && (await prisma.stockLevel.count()) === 0) {
     const set = (warehouseId: string, itemId: string, qty: number) => prisma.stockLevel.create({ data: { warehouseId, itemId, qty } });
     await set(main.id, dropcore.id, 3000);
     await set(main.id, fast.id, 300);

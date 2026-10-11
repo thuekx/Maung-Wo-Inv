@@ -100,7 +100,7 @@ const rowsOf = (d: any): any[] => (Array.isArray(d) ? d : d && typeof d === 'obj
 export interface SyncStats { created: number; updated: number; unchanged: number; skipped: number; missing: number; packages: number; areas: number }
 
 /** Terapkan baris MSRadius ke tabel Customer (upsert by `kode`); kolom milik Maung (email, ODP, port, VLAN, IP internal, gudang) tidak disentuh. */
-export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyCode?: string } = {}): Promise<SyncStats> {
+export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyCode?: string; syncRunId?: string } = {}): Promise<SyncStats> {
   const st: SyncStats = { created: 0, updated: 0, unchanged: 0, skipped: 0, missing: 0, packages: 0, areas: 0 };
   const mapped: Mapped[] = [];
   const seen = new Set<string>();
@@ -121,7 +121,8 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
       for (const m of mapped.slice(i, i + CH)) {
         const cur = existing.get(m.code);
         if (!cur) {
-          await tx.customer.create({ data: { code: m.code, name: m.name, phone: m.phone, address: m.address, lat: m.lat, lng: m.lng, packageName: m.packageName, status: m.suspended ? 'SUSPENDED' : 'ACTIVE', source: 'RADIUS', radiusName: m.radiusName, radiusIp: m.radiusIp, expiredAt: m.expiredAt, resellerName: m.resellerName, salesName: m.salesName, activatedAt: m.registeredAt, syncedAt: now } });
+          const made = await tx.customer.create({ data: { code: m.code, name: m.name, phone: m.phone, address: m.address, lat: m.lat, lng: m.lng, packageName: m.packageName, status: m.suspended ? 'SUSPENDED' : 'ACTIVE', source: 'RADIUS', radiusName: m.radiusName, radiusIp: m.radiusIp, expiredAt: m.expiredAt, resellerName: m.resellerName, salesName: m.salesName, activatedAt: m.registeredAt, syncedAt: now } });
+          await tx.customerChange.create({ data: { customerId: made.id, field: '*', oldValue: null, newValue: 'Dibuat dari MSRadius', source: 'RADIUS', syncRunId: opts.syncRunId ?? null } });
           st.created++;
           continue;
         }
@@ -144,7 +145,14 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
           const want = m.suspended ? 'SUSPENDED' : 'ACTIVE';
           if (cur.status !== want) data.status = want;
         }
-        if (Object.keys(data).length) { await tx.customer.update({ where: { id: cur.id }, data: { ...data, syncedAt: now } as any }); st.updated++; }
+        if (Object.keys(data).length) {
+          await tx.customer.update({ where: { id: cur.id }, data: { ...data, syncedAt: now } as any });
+          // riwayat: simpan nilai lama → baru untuk tiap kolom yang berubah (kecuali penanda teknis)
+          const str2 = (v: unknown) => (v === null || v === undefined ? null : v instanceof Date ? v.toISOString() : String(v));
+          const rows2 = Object.keys(data).filter((k) => k !== 'source').map((k) => ({ customerId: cur.id, field: k, oldValue: str2((cur as any)[k]), newValue: str2(data[k]), source: 'RADIUS', syncRunId: opts.syncRunId ?? null }));
+          if (rows2.length) await tx.customerChange.createMany({ data: rows2 });
+          st.updated++;
+        }
         else { st.unchanged++; }
       }
     }, { timeout: 120_000 });
@@ -158,8 +166,9 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
       return st;
     }
     const codes = [...seen];
-    const gone = await prisma.$executeRaw`UPDATE "Customer" SET "missingFromApi" = true WHERE "source" = 'RADIUS' AND "missingFromApi" = false AND NOT ("code" = ANY(${codes}::text[]))`;
-    st.missing = Number(gone);
+    const goneRows = await prisma.$queryRaw<{ id: string }[]>`UPDATE "Customer" SET "missingFromApi" = true WHERE "source" = 'RADIUS' AND "missingFromApi" = false AND NOT ("code" = ANY(${codes}::text[])) RETURNING "id"`;
+    st.missing = goneRows.length;
+    if (goneRows.length) await prisma.customerChange.createMany({ data: goneRows.map((g) => ({ customerId: g.id, field: 'missingFromApi', oldValue: 'false', newValue: 'true', source: 'RADIUS', syncRunId: opts.syncRunId ?? null })) });
   }
   return st;
 }
@@ -221,7 +230,7 @@ export async function runSync(trigger: 'MANUAL' | 'AUTO', userId?: string) {
     const areas = await applyAreas(areaRes.data);
     await sleep(7_500);
     const cust = await radiusGet(cfg, 'databilling/data');
-    const stats = await applyCustomers(rowsOf(cust.data), true);
+    const stats = await applyCustomers(rowsOf(cust.data), true, { syncRunId: run.id });
     stats.areas = areas;
     stats.packages = packages + (await ensureUsedPackages());
     await prisma.syncRun.update({ where: { id: run.id }, data: { status: 'OK', finishedAt: new Date(), ...stats } });

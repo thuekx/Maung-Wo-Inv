@@ -12,7 +12,7 @@ import { authenticate, publicUser, requireRole, signToken } from '../auth';
 import { config } from '../config';
 import { connection, requeueNotification } from '../queue';
 import { workflows } from '../workflows';
-import { getBranding, getTelegram } from '../settings';
+import { getBranding, getSessionMinutes, getTelegram } from '../settings';
 import { auditedUpdate, changes, whoOf, writeAudit } from '../audit';
 import { transact } from '../effects';
 import { buildDashboard, mineWhere } from '../dashboard';
@@ -32,7 +32,7 @@ core.post(
       ? await prisma.user.findUnique({ where: { email: id } })
       : await (async () => { const m = await prisma.user.findMany({ where: { email: { startsWith: `${id}@` }, active: true }, take: 2 }); return m.length === 1 ? m[0] : null; })();
     if (!u || !u.active || !(await bcrypt.compare(password, u.passwordHash))) throw new AppError(401, 'Email atau password salah');
-    res.json({ token: signToken(u), user: publicUser(u) });
+    res.json({ token: signToken(u, await getSessionMinutes()), user: publicUser(u), sessionMinutes: await getSessionMinutes() });
   },
 );
 
@@ -61,7 +61,13 @@ core.get('/auth/introspect', (req, res) => {
   res.json({ active: true, sub: u.id, name: u.name, email: u.email, role: u.role, subRole: u.subRole, exp });
 });
 
-core.get('/auth/me', (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null }));
+core.get('/auth/me', async (req, res) => res.json({ ...publicUser(req.realUser ?? req.user!), acting: req.realUser ? { role: req.user!.role, subRole: req.user!.subRole } : null, sessionMinutes: await getSessionMinutes() }));
+
+/** Perpanjang sesi (dipanggil klien selama pengguna aktif). Token yang sudah kedaluwarsa tidak bisa diperpanjang. */
+core.post('/auth/refresh', async (req, res) => {
+  const m = await getSessionMinutes();
+  res.json({ token: signToken(req.realUser ?? req.user!, m), sessionMinutes: m });
+});
 
 /** Profil sendiri: nama & email (Admin yang bertindak sebagai peran lain mengubah akun aslinya). */
 core.patch('/auth/me', async (req, res) => {
@@ -196,6 +202,12 @@ core.get('/customers/:id', async (req, res, next) => {
   });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
   res.json(c);
+});
+
+/** Riwayat perubahan data pelanggan dari sinkron MSRadius (nilai lama → baru). */
+core.get('/customers/:id/changes', async (req, res) => {
+  if (!['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(req.user!.role)) throw new AppError(403, 'Akses khusus: MKT, NOC, FIN, GA');
+  res.json(await prisma.customerChange.findMany({ where: { customerId: String(req.params.id) }, orderBy: { createdAt: 'desc' }, take: 200 }));
 });
 
 /* ── upload foto (laporan lapangan) ── */

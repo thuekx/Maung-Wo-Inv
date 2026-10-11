@@ -15,7 +15,8 @@ declare global {
   }
 }
 
-export const signToken = (u: User) => jwt.sign({ sub: u.id }, config.jwtSecret, { expiresIn: '12h' });
+/** Token sesi berlaku `minutes` menit sejak diterbitkan; klien memperbarui lewat /auth/refresh selama pengguna aktif (batas diam = pengaturan Keamanan, bawaan 30 menit). */
+export const signToken = (u: User, minutes = 30) => jwt.sign({ sub: u.id }, config.jwtSecret, { expiresIn: `${Math.max(5, Math.min(720, Math.round(minutes)))}m` });
 
 export const authenticate: RequestHandler = async (req, _res, next) => {
   const h = req.headers.authorization;

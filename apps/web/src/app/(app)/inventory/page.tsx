@@ -295,6 +295,54 @@ function OpnameTab() {
   );
 }
 
+/* ───── Transfer antar gudang (GA) ───── */
+function TransferTab() {
+  const { data: whs } = useFetch<any[]>('/warehouses');
+  const { data: items } = useFetch<any[]>('/items');
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('');
+  const [note, setNote] = useState('');
+  const [qty, setQty] = useState<Record<string, string>>({});
+  const [sns, setSns] = useState('');
+  const [err, setErr] = useState(''); const [res, setRes] = useState<any>(null); const [busy, setBusy] = useState(false);
+  const { data: stock, reload } = useFetch<any[]>(from ? `/stock?warehouseId=${from}` : null);
+  const real = (whs ?? []).filter((w) => w.kind !== 'MOBILE' && w.active !== false);
+  const cons = (items ?? []).filter((i) => !i.tracked);
+  const have = (id: string) => stock?.find((s) => s.status === 'QTY' && s.item.id === id)?.qty ?? 0;
+  const list = cons.filter((i) => have(i.id) > 0);
+  const serials = sns.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+  async function submit() {
+    setErr(''); setRes(null); setBusy(true);
+    try {
+      const lines = Object.entries(qty).filter(([, v]) => Number(v) > 0).map(([itemId, v]) => ({ itemId, qty: Number(v) }));
+      const r = await api<any>('/stock/transfer', { body: { fromWarehouseId: from, toWarehouseId: to, note, lines, serials } });
+      setRes(r); setQty({}); setSns(''); reload();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="max-w-3xl space-y-4">
+      <p className="text-sm text-slate-500">Pindahkan stok dari satu gudang ke gudang/cabang lain <b>tanpa WO</b>. Stok tetap milik GA/Procurement (hanya lokasinya berubah). Stok teknisi (gudang berjalan) tidak termasuk — itu berubah lewat WO.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm"><span className="label">Dari gudang</span><Select className="input" value={from} onChange={(e) => { setFrom(e.target.value); setQty({}); }}><option value="">— pilih —</option>{real.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></label>
+        <label className="block text-sm"><span className="label">Ke gudang</span><Select className="input" value={to} onChange={(e) => setTo(e.target.value)}><option value="">— pilih —</option>{real.filter((w) => w.id !== from).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></label>
+      </div>
+      {from && (
+        <>
+          <div><h3 className="mb-1 text-sm font-semibold">Material habis pakai</h3>
+            {!list.length ? <p className="text-sm text-slate-400">Tidak ada stok kuantitas di gudang ini.</p> : (
+              <Table head={['Item', 'Tersedia', 'Pindahkan']}>{list.map((i) => <tr key={i.id}><td className="td">{i.name}</td><td className="td">{have(i.id)} {i.unit}</td><td className="td"><input className="input w-28" type="number" min={0} max={have(i.id)} value={qty[i.id] ?? ''} onChange={(e) => setQty({ ...qty, [i.id]: e.target.value })} /></td></tr>)}</Table>
+            )}
+          </div>
+          <label className="block text-sm"><span className="label">Aset ber-serial (SN) — satu per baris / pisahkan koma</span><textarea className="input font-mono text-xs" rows={3} value={sns} onChange={(e) => setSns(e.target.value)} placeholder="SN001&#10;SN002" /><span className="mt-0.5 block text-xs text-slate-500">{serials.length} SN. Hanya aset yang berada di gudang asal & berstatus siap pakai / aset GA. Scanner barcode eksternal: klik kolom ini lalu scan.</span></label>
+        </>
+      )}
+      <label className="block text-sm"><span className="label">Catatan (opsional)</span><input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. kiriman rutin ke cabang Bandung Timur" /></label>
+      <ErrorMsg>{err}</ErrorMsg>
+      {res && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">Transfer <b>{res.number}</b> berhasil: {res.items} item & {res.assets} aset dari {res.from} → {res.to}. Tercatat di mutasi stok.</p>}
+      <button className="btn" disabled={busy || !from || !to} onClick={submit}>{busy ? 'Memproses…' : 'Pindahkan stok'}</button>
+    </div>
+  );
+}
+
 function Inventory() {
   const { user } = useAuth();
   const sp = useSearchParams();
@@ -306,13 +354,14 @@ function Inventory() {
       <PageHeader pretitle="Gudang" title="Inventori & Aset" sub="Multi-gudang · material · perangkat ber-SN · aset GA" />
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: 'stock', label: 'Stok per gudang' }, { key: 'assets', label: 'Aset & SN' }, { key: 'qc', label: 'Menunggu QC' },
-        { key: 'warehouses', label: 'Gudang' }, { key: 'items', label: 'Master item' }, ...(canManage ? [{ key: 'opname', label: 'Stock opname' }] : []),
+        { key: 'warehouses', label: 'Gudang' }, { key: 'items', label: 'Master item' }, ...(canManage ? [{ key: 'transfer', label: 'Transfer gudang' }, { key: 'opname', label: 'Stock opname' }] : []),
       ]} />
       {tab === 'stock' && <StockTab />}
       {tab === 'assets' && <AssetsTab canManage={canManage} initialQ={sp.get('q') ?? ''} />}
       {tab === 'qc' && <QcTab canManage={canManage} />}
       {tab === 'warehouses' && <WarehousesTab canManage={canManage} />}
       {tab === 'items' && <ItemsTab canManage={canManage} />}
+      {tab === 'transfer' && canManage && <TransferTab />}
       {tab === 'opname' && canManage && <OpnameTab />}
     </>
   );

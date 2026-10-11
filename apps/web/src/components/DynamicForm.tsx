@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, fileUrl, imgUrl, useFetch } from '@/lib/api';
+import { PasswordInput } from '@/components/PasswordInput';
 import { promptDialog } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { uploadPhoto, useBranding } from '@/lib/photo';
@@ -377,7 +378,8 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
             : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} woId={woId} pickedOnly={f.pickedOnly} />
             : f.type === 'photos' ? <PhotosInput plain={f.plain} value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
             : f.type === 'qc' ? <QcInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
-            : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type === 'password' ? 'password' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
+            : f.type === 'password' ? <PasswordInput className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />
+            : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}
           {fe[f.name] && <p className="mt-1 text-xs font-medium text-red-600" role="alert">{fe[f.name]}</p>}
           {f.help && <p className="mt-0.5 text-xs text-slate-500">{f.help}</p>}
           {hasCoords && f.name === 'lng' && (

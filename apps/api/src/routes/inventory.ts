@@ -5,7 +5,7 @@ import { AppError, fieldError, prisma, Tx } from '../db';
 import { authenticate, requireRole } from '../auth';
 import { transact } from '../effects';
 import { applyAction, systemActor } from '../engine';
-import { moveStock, normSn, nextNumber, qcAssets } from '../inventory';
+import { moveAsset, moveStock, normSn, nextNumber, qcAssets, AVAILABLE } from '../inventory';
 import { auditedDelete, auditedUpdate, changes, whoOf } from '../audit';
 import { countIf, pageParams, sendPage } from '../paging';
 
@@ -113,6 +113,49 @@ inventoryRoutes.get('/stock', requireRole('GA'), async (req, res) => {
 
 inventoryRoutes.get('/stock/movements', requireRole('GA'), async (req, res) => {
   res.json(await prisma.stockMovement.findMany({ where: req.query.itemId ? { itemId: String(req.query.itemId) } : {}, orderBy: { createdAt: 'desc' }, take: 100 }));
+});
+
+/**
+ * Transfer stok ANTAR GUDANG oleh GA/Procurement (tanpa WO): stok tetap milik GA, hanya lokasinya pindah — mis. mengirim stok ke gudang cabang.
+ * Gudang berjalan teknisi (MOBILE) tidak termasuk: stok teknisi hanya berubah lewat alur WO (ambil material, serah-terima).
+ */
+inventoryRoutes.post('/stock/transfer', stockRoles, async (req, res) => {
+  const b = z.object({
+    fromWarehouseId: z.string().min(1), toWarehouseId: z.string().min(1),
+    note: z.string().trim().max(200).optional(),
+    lines: z.array(z.object({ itemId: z.string().min(1), qty: z.coerce.number().int().min(1) })).default([]),
+    serials: z.array(z.string().trim().min(1)).default([]),
+  }).parse(req.body);
+  if (b.fromWarehouseId === b.toWarehouseId) throw new AppError(400, 'Gudang asal dan tujuan tidak boleh sama');
+  if (!b.lines.length && !b.serials.length) throw new AppError(400, 'Pilih minimal satu item atau aset (SN) yang dipindahkan');
+  const u = req.user!;
+  const out = await transact(async (fx) => {
+    const [from, to] = await Promise.all([fx.tx.warehouse.findUnique({ where: { id: b.fromWarehouseId } }), fx.tx.warehouse.findUnique({ where: { id: b.toWarehouseId } })]);
+    if (!from || !to) throw new AppError(404, 'Gudang tidak ditemukan');
+    if (from.kind === 'MOBILE' || to.kind === 'MOBILE') throw new AppError(400, 'Gudang berjalan teknisi tidak dapat dipakai di sini — stok teknisi berubah lewat alur WO');
+    if (!to.active) throw new AppError(400, `Gudang tujuan ${to.name} tidak aktif`);
+    const number = await nextNumber(fx.tx, 'TRF');
+    const reason = `Transfer ${number}: ${from.name} → ${to.name}${b.note ? ` (${b.note})` : ''}`;
+    const merged = new Map<string, number>();
+    for (const l of b.lines) merged.set(l.itemId, (merged.get(l.itemId) ?? 0) + l.qty);
+    for (const [itemId, qty] of merged) {
+      const item = await fx.tx.item.findUnique({ where: { id: itemId } });
+      if (!item) throw new AppError(404, 'Item tidak ditemukan');
+      if (item.tracked) throw new AppError(400, `${item.name} ber-serial — pindahkan lewat nomor serial (SN)`);
+      await moveStock(fx.tx, { itemId, qty, from: from.id, to: to.id, reason, actorId: u.id });
+    }
+    const sns = [...new Set(b.serials.map(normSn))];
+    for (const sn of sns) {
+      const a = await fx.tx.asset.findUnique({ where: { serialNumber: sn } });
+      if (!a) throw new AppError(404, `SN ${sn} tidak terdaftar`);
+      if (a.warehouseId !== from.id) throw new AppError(409, `SN ${sn} tidak berada di ${from.name}`);
+      if (a.customerId || ![...AVAILABLE, 'IN_USE'].includes(a.status)) throw new AppError(409, `SN ${sn} berstatus ${a.status} — hanya aset siap pakai / aset GA yang bisa dipindahkan`);
+      await moveAsset(fx.tx, a, { status: a.status, toWarehouseId: to.id, reason, actorId: u.id });
+    }
+    await fx.notify({ roles: ['GA'], subject: `Transfer stok ${number}`, body: `${u.name} memindahkan ${merged.size} item & ${sns.length} aset: ${from.name} → ${to.name}.` });
+    return { number, items: merged.size, assets: sns.length, from: from.name, to: to.name };
+  });
+  res.status(201).json(out);
 });
 
 // Stock opname: sesuaikan jumlah fisik item kuantitas (consumable) di sebuah gudang

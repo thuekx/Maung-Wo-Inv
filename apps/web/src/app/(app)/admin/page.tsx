@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API, api, doDelete, fileUrl, imgUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
+import { API, api, doDelete, download, fileUrl, imgUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
 import { DEFAULT_LOGOS, loadBranding } from '@/lib/brand';
 import { useAuth } from '@/lib/auth';
@@ -8,6 +8,7 @@ import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 import { Select } from '@/components/Select';
+import { PasswordInput } from '@/components/PasswordInput';
 
 function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string }[]; onClose: () => void }) {
   const csv = () => {
@@ -90,7 +91,7 @@ function Users() {
           <div className="space-y-3 text-sm">
             <label className="flex items-center gap-2"><input type="radio" checked={opt.mode === 'random'} onChange={() => setOpt({ ...opt, mode: 'random' })} /> Buat password acak per user (ditampilkan sekali ke Anda)</label>
             <label className="flex items-center gap-2"><input type="radio" checked={opt.mode === 'same'} onChange={() => setOpt({ ...opt, mode: 'same' })} /> Satu password yang sama:</label>
-            {opt.mode === 'same' && <input className="input" type="text" placeholder="min 8 karakter" value={opt.password} onChange={(e) => setOpt({ ...opt, password: e.target.value })} />}
+            {opt.mode === 'same' && <PasswordInput className="input" placeholder="min 8 karakter" value={opt.password} onChange={(e) => setOpt({ ...opt, password: e.target.value })} />}
             <label className="flex items-center gap-2"><input type="checkbox" checked={opt.mustChange} onChange={(e) => setOpt({ ...opt, mustChange: e.target.checked })} /> Wajib ganti password saat login berikutnya</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={opt.notify} onChange={(e) => setOpt({ ...opt, notify: e.target.checked })} /> Kirim notifikasi ke user (email + Telegram)</label>
             {opt.notify && <label className="ml-6 flex items-center gap-2"><input type="checkbox" checked={opt.sendPassword} onChange={(e) => setOpt({ ...opt, sendPassword: e.target.checked })} /> Sertakan password sementara di pesan <span className="text-xs text-amber-700">(kurang aman — email/chat dapat tersimpan)</span></label>}
@@ -344,7 +345,7 @@ function SmtpCard({ d, reload }: { d: any; reload: () => void }) {
         <Field label="Server SMTP" help="mis. smtp.gmail.com / smtp.office365.com / mail.perusahaan.co.id"><input className="input" value={f.host} onChange={(e) => set('host', e.target.value)} placeholder="smtp.contoh.com" /></Field>
         <Field label="Port" help="587 (STARTTLS) atau 465 (SSL)"><input className="input" type="number" value={f.port} onChange={(e) => set('port', e.target.value)} /></Field>
         <Field label="Username"><input className="input" value={f.user} onChange={(e) => set('user', e.target.value)} autoComplete="off" /></Field>
-        <Field label="Password / App Password" help={s.hasPass ? 'Tersimpan (terenkripsi). Kosongkan untuk tetap memakai yang lama.' : 'Disimpan terenkripsi di database.'}><input className="input" type="password" value={f.pass} onChange={(e) => set('pass', e.target.value)} placeholder={s.hasPass ? '••••••••' : ''} autoComplete="new-password" /></Field>
+        <Field label="Password / App Password" help={s.hasPass ? 'Tersimpan (terenkripsi). Kosongkan untuk tetap memakai yang lama.' : 'Disimpan terenkripsi di database.'}><PasswordInput className="input" value={f.pass} onChange={(e) => set('pass', e.target.value)} placeholder={s.hasPass ? '••••••••' : ''} autoComplete="new-password" /></Field>
         <Field label="Alamat pengirim (From)" help='contoh: noreply@perusahaan.co.id — nama pengirim otomatis memakai Nama aplikasi; alamat harus yang diizinkan SMTP Anda'><input className="input" value={f.from} onChange={(e) => set('from', e.target.value)} /></Field>
         <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" checked={f.secure} onChange={(e) => set('secure', e.target.checked)} /> SSL langsung (port 465)</label>
       </div>
@@ -383,7 +384,7 @@ function TelegramCard({ d, reload }: { d: any; reload: () => void }) {
           <p><b>Syarat:</b> alamat harus <b>HTTPS publik</b> (domain, mis. lewat mode Caddy). Tanpa webhook, notifikasi keluar ke Telegram <u>tetap jalan</u>; hanya perintah <code>/link</code> yang tidak bisa dipakai. <i>Secret</i> di ujung alamat dibuat otomatis agar hanya Telegram yang bisa memanggilnya.</p>
         </div>
       </details>
-      <Field label="Token bot" help={t.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Format: 123456789:AA…'}><input className="input max-w-xl" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={t.hasToken ? t.tokenHint : ''} autoComplete="new-password" /></Field>
+      <Field label="Token bot" help={t.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Format: 123456789:AA…'}><PasswordInput className="input max-w-xl" value={token} onChange={(e) => setToken(e.target.value)} placeholder={t.hasToken ? t.tokenHint : ''} autoComplete="new-password" /></Field>
       <div>
         <div className="mb-1 text-sm font-medium">Grup/chat per divisi (opsional)</div>
         <div className="grid gap-2 sm:grid-cols-3">
@@ -432,7 +433,7 @@ function RadiusCard() {
       <p className="text-sm text-slate-500">Maung hanya <b>membaca</b> data pelanggan &amp; paket dari MSRadius — tidak pernah menulis/menghapus di sana. Token dibuat di MSRadius (Setting → User → Panel). Alamat API memakai HTTP polos; sebaiknya diakses lewat jaringan internal/VPN.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">URL dasar API</label><input className="input" value={cur.baseUrl} onChange={(e) => upd('baseUrl', e.target.value)} /></div>
-        <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Token API {cur.tokenSet && <span className="text-xs font-normal text-slate-500">(tersimpan {cur.tokenHint} — kosongkan bila tidak diganti)</span>}</label><input className="input font-mono" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={cur.tokenSet ? '••••••••' : 'tempel token di sini'} /></div>
+        <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Token API {cur.tokenSet && <span className="text-xs font-normal text-slate-500">(tersimpan {cur.tokenHint} — kosongkan bila tidak diganti)</span>}</label><PasswordInput className="input font-mono" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder={cur.tokenSet ? '••••••••' : 'tempel token di sini'} /></div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cur.enabled} onChange={(e) => upd('enabled', e.target.checked)} /> Sinkron otomatis</label>
         <div><label className="mb-1 block text-sm font-medium">Interval otomatis (menit)</label><input className="input" type="number" min={5} max={1440} value={cur.intervalMin} onChange={(e) => upd('intervalMin', e.target.value)} /></div>
         <p className="text-xs text-slate-500 sm:col-span-2">Nama pelanggan dirapikan otomatis: garis bawah (_) dianggap spasi, dan nama huruf besar semua dijadikan huruf kapital di awal kata (PANJI_AGUNG → Panji Agung).</p>
@@ -532,7 +533,7 @@ function WhatsappCard({ d, reload }: { d: any; reload: () => void }) {
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Penyedia"><Select className="input" value={f.provider} onChange={(e) => { set('provider', e.target.value); set('baseUrl', e.target.value === 'fonnte' ? 'https://api.fonnte.com' : e.target.value === 'kanca' ? 'https://kanca.space' : ''); }}><option value="fonnte">Fonnte (siap pakai)</option><option value="kanca">Kanca (WhatsApp Business / WABA)</option><option value="custom">Gateway lain (HTTP umum)</option></Select></Field>
-          <Field label="Token / API key" help={w.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Dari dashboard penyedia; disimpan terenkripsi.'}><input className="input" type="password" value={f.token} onChange={(e) => set('token', e.target.value)} autoComplete="off" /></Field>
+          <Field label="Token / API key" help={w.hasToken ? 'Tersimpan terenkripsi. Kosongkan untuk tetap memakai yang lama.' : 'Dari dashboard penyedia; disimpan terenkripsi.'}><PasswordInput className="input" value={f.token} onChange={(e) => set('token', e.target.value)} autoComplete="off" /></Field>
           <Field label={f.provider === 'custom' ? 'URL endpoint kirim pesan' : 'URL dasar'} help={f.provider === 'fonnte' ? 'Bawaan https://api.fonnte.com' : f.provider === 'kanca' ? 'Bawaan https://kanca.space (sama dengan Inbound URL di dashboard Kanca); bila gagal coba https://api.kanca.space' : 'mis. https://gateway.contoh.id/api/send'}><input className="input" value={f.baseUrl} onChange={(e) => set('baseUrl', e.target.value)} /></Field>
           {f.provider === 'kanca' && <Field label="Workspace ID" help="Slug workspace Kanca, mis. tokomakmur-4231 (dashboard → Integrasi)"><input className="input" value={f.workspaceId} onChange={(e) => set('workspaceId', e.target.value)} /></Field>}
           {f.provider === 'kanca' && <Field label="Template notifikasi (UUID)" help="Template WABA berstatus APPROVED. Kosong = kirim teks bebas (hanya sampai ke penerima yang chat dalam 24 jam). Pilih dari daftar di menu API Kanca."><input className="input font-mono text-xs" value={f.templateId} onChange={(e) => set('templateId', e.target.value)} placeholder="9388eb83-…" /></Field>}
@@ -610,6 +611,124 @@ function SslCard() {
   );
 }
 
+const bytes = (n: number) => (n > 1e9 ? `${(n / 1e9).toFixed(2)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
+const KIND_LABEL: Record<string, string> = { manual: 'Manual', auto: 'Otomatis harian', 'pre-purge': 'Sebelum purge', 'pre-restore': 'Sebelum restore/demo', unknown: '?' };
+
+/** Data & Backup: backup, restore, purge, data demo, foto. Hanya Admin asli. */
+function DataCard() {
+  const { user } = useAuth();
+  const { data, error, reload } = useFetch<any>(user?.realAdmin ? null : '/admin/data/overview');
+  const [busy, setBusy] = useState('');
+  const [note, setNote] = useState('');
+  const [restore, setRestore] = useState<any>(null);
+  const [purge, setPurge] = useState({ scope: 1, deleteUsers: false, deleteFiles: true, reseed: false, backupFirst: true, confirm: '' });
+  const [demoConfirm, setDemoConfirm] = useState('');
+  const [out, setOut] = useState<{ ok: boolean; text: string } | null>(null);
+  if (user?.realAdmin) return <ErrorMsg>Berhenti &quot;bertindak sebagai&quot; peran lain dulu untuk memakai menu ini.</ErrorMsg>;
+  if (error) return <ErrorMsg>{error}</ErrorMsg>;
+  if (!data) return <p className="text-slate-500">Memuat…</p>;
+  const run = async (key: string, fn: () => Promise<string>) => { setBusy(key); setOut(null); try { setOut({ ok: true, text: await fn() }); reload(); } catch (e) { setOut({ ok: false, text: (e as Error).message }); } finally { setBusy(''); } };
+  const upload = async (path: string, file: File) => {
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch(`${API}/api${path}`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error ?? `Gagal (${res.status})`);
+    return j;
+  };
+  const c = data.counts;
+  const scopes = [
+    { v: 1, t: 'Transaksi saja', d: 'Hapus semua WO, riwayat, foto laporan, PR/PO, Form Berlangganan, notifikasi, log audit & mutasi stok. Pelanggan, aset, stok, dan master tetap.' },
+    { v: 2, t: 'Transaksi + pelanggan, aset & stok', d: 'Seperti di atas, ditambah semua pelanggan (hasil sinkron MSRadius dapat ditarik ulang), aset ber-SN, dan jumlah stok. Master (barang, gudang, area, paket, vendor, merk) tetap.' },
+    { v: 3, t: 'Semua data operasional', d: 'Semuanya kecuali akun pengguna & pengaturan: termasuk master barang, gudang, area, paket, vendor. Bisa diisi ulang dengan master awal.' },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Ringkasan data</h2>
+        <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-4">{[['Pengguna', c.users], ['Pelanggan', c.customers], ['Work Order', c.workOrders], ['Aset ber-SN', c.assets], ['Barang', c.items], ['Gudang', c.warehouses], ['Purchase Request', c.purchaseRequests], ['Form Berlangganan', c.subscriptions]].map(([k, v]) => <div key={k as string}><dt className="text-xs text-slate-500">{k}</dt><dd className="font-semibold">{v}</dd></div>)}</dl>
+        <p className="text-xs text-slate-500">Foto/berkas: {data.uploads.files} berkas ({bytes(data.uploads.bytes)}) · folder backup <code>{data.backupDir}</code>{data.disk && <> · ruang disk kosong {bytes(data.disk.freeBytes)} dari {bytes(data.disk.totalBytes)}</>}</p>
+      </div>
+
+      {out && <p className={`rounded-lg px-3 py-2 text-sm ${out.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>{out.text}</p>}
+
+      <div className="card space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Backup & restore data</h2>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={data.autoDaily} onChange={(e) => run('auto', async () => { await api('/admin/data/auto', { method: 'PUT', body: { autoDaily: e.target.checked } }); return e.target.checked ? 'Backup otomatis harian dinyalakan' : 'Backup otomatis dimatikan'; })} /> Backup otomatis harian (02:30, simpan 7 terakhir)</label></div>
+        <p className="text-sm text-slate-500">Backup berisi seluruh data database (pelanggan beserta riwayat perubahannya, WO, stok, PR/PO, akun, pengaturan). Disimpan di server dan bisa diunduh/diunggah. Foto dicadangkan terpisah (bagian bawah). <b>Simpan salinan backup di luar server ini.</b></p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input className="input w-64" placeholder="catatan (opsional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <button className="btn" disabled={!!busy} onClick={() => run('backup', async () => { const m = await api<any>('/admin/data/backup', { body: { note } }); setNote(''); return `Backup dibuat: ${m.name} (${bytes(m.size)})`; })}>{busy === 'backup' ? 'Membuat…' : 'Buat backup sekarang'}</button>
+          <label className="btn-ghost cursor-pointer">Unggah backup (.json.gz)<input type="file" accept=".gz,.json.gz" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) run('up', async () => { const m = await upload('/admin/data/backups/upload', f); return `Backup diunggah: ${m.name}`; }); }} /></label>
+        </div>
+        {!data.backups.length ? <p className="text-sm text-slate-400">Belum ada backup.</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="py-1 pr-3">Waktu</th><th className="pr-3">Jenis</th><th className="pr-3">Ukuran</th><th className="pr-3">Berkas / catatan</th><th /></tr></thead><tbody className="divide-y">
+            {data.backups.map((b: any) => (
+              <tr key={b.name} className="align-top"><td className="whitespace-nowrap py-1.5 pr-3 text-xs">{fmtDate(b.createdAt)}</td><td className="pr-3"><Badge tone={b.kind === 'manual' ? 'green' : 'slate'}>{KIND_LABEL[b.kind] ?? b.kind}</Badge></td><td className="whitespace-nowrap pr-3">{bytes(b.size)}</td>
+                <td className="max-w-[12rem] pr-3 text-xs"><code className="block truncate" title={b.name}>{b.name}</code>{b.note && <div className="text-slate-500">{b.note}</div>}{!b.valid && <div className="text-red-600">{b.error}</div>}</td>
+                <td className="whitespace-nowrap text-xs">{b.valid && <><button className="text-brand-700 hover:underline" onClick={() => download(`/admin/data/backups/${b.name}/download`, b.name).catch((e) => setOut({ ok: false, text: e.message }))}>Unduh</button><button className="ml-3 text-amber-700 hover:underline" onClick={() => setRestore({ name: b.name, includeSettings: false, confirm: '' })}>Restore</button></>}<button className="ml-3 text-red-600 hover:underline" onClick={async () => { if (await confirmDialog(`Hapus berkas backup ${b.name}?`, { danger: true })) run('del', async () => { await api(`/admin/data/backups/${b.name}`, { method: 'DELETE' }); return 'Backup dihapus'; }); }}>Hapus</button></td></tr>
+            ))}
+          </tbody></table></div>
+        )}
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Foto & berkas unggahan</h2>
+        <p className="text-sm text-slate-500">Foto laporan lapangan, logo, dan avatar ada di folder berkas (bukan di database). Unduh sebagai satu berkas .tar.gz atau pulihkan dari berkas serupa. Memulihkan <b>menambahkan/menimpa</b> berkas bernama sama; tidak menghapus yang lain.</p>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-ghost" disabled={!!busy} onClick={() => run('dl', async () => { await download('/admin/data/uploads.tar.gz', `maung-foto-${new Date().toISOString().slice(0, 10)}.tar.gz`); return 'Unduhan foto dimulai'; })}>Unduh backup foto (.tar.gz)</button>
+          <label className="btn-ghost cursor-pointer">Pulihkan foto (.tar.gz)<input type="file" accept=".gz,.tgz" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) run('upf', async () => { const r = await upload('/admin/data/uploads/restore', f); return `${r.files} berkas foto dipulihkan`; }); }} /></label>
+        </div>
+      </div>
+
+      <div className="card space-y-3 border-red-200">
+        <h2 className="font-semibold text-red-700">Purge data (hapus data uji)</h2>
+        <p className="text-sm text-slate-500">Untuk membersihkan data percobaan sebelum dipakai sungguhan. <b>Akun Admin Anda, logo, dan pengaturan tidak pernah terhapus.</b> Sebelum menghapus, backup otomatis dibuat (bisa di-restore dari daftar di atas).</p>
+        <div className="space-y-2">{scopes.map((sc) => <label key={sc.v} className={`flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${purge.scope === sc.v ? 'border-red-300 bg-red-50 dark:bg-slate-800' : ''}`}><input type="radio" className="mt-1" checked={purge.scope === sc.v} onChange={() => setPurge({ ...purge, scope: sc.v, reseed: sc.v === 3 ? purge.reseed : false })} /><span><b>{sc.t}</b><span className="block text-xs text-slate-600">{sc.d}</span></span></label>)}</div>
+        <div className="grid gap-1 text-sm">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={purge.deleteFiles} onChange={(e) => setPurge({ ...purge, deleteFiles: e.target.checked })} /> Hapus juga berkas foto laporan (logo tidak dihapus)</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={purge.deleteUsers} onChange={(e) => setPurge({ ...purge, deleteUsers: e.target.checked })} /> Hapus semua akun <b>non-Admin</b> (akun Admin tetap)</label>
+          {purge.scope === 3 && <label className="flex items-center gap-2"><input type="checkbox" checked={purge.reseed} onChange={(e) => setPurge({ ...purge, reseed: e.target.checked })} /> Isi ulang master awal (gudang, barang, paket, area standar) setelah purge</label>}
+          <label className="flex items-center gap-2"><input type="checkbox" checked={purge.backupFirst} onChange={(e) => setPurge({ ...purge, backupFirst: e.target.checked })} /> Buat backup dulu <span className="text-xs text-slate-500">(sangat disarankan)</span></label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2"><input className="input w-56" placeholder="ketik: HAPUS DATA" value={purge.confirm} onChange={(e) => setPurge({ ...purge, confirm: e.target.value })} /><button className="btn !bg-red-600 !text-white" disabled={!!busy || purge.confirm !== 'HAPUS DATA'} onClick={() => run('purge', async () => { const r = await api<any>('/admin/data/purge', { body: purge }); setPurge({ ...purge, confirm: '' }); const total = Object.values(r.deleted as Record<string, number>).reduce((a, b) => a + b, 0); return `Purge selesai: ${total} baris & ${r.removedFiles} berkas dihapus.${r.backup ? ` Backup: ${r.backup}` : ''}`; })}>{busy === 'purge' ? 'Menghapus…' : 'Hapus data'}</button></div>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Data demo</h2>
+        <p className="text-sm text-slate-500">Memuat akun demo (<code>mkt@</code>, <code>noc@</code>, <code>citra@</code>, <code>budi@</code>, <code>andi@</code>, <code>ga@</code>, <code>fin@</code> — password = SEED_PASSWORD di <code>.env</code>) beserta WO, pelanggan, stok, dan PR/PO contoh di setiap tahap alur. <b>Akun Admin yang sudah ada tidak diubah</b> (password & akses tetap), jadi Admin tidak terkunci. Backup otomatis dibuat sebelum memuat. Jangan dimuat di data produksi yang sudah berjalan — gunakan Purge dulu bila perlu.</p>
+        <div className="flex flex-wrap items-center gap-2"><input className="input w-56" placeholder="ketik: MUAT DEMO" value={demoConfirm} onChange={(e) => setDemoConfirm(e.target.value)} /><button className="btn-ghost" disabled={!!busy || demoConfirm !== 'MUAT DEMO'} onClick={() => run('demo', async () => { await api('/admin/data/demo', { body: { confirm: demoConfirm } }); setDemoConfirm(''); return 'Data demo dimuat'; })}>{busy === 'demo' ? 'Memuat… (beberapa menit)' : 'Muat data demo'}</button></div>
+      </div>
+
+      {restore && (
+        <Modal title="Restore dari backup" onClose={() => setRestore(null)}>
+          <div className="space-y-3 text-sm">
+            <p><code className="break-all text-xs">{restore.name}</code></p>
+            <p className="rounded-lg bg-amber-100 px-3 py-2 text-amber-800">Restore <b>mengganti seluruh data saat ini</b> dengan isi backup. Backup kondisi sekarang dibuat otomatis lebih dulu. Bila backup gagal dimuat, data tidak berubah (dibatalkan penuh). Akun Admin Anda tetap ada dan password Anda saat ini dipertahankan.</p>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={restore.includeSettings} onChange={(e) => setRestore({ ...restore, includeSettings: e.target.checked })} /> Ikut pulihkan <b>pengaturan</b> (SMTP, Telegram, WhatsApp, brand, SSL…) <span className="text-xs text-slate-500">— kredensial terenkripsi hanya terbaca bila JWT_SECRET server sama</span></label>
+            <input className="input" placeholder="ketik: RESTORE" value={restore.confirm} onChange={(e) => setRestore({ ...restore, confirm: e.target.value })} />
+            <div className="flex justify-end gap-2"><button className="btn-ghost" onClick={() => setRestore(null)}>Batal</button><button className="btn !bg-red-600 !text-white" disabled={restore.confirm !== 'RESTORE' || !!busy} onClick={() => { const r = restore; setRestore(null); run('restore', async () => { const x = await api<any>(`/admin/data/backups/${r.name}/restore`, { body: { includeSettings: r.includeSettings, confirm: r.confirm } }); return `Restore selesai: ${x.rows} baris di ${x.tables} tabel. Backup sebelumnya: ${x.preBackup}. Muat ulang halaman bila ada yang tampak lama.`; }); }}>Restore sekarang</button></div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/** Keamanan: batas sesi diam. */
+function SecurityCard({ d, reload }: { d: any; reload: () => void }) {
+  const [m, setM] = useState<string>(String(d.security?.sessionMinutes ?? 30));
+  const a = useAction();
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Keamanan sesi</h2>
+      <p className="text-sm text-slate-500">Pengguna otomatis keluar bila tidak ada aktivitas (klik, ketik, sentuh, scroll) selama batas ini. Dua menit sebelumnya muncul peringatan dengan tombol <b>Tetap masuk</b>. Sesi aktif diperpanjang otomatis. Perubahan berlaku untuk login berikutnya.</p>
+      <label className="block max-w-xs text-sm"><span className="label">Batas diam (menit)</span><input className="input" type="number" min={5} max={720} value={m} onChange={(e) => setM(e.target.value)} /><span className="mt-0.5 block text-xs text-slate-500">5–720 menit. Bawaan 30.</span></label>
+      <div className="flex items-center gap-3"><button className="btn" disabled={a.busy} onClick={() => a.run(async () => { await api('/admin/settings/security', { method: 'PUT', body: { sessionMinutes: Number(m) } }); reload(); }, 'Disimpan — berlaku untuk login berikutnya')}>Simpan</button></div>
+      <Msg m={a.msg} />
+    </div>
+  );
+}
+
 function AssetInfoCard({ d, reload }: { d: any; reload: () => void }) {
   const ai = d.assetInfo;
   const [f, setF] = useState({ intro: ai.intro as string, footer: ai.footer as string, contacts: { ...ai.contacts } as Record<string, string> });
@@ -647,6 +766,8 @@ const SETTING_SECTIONS = [
   { key: 'docs', label: 'Dokumen PR' },
   { key: 'assetinfo', label: 'Info aset (QR)' },
   { key: 'ssl', label: 'SSL & Domain' },
+  { key: 'security', label: 'Keamanan' },
+  { key: 'data', label: 'Data & Backup' },
 ] as const;
 
 function Settings() {
@@ -673,6 +794,8 @@ function Settings() {
         {sec === 'docs' && <DocsCard />}
         {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
         {sec === 'ssl' && <SslCard />}
+        {sec === 'security' && <SecurityCard d={data} reload={reload} />}
+        {sec === 'data' && <DataCard />}
       </div>
     </div>
   );
