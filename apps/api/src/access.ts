@@ -10,7 +10,7 @@ export const DIVISIONS = ['MKT', 'NOC', 'FOC', 'GA', 'FIN'] as const;
 export const SUBROLES = ['MANAGER', 'SUPERVISOR', 'STAFF'] as const;
 type Div = (typeof DIVISIONS)[number];
 
-interface Feature { key: string; label: string; desc: string; group: string; defaults: Div[]; leadAll?: boolean }
+interface Feature { key: string; label: string; desc: string; group: string; defaults: Div[]; leadAll?: boolean; /** token tambahan di luar `defaults` (divisi:sub-role) */ extra?: string[]; /** bila ada, HANYA token ini yang bawaan */ exact?: string[] }
 export const FEATURES: Feature[] = [
   { key: 'subscriptions', group: 'Pemasaran', label: 'Form Berlangganan', desc: 'Menu, daftar, buat/ubah/hapus, cetak formulir', defaults: ['MKT'] },
   { key: 'customers', group: 'Pelanggan', label: 'Pelanggan — lihat', desc: 'Menu Pelanggan, detail, ekspor Excel, status MSRadius', defaults: ['MKT', 'NOC', 'FIN', 'GA'] },
@@ -18,7 +18,8 @@ export const FEATURES: Feature[] = [
   { key: 'customers.manage', group: 'Pelanggan', label: 'Pelanggan — tambah, hapus & tarik MSRadius', desc: 'Tambah/hapus pelanggan, sinkron & tarik data MSRadius', defaults: ['MKT'] },
   { key: 'master.packages', group: 'Master Data', label: 'Master: paket/jasa', desc: 'Kelola paket layanan', defaults: ['MKT'] },
   { key: 'master.ga', group: 'Master Data', label: 'Master: area, vendor, merek, barang, gudang', desc: 'Kelola master pengadaan & inventori', defaults: ['GA'] },
-  { key: 'inventory', group: 'Inventori', label: 'Inventori & Aset — lihat', desc: 'Menu Inventori, stok, mutasi, aset, cek stok WO', defaults: ['GA'] },
+  { key: 'inventory', group: 'Inventori', label: 'Inventori & Aset — lihat', desc: 'Menu Inventori, stok, mutasi, aset, cek stok WO', defaults: ['GA'], extra: ['FIN:MANAGER'] },
+  { key: 'inventory.opname', group: 'Inventori', label: 'Stock opname', desc: 'Menyesuaikan jumlah stok fisik (selisih tercatat sebagai mutasi)', defaults: [], exact: ['GA:MANAGER', 'FIN:MANAGER'] },
   { key: 'inventory.manage', group: 'Inventori', label: 'Inventori & Aset — kelola', desc: 'Stok masuk/keluar, transfer gudang, QC, aset', defaults: ['GA'] },
   { key: 'stock.mine', group: 'Inventori', label: 'Stok Saya (stok pribadi/mobil)', desc: 'Menu Stok Saya untuk teknisi', defaults: ['FOC'] },
   { key: 'purchase_requests', group: 'Pengadaan', label: 'Purchase Request — menu', desc: 'Menu & daftar PR (pembuatan PR juga mengikuti peran GA/atasan)', defaults: ['GA', 'FIN'], leadAll: true },
@@ -29,7 +30,8 @@ export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
 const tok = (d: string, s: string) => `${d}:${s}`;
 export function defaultTokens(f: Feature): string[] {
-  const out = f.defaults.flatMap((d) => SUBROLES.map((s) => tok(d, s)));
+  if (f.exact) return f.exact;
+  const out = [...f.defaults.flatMap((d) => SUBROLES.map((s) => tok(d, s))), ...(f.extra ?? [])];
   if (f.leadAll) for (const d of DIVISIONS) for (const s of ['MANAGER', 'SUPERVISOR']) out.push(tok(d, s));
   return [...new Set(out)];
 }

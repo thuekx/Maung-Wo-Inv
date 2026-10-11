@@ -160,7 +160,7 @@ inventoryRoutes.post('/stock/transfer', stockRoles, async (req, res) => {
 });
 
 // Stock opname: sesuaikan jumlah fisik item kuantitas (consumable) di sebuah gudang
-inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
+inventoryRoutes.post('/stock/opname', requireFeature('inventory.opname'), async (req, res) => {
   const b = z.object({ warehouseId: z.string(), counts: z.array(z.object({ itemId: z.string(), counted: z.coerce.number().int().min(0) })).min(1) }).parse(req.body);
   const u = req.user!;
   const diffs = await transact(async (fx) => {
@@ -172,7 +172,7 @@ inventoryRoutes.post('/stock/opname', stockRoles, async (req, res) => {
       await moveStock(fx.tx, d > 0 ? { itemId: c.itemId, qty: d, to: b.warehouseId, reason: 'Stock opname (+)', actorId: u.id } : { itemId: c.itemId, qty: -d, from: b.warehouseId, reason: 'Stock opname (−)', actorId: u.id });
       out.push({ itemId: c.itemId, before: cur, after: c.counted, diff: d });
     }
-    if (out.length) await fx.notify({ roles: ['GA'], subject: 'Stock opname dengan selisih', body: `${u.name} melakukan opname, ${out.length} item berselisih.` });
+    if (out.length) await fx.notify({ roles: ['GA', 'FIN'], subject: 'Stock opname dengan selisih', body: `${u.name} melakukan opname, ${out.length} item berselisih.` });
     return out;
   });
   res.json({ diffs });

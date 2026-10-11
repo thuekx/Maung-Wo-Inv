@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { mapRefs, resolveRefs } from '../refs';
 import { requireFeature } from '../access';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
@@ -521,6 +522,7 @@ masterRoutes.get('/admin/audit', requireRole('ADMIN'), async (req, res) => {
   const term = q.q?.trim();
   const where = { ...(q.entity ? { entity: q.entity } : {}), ...(q.action ? { action: q.action } : {}), ...(term ? { OR: [{ summary: { contains: term, mode: 'insensitive' as const } }, { userName: { contains: term, mode: 'insensitive' as const } }] } : {}) };
   const [rows, total] = await Promise.all([prisma.auditLog.findMany({ where, orderBy: pp.orderBy, skip: pp.skip, take: pp.take }), countIf(pp, () => prisma.auditLog.count({ where }))]);
-  sendPage(res, pp, rows, total);
+  const refs = await resolveRefs(rows.flatMap((r) => [r.before, r.after]));
+  sendPage(res, pp, rows.map((r) => ({ ...r, before: mapRefs(r.before, refs), after: mapRefs(r.after, refs) })), total); // id → nama agar log mudah dibaca
 });
 

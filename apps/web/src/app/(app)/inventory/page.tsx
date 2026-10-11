@@ -348,13 +348,14 @@ function Inventory() {
   const sp = useSearchParams();
   const [tab, setTab] = useState(sp.get('tab') ?? 'stock');
   const canManage = (user?.features ?? []).includes('inventory.manage');
+  const canOpname = (user?.features ?? []).includes('inventory.opname');
   void fmtDate;
   return (
     <>
       <PageHeader pretitle="Gudang" title="Inventori & Aset" sub="Multi-gudang · material · perangkat ber-SN · aset GA" />
       <Tabs value={tab} onChange={setTab} tabs={[
         { key: 'stock', label: 'Stok per gudang' }, { key: 'assets', label: 'Aset & SN' }, { key: 'qc', label: 'Menunggu QC' },
-        { key: 'warehouses', label: 'Gudang' }, { key: 'items', label: 'Master item' }, ...(canManage ? [{ key: 'transfer', label: 'Transfer gudang' }, { key: 'opname', label: 'Stock opname' }] : []),
+        { key: 'warehouses', label: 'Gudang' }, { key: 'items', label: 'Master item' }, ...(canManage ? [{ key: 'transfer', label: 'Transfer gudang' }] : []), ...(canOpname ? [{ key: 'opname', label: 'Stock opname' }] : []),
       ]} />
       {tab === 'stock' && <StockTab />}
       {tab === 'assets' && <AssetsTab canManage={canManage} initialQ={sp.get('q') ?? ''} />}
@@ -362,7 +363,7 @@ function Inventory() {
       {tab === 'warehouses' && <WarehousesTab canManage={canManage} />}
       {tab === 'items' && <ItemsTab canManage={canManage} />}
       {tab === 'transfer' && canManage && <TransferTab />}
-      {tab === 'opname' && canManage && <OpnameTab />}
+      {tab === 'opname' && canOpname && <OpnameTab />}
     </>
   );
 }

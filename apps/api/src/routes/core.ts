@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { featuresFor, requireFeature } from '../access';
+import { mapRefs, resolveRefs } from '../refs';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -247,7 +248,9 @@ core.get('/customers/:id', async (req, res, next) => {
 /** Riwayat perubahan data pelanggan dari sinkron MSRadius (nilai lama → baru). */
 core.get('/customers/:id/changes', async (req, res) => {
   if (!['ADMIN', 'MKT', 'NOC', 'FIN', 'GA'].includes(req.user!.role)) throw new AppError(403, 'Akses khusus: MKT, NOC, FIN, GA');
-  res.json(await prisma.customerChange.findMany({ where: { customerId: String(req.params.id) }, orderBy: { createdAt: 'desc' }, take: 200 }));
+  const rows = await prisma.customerChange.findMany({ where: { customerId: String(req.params.id) }, orderBy: { createdAt: 'desc' }, take: 200 });
+  const refs = await resolveRefs(rows.flatMap((r) => [r.oldValue, r.newValue])); // areaId/warehouseId → nama
+  res.json(rows.map((r) => ({ ...r, oldValue: mapRefs(r.oldValue, refs), newValue: mapRefs(r.newValue, refs) })));
 });
 
 /* ── upload foto (laporan lapangan) ── */

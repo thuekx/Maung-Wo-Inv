@@ -39,3 +39,11 @@ export async function resolveRefs(data: unknown): Promise<Record<string, string>
   }
   return out;
 }
+
+/** Ganti id (cuid) di dalam nilai apa pun (string/array/objek) dengan teks terbaca dari peta `resolveRefs`. */
+export function mapRefs<T>(v: T, refs: Record<string, string>): T {
+  if (typeof v === 'string') return (CUID.test(v) && refs[v] ? refs[v] : v) as T;
+  if (Array.isArray(v)) return v.map((x) => mapRefs(x, refs)) as T;
+  if (v && typeof v === 'object' && !(v instanceof Date)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, mapRefs(x, refs)])) as T;
+  return v;
+}

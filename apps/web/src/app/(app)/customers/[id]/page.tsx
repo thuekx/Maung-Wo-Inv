@@ -6,7 +6,7 @@ import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
-import { Badge, custLabel, custTone, DataGrid, ErrorMsg, Modal, PageHeader, RadiusStatusBadge, Table } from '@/components/ui';
+import { Badge, custLabel, custTone, DataGrid, ErrorMsg, Modal, PageHeader, RADIUS_STATUS, RadiusStatusBadge, Table } from '@/components/ui';
 import { customerFields, NETWORK_FIELDS } from '../page';
 
 export default function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -74,17 +74,17 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
   );
 }
 
-const FIELD_LABEL: Record<string, string> = { '*': 'Pelanggan', name: 'Nama', phone: 'Telepon', address: 'Alamat', packageName: 'Paket', status: 'Status', radiusIp: 'IP (MSRadius)', expiredAt: 'Masa aktif sampai', resellerName: 'Reseller', salesName: 'Sales', missingFromApi: 'Hilang dari MSRadius', activatedAt: 'Tanggal aktif', lat: 'Lat', lng: 'Lng' };
+const FIELD_LABEL: Record<string, string> = { '*': 'Pelanggan', name: 'Nama', phone: 'Telepon', address: 'Alamat', packageName: 'Paket', status: 'Status', radiusIp: 'IP (MSRadius)', expiredAt: 'Masa aktif sampai', resellerName: 'Reseller', salesName: 'Sales', missingFromApi: 'Hilang dari MSRadius', activatedAt: 'Tanggal aktif', lat: 'Lat', lng: 'Lng', radiusStatus: 'Status layanan', areaId: 'Area', warehouseId: 'Gudang' };
 /** Riwayat perubahan dari sinkron MSRadius: nilai lama tidak hilang saat data diperbarui. */
 function ChangeHistory({ id }: { id: string }) {
   const { data } = useFetch<any[]>(`/customers/${id}/changes`);
   if (!data?.length) return null;
-  const v = (x: string | null) => (x === null || x === '' ? '—' : /^\d{4}-\d\d-\d\dT/.test(x) ? fmtDate(x) : x);
+  const v = (x: string | null, field?: string) => (x === null || x === '' ? '—' : /^\d{4}-\d\d-\d\dT/.test(x) ? fmtDate(x) : field === 'status' ? custLabel(x) : field === 'radiusStatus' ? (RADIUS_STATUS[x]?.label ?? x) : x === 'true' ? 'Ya' : x === 'false' ? 'Tidak' : x);
   return (
     <section>
       <h2 className="mb-2 font-semibold">Riwayat perubahan data</h2>
       <Table head={['Waktu', 'Kolom', 'Sebelumnya', 'Menjadi', 'Sumber']}>
-        {data.map((h) => <tr key={h.id}><td className="td whitespace-nowrap text-xs">{fmtDate(h.createdAt)}</td><td className="td">{FIELD_LABEL[h.field] ?? h.field}</td><td className="td text-slate-500">{v(h.oldValue)}</td><td className="td">{v(h.newValue)}</td><td className="td text-xs">{h.source}</td></tr>)}
+        {data.map((h) => <tr key={h.id}><td className="td whitespace-nowrap text-xs">{fmtDate(h.createdAt)}</td><td className="td">{FIELD_LABEL[h.field] ?? h.field}</td><td className="td text-slate-500">{v(h.oldValue, h.field)}</td><td className="td">{v(h.newValue, h.field)}</td><td className="td text-xs">{h.source}</td></tr>)}
       </Table>
     </section>
   );
