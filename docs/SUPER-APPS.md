@@ -18,11 +18,53 @@ Tujuan: beberapa aplikasi (WO + Inventori, **Sales Tracking**, dst.) terasa satu
 | 4 | **Event antar-aplikasi** (webhook/antrian): mis. kontrak sales disetujui → WO Pasang Baru terbentuk | Alur lintas aplikasi |
 | 5 | Pencarian global & dashboard gabungan | Super apps penuh |
 
-## Satu pintu (visi launcher)
-Tujuan: pengguna hanya mengenal **satu alamat (`maung.liv.net.id`) dan satu login**; setelah masuk memilih aplikasi lewat ikon (WO & Inventori, CRM/Sales, dst.) seperti beranda super-app. Dibangun bertahap:
-1. **Identitas tunggal** — WO adalah penerbit login/peran; aplikasi lain memvalidasi token lewat `GET /api/auth/introspect` (lihat di bawah). Hak akses per divisi/sub-role dikelola di Admin → Hak Akses.
-2. **Satu pintu jaringan** — Caddy meneruskan tiap aplikasi (`proxy/sites/*.caddy` + jaringan `maung_edge`, lihat docs/INSTALL.md). Aplikasi tetap container/database terpisah (terisolasi), hanya web-nya yang tampil di depan.
-3. **Launcher** (belum dibuat) — beranda setelah login berisi ikon aplikasi yang boleh diakses peran pengguna; setiap ikon membuka aplikasinya dengan sesi yang sama (token yang sama, atau penukaran token singkat). Keputusan yang masih perlu: apakah tiap aplikasi di subdomain sendiri (`crm.liv.net.id`, mudah, perlu penerusan token) atau di jalur satu domain (`maung.liv.net.id/crm`, sesi/cookie otomatis sama, perlu pengaturan basePath tiap aplikasi).
+## Satu pintu (launcher) — SUDAH ADA, jalur satu domain
+Pengguna hanya mengenal **satu alamat (`maung.liv.net.id`) dan satu login**. Setelah login mereka melihat **beranda** (`/apps`) berisi ikon aplikasi; hanya satu aplikasi (WO) → langsung masuk seperti biasa. Aplikasi lain berjalan di **jalur yang sama** (`/crm`, dst.), sehingga token login (disimpan browser per-alamat) otomatis berlaku — tanpa penukaran token.
+
+**Cara kerja**
+1. **Identitas tunggal** — WO menerbitkan login/peran; aplikasi lain memvalidasi token lewat `GET /api/auth/introspect` (di bawah).
+2. **Jalur satu domain** — Caddy meneruskan `maung.liv.net.id/<jalur>/*` ke container aplikasi lewat berkas `proxy/apps/<nama>.caddy` (di-import DI DALAM blok situs WO; tidak ditimpa penulisan otomatis Admin). Container aplikasi bergabung ke jaringan `maung_edge` (hanya web-nya; database/Redis tetap privat).
+3. **Daftar & akses ikon** — Admin → Pengaturan → **Aplikasi (Beranda)** mendaftarkan aplikasi (ID, nama, jalur satu segmen mis. `/crm`, ikon, tampil/tidak). Siapa yang melihat ikonnya diatur di **Hak Akses** (kelompok "Aplikasi", per divisi & sub-role; bawaan: hanya Admin). Aplikasi itu tetap WAJIB memeriksa token dan perannya sendiri — menyembunyikan ikon bukan pengamanan.
+4. `GET /api/launcher` (login) mengembalikan daftar aplikasi yang boleh dibuka pengguna ini.
+
+**Menambah aplikasi baru (mis. CRM) — langkah**
+1. Di compose aplikasi itu: container web bernama **unik** (mis. `crm-web`) bergabung ke jaringan eksternal `maung_edge`:
+   ```yaml
+   services:
+     crm-web:
+       networks: [default, edge]
+   networks:
+     edge: { name: maung_edge, external: true }
+   ```
+2. Next.js aplikasi: `basePath: '/crm'` (dan `assetPrefix` bila perlu), jalankan di port 3000 dalam container.
+3. Di repo Maung-Wo-Inv pada VM: taruh `proxy/apps/crm.caddy` (tanpa menghapus prefix — aplikasi memakai `basePath`):
+   ```
+   handle /crm/* {
+   	reverse_proxy crm-web:3000
+   }
+   ```
+   lalu muat ulang Caddy: `docker compose -f docker-compose.yml -f docker-compose.caddy.yml exec caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile` (`caddy --watch` tidak memantau berkas import). Jalur harus unik dan tidak memakai jalur halaman WO (Admin menolak yang bentrok, mis. `/api`, `/admin`, `/customers`).
+4. Admin → Pengaturan → Aplikasi (Beranda): tambahkan `crm` + jalur `/crm`; Hak Akses: centang divisi/sub-role yang melihat ikonnya.
+
+**Kontrak sesi untuk aplikasi di jalur yang sama** (contoh TypeScript sisi browser)
+```ts
+const TOK = 'maung_token'; // localStorage (login "ingat saya") atau sessionStorage
+const store = () => (localStorage.getItem(TOK) ? localStorage : sessionStorage);
+export const token = () => localStorage.getItem(TOK) ?? sessionStorage.getItem(TOK);
+export const toLogin = () => { location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`; }; // WO kembali ke sini setelah login
+export async function maungFetch(path: string, init: RequestInit = {}) { // panggil API WO (/api/...) atau API CRM sendiri dengan token yang sama
+  const r = await fetch(path, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${token()}` } });
+  if (r.status === 401) toLogin();
+  return r;
+}
+// Sesi diam: WO mengeluarkan pengguna setelah batas diam (Admin → Keamanan, bawaan 30 mnt). Selama pengguna aktif di aplikasi Anda:
+export async function keepAlive() { // panggil saat ada aktivitas, paling sering tiap ±5 menit
+  try { localStorage.setItem('maung_last_active', String(Date.now())); } catch {}
+  const r = await fetch('/api/auth/refresh', { method: 'POST', headers: { authorization: `Bearer ${token()}`, 'content-type': 'application/json' }, body: '{}' });
+  if (r.ok) store().setItem(TOK, (await r.json()).token); else if (r.status === 401) toLogin();
+}
+```
+Server aplikasi memvalidasi token yang dikirim browser lewat `GET /api/auth/introspect` (di bawah). Kembali ke beranda: tautan ke `/apps`.
 
 ## Validasi token (tahap 1)
 ```

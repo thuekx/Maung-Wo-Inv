@@ -8,25 +8,35 @@
 
 # Aplikasi lain di VM ini (mis. CRM) cukup menaruh satu berkas *.caddy di proxy/sites/ — tidak ditimpa penulisan otomatis.
 import /etc/caddy/sites/*.caddy
+# Aplikasi di jalur domain yang sama (mis. /crm): taruh proxy/apps/<nama>.caddy berisi `handle /crm/* { reverse_proxy crm-web:3000 }` (di-import di dalam tiap blok di bawah).
 
 __DOMAIN__ {
-	reverse_proxy web:3000 {
-		lb_try_duration 20s
-		lb_try_interval 500ms
+	import /etc/caddy/apps/*.caddy
+	handle {
+		reverse_proxy web:3000 {
+			lb_try_duration 20s
+			lb_try_interval 500ms
+		}
 	}
 }
 
 http://__DOMAIN__ {
-	reverse_proxy web:3000 {
-		lb_try_duration 20s
-		lb_try_interval 500ms
+	import /etc/caddy/apps/*.caddy
+	handle {
+		reverse_proxy web:3000 {
+			lb_try_duration 20s
+			lb_try_interval 500ms
+		}
 	}
 }
 
 # akses lewat IP / hostname lain: HTTP biasa (jalur pemulihan)
 :80 {
-	reverse_proxy web:3000 {
-		lb_try_duration 20s
-		lb_try_interval 500ms
+	import /etc/caddy/apps/*.caddy
+	handle {
+		reverse_proxy web:3000 {
+			lb_try_duration 20s
+			lb_try_interval 500ms
+		}
 	}
 }

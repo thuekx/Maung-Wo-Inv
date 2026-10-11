@@ -28,5 +28,15 @@ if ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/sites/' "$CADDY_DIR/Cad
   ' "$CADDY_DIR/Caddyfile" > "$CADDY_DIR/Caddyfile.new" && cat "$CADDY_DIR/Caddyfile.new" > "$CADDY_DIR/Caddyfile" && rm -f "$CADDY_DIR/Caddyfile.new"
   echo "Caddyfile lama dimigrasi: baris import sites/*.caddy ditambahkan"
 fi
+# Migrasi 2: aplikasi di jalur domain WO (proxy/apps) — sisipkan import di DALAM tiap blok situs tingkat atas (bukan blok global).
+APPS_LINE='import /etc/caddy/apps/*.caddy'
+if ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/apps/' "$CADDY_DIR/Caddyfile"; then
+  awk -v imp="$APPS_LINE" '
+    { n_open = gsub(/\{/, "{"); n_close = gsub(/\}/, "}") }
+    depth == 0 && /\{[[:space:]]*$/ && !/^[[:space:]]*\{[[:space:]]*$/ { print; print "\t" imp; depth += n_open - n_close; next }
+    { print; depth += n_open - n_close }
+  ' "$CADDY_DIR/Caddyfile" > "$CADDY_DIR/Caddyfile.new" && cat "$CADDY_DIR/Caddyfile.new" > "$CADDY_DIR/Caddyfile" && rm -f "$CADDY_DIR/Caddyfile.new"
+  echo "Caddyfile lama dimigrasi: baris import apps/*.caddy ditambahkan di tiap blok situs"
+fi
 [ -z "${CADDY_NO_RUN:-}" ] || exit 0
 exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch

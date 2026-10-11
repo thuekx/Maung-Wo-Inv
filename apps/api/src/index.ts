@@ -16,6 +16,7 @@ import { areaRoutes } from './routes/areas';
 import { subscriptionRoutes } from './routes/subscriptions';
 import { integrationRoutes } from './routes/integrations';
 import { exportRoutes } from './routes/export';
+import { launcherRoutes } from './routes/launcher';
 import { adminRoutes } from './routes/admin';
 import { masterRoutes } from './routes/masters';
 import { publicRoutes } from './routes/public';
@@ -59,6 +60,7 @@ api.use(kancaRoutes);
 api.use(sslRoutes);
 api.use(dataRoutes);
 api.use(subscriptionRoutes);
+api.use(launcherRoutes);
 app.use('/api', api);
 
 /** Pesan validasi Zod → Indonesia (tampil inline di bawah kolom). */

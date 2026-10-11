@@ -10,7 +10,7 @@ export const DIVISIONS = ['MKT', 'NOC', 'FOC', 'GA', 'FIN'] as const;
 export const SUBROLES = ['MANAGER', 'SUPERVISOR', 'STAFF'] as const;
 type Div = (typeof DIVISIONS)[number];
 
-interface Feature { key: string; label: string; desc: string; group: string; defaults: Div[]; leadAll?: boolean; /** token tambahan di luar `defaults` (divisi:sub-role) */ extra?: string[]; /** bila ada, HANYA token ini yang bawaan */ exact?: string[] }
+export interface Feature { key: string; label: string; desc: string; group: string; defaults: Div[]; leadAll?: boolean; /** token tambahan di luar `defaults` (divisi:sub-role) */ extra?: string[]; /** bila ada, HANYA token ini yang bawaan */ exact?: string[] }
 export const FEATURES: Feature[] = [
   { key: 'subscriptions', group: 'Pemasaran', label: 'Form Berlangganan', desc: 'Menu, daftar, buat/ubah/hapus, cetak formulir', defaults: ['MKT'] },
   { key: 'customers', group: 'Pelanggan', label: 'Pelanggan — lihat', desc: 'Menu Pelanggan, detail, ekspor Excel, status MSRadius', defaults: ['MKT', 'NOC', 'FIN', 'GA'] },
@@ -27,6 +27,18 @@ export const FEATURES: Feature[] = [
   { key: 'procurement.manage', group: 'Pengadaan', label: 'Pengadaan — kelola', desc: 'Vendor, terbitkan PR, catat PO Accurate, penerimaan', defaults: ['GA'] },
 ];
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
+
+/** Aplikasi lain yang didaftarkan di beranda (Admin → Pengaturan → Aplikasi). Tiap aplikasi menjadi fitur `app.<id>` di matriks Hak Akses. */
+export interface LauncherApp { id: string; name: string; description: string; icon: string; path: string; enabled: boolean }
+export async function getLauncherApps(): Promise<LauncherApp[]> {
+  const v = await getSetting<{ apps?: LauncherApp[] }>('launcher');
+  return Array.isArray(v?.apps) ? v!.apps! : [];
+}
+/** Fitur statis + satu fitur per aplikasi terdaftar (bawaan: tidak ada yang melihat sampai Admin mengatur di Hak Akses). */
+export async function allFeatures(): Promise<Feature[]> {
+  const apps = await getLauncherApps();
+  return [...FEATURES, ...apps.map((a): Feature => ({ key: `app.${a.id}`, group: 'Aplikasi', label: `Aplikasi: ${a.name}`, desc: `Ikon di beranda Maung dan akses ke ${a.path} (aplikasi itu juga wajib memeriksa token/peran sendiri)`, defaults: [] }))];
+}
 
 const tok = (d: string, s: string) => `${d}:${s}`;
 export function defaultTokens(f: Feature): string[] {
@@ -46,14 +58,15 @@ export async function saveOverrides(o: AccessOverrides, userId: string) { await 
 /** Matriks efektif: fitur → token yang diizinkan. */
 export async function effectiveMatrix(): Promise<Record<string, string[]>> {
   const o = await getOverrides();
-  return Object.fromEntries(FEATURES.map((f) => [f.key, o[f.key] ?? defaultTokens(f)]));
+  return Object.fromEntries((await allFeatures()).map((f) => [f.key, o[f.key] ?? defaultTokens(f)]));
 }
 
 export async function featuresFor(u: { role: string; subRole?: string | null }): Promise<string[]> {
-  if (u.role === 'ADMIN') return FEATURE_KEYS.filter((k) => k !== 'stock.mine'); // Stok Saya = stok pribadi teknisi (hanya saat Admin bertindak sebagai FOC)
+  const keys = (await allFeatures()).map((f) => f.key);
+  if (u.role === 'ADMIN') return keys.filter((k) => k !== 'stock.mine'); // Stok Saya = stok pribadi teknisi (hanya saat Admin bertindak sebagai FOC)
   const m = await effectiveMatrix();
   const t = tok(u.role, u.subRole ?? 'STAFF');
-  return FEATURE_KEYS.filter((k) => m[k].includes(t));
+  return keys.filter((k) => m[k]?.includes(t));
 }
 
 /** Pengganti `requireRole(...)` untuk fitur yang hak aksesnya dapat diatur di Admin. */

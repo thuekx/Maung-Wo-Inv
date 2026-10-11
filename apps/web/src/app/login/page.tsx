@@ -31,7 +31,12 @@ export default function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setErr('');
-    try { await login(id.trim(), password, remember); router.replace('/'); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    try {
+      await login(id.trim(), password, remember);
+      // ?next=/crm/… (dari aplikasi lain di domain ini) → kembali ke sana; hanya jalur internal. Selain itu ke beranda pilihan aplikasi.
+      const next = new URLSearchParams(window.location.search).get('next');
+      if (next && /^\/(?!\/)/.test(next)) window.location.href = next; else router.replace('/apps');
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
 
   const lines = brand.loginText.split('\n').filter(Boolean);

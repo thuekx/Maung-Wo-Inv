@@ -33,9 +33,12 @@ export async function getSsl(): Promise<SslCfg> {
 /** Isi Caddyfile menurut konfigurasi + apakah sertifikat sudah terpasang (menentukan redirect). */
 /** Aplikasi lain di VM yang sama menaruh berkas *.caddy di proxy/sites/ (dipasang read-only ke /etc/caddy/sites). Wajib ada di level atas, setelah blok global. */
 export const SITES_IMPORT = 'import /etc/caddy/sites/*.caddy';
+/** Aplikasi di jalur domain WO yang sama (mis. /crm): berkas proxy/apps/*.caddy berisi `handle /crm/* { reverse_proxy crm-web:3000 }`; di-import DI DALAM tiap blok situs WO. */
+export const APPS_IMPORT = 'import /etc/caddy/apps/*.caddy';
 export function buildCaddyfile(c: SslCfg, certOk: boolean) {
   // lb_try_*: saat container web dibuat ulang (deploy/update) Caddy mencoba lagi sampai 20 dtk, bukan langsung 502
-  const proxy = '\treverse_proxy web:3000 {\n\t\tlb_try_duration 20s\n\t\tlb_try_interval 500ms\n\t}';
+  // handle {} tanpa pencocok = jatuhan terakhir; `handle /jalur/*` dari proxy/apps diperiksa lebih dulu
+  const proxy = `\t${APPS_IMPORT}\n\thandle {\n\t\treverse_proxy web:3000 {\n\t\t\tlb_try_duration 20s\n\t\t\tlb_try_interval 500ms\n\t\t}\n\t}`;
   const catchAll = `:80 {\n${proxy}\n}\n`; // akses lewat IP / hostname lain: HTTP biasa (jalur pemulihan)
   if (!c.enabled || !c.domain) return `{\n\tauto_https off\n}\n\n${SITES_IMPORT}\n\n${catchAll}`;
   const redirect = c.forceRedirect && certOk;

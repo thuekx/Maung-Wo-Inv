@@ -716,6 +716,47 @@ function DataCard() {
   );
 }
 
+/** Aplikasi (beranda satu pintu): daftar aplikasi lain di jalur domain yang sama. Siapa yang melihat ikonnya diatur di Hak Akses. */
+function AppsCard() {
+  const { data, reload } = useFetch<any>('/admin/launcher');
+  const [apps, setApps] = useState<any[] | null>(null);
+  const [err, setErr] = useState('');
+  const a = useAction();
+  useEffect(() => { if (data) setApps(data.apps); }, [data]);
+  if (!data || !apps) return <p className="text-slate-500">Memuat…</p>;
+  const upd = (i: number, k: string, v: unknown) => setApps((p) => p!.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  const dirty = JSON.stringify(apps) !== JSON.stringify(data.apps);
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Aplikasi di beranda (satu pintu)</h2>
+      <p className="text-sm text-slate-500">Setelah login, pengguna melihat beranda berisi ikon aplikasi. <b>Work Order &amp; Inventori</b> selalu ada. Aplikasi lain berjalan di jalur domain yang sama (mis. <code>/crm</code>) dan memakai login yang sama. Setelah menyimpan, atur siapa yang melihat ikonnya di <b>Hak Akses</b> (kelompok "Aplikasi"). Aplikasi itu tetap wajib memeriksa token dan perannya sendiri.</p>
+      {apps.length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Belum ada aplikasi lain.</p>}
+      {apps.map((x, i) => (
+        <div key={i} className="space-y-2 rounded-lg border p-3">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <label className="text-sm"><span className="label">ID</span><input className="input font-mono" value={x.id} onChange={(e) => upd(i, 'id', e.target.value.toLowerCase())} placeholder="crm" /></label>
+            <label className="text-sm"><span className="label">Nama</span><input className="input" value={x.name} onChange={(e) => upd(i, 'name', e.target.value)} placeholder="CRM Sales & Marketing" /></label>
+            <label className="text-sm"><span className="label">Jalur</span><input className="input font-mono" value={x.path} onChange={(e) => upd(i, 'path', e.target.value.toLowerCase())} placeholder="/crm" /></label>
+            <label className="text-sm"><span className="label">Ikon</span><select className="input" value={x.icon} onChange={(e) => upd(i, 'icon', e.target.value)}>{data.icons.map((ic: string) => <option key={ic}>{ic}</option>)}</select></label>
+          </div>
+          <label className="block text-sm"><span className="label">Keterangan singkat</span><input className="input" value={x.description} onChange={(e) => upd(i, 'description', e.target.value)} placeholder="Aktivitas lapangan sales & marketing" /></label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={x.enabled} onChange={(e) => upd(i, 'enabled', e.target.checked)} /> Tampil di beranda</label>
+            <button className="btn-ghost !border-red-300 !text-red-600" onClick={() => setApps((p) => p!.filter((_, j) => j !== i))}>Hapus</button>
+          </div>
+          <p className="text-xs text-slate-500">Di server: berkas <code>proxy/apps/{x.id || 'nama'}.caddy</code> berisi <code>handle {x.path || '/jalur'}/* {'{'} reverse_proxy {x.id || 'nama'}-web:3000 {'}'}</code> (lihat docs/SUPER-APPS.md).</p>
+        </div>
+      ))}
+      <ErrorMsg>{err}</ErrorMsg>
+      <div className="flex flex-wrap items-center gap-3">
+        <button className="btn-ghost" onClick={() => setApps((p) => [...p!, { id: '', name: '', description: '', icon: 'users', path: '/', enabled: false }])}>+ Tambah aplikasi</button>
+        <button className="btn" disabled={a.busy || !dirty} onClick={() => { setErr(''); a.run(async () => { try { await api('/admin/launcher', { method: 'PUT', body: { apps } }); reload(); } catch (e) { setErr((e as any).fields ? Object.values((e as any).fields).join(' · ') : (e as Error).message); throw e; } }, 'Daftar aplikasi disimpan.'); }}>Simpan</button>
+      </div>
+      <Msg m={a.msg} />
+    </div>
+  );
+}
+
 /** Hak Akses: matriks fitur × sub-role per divisi. Admin selalu punya semua akses. */
 function AccessCard() {
   const { data, reload } = useFetch<any>('/admin/access');
@@ -808,6 +849,7 @@ const SETTING_SECTIONS = [
   { key: 'assetinfo', label: 'Info aset (QR)' },
   { key: 'ssl', label: 'SSL & Domain' },
   { key: 'security', label: 'Keamanan' },
+  { key: 'apps', label: 'Aplikasi (Beranda)' },
   { key: 'access', label: 'Hak Akses' },
   { key: 'data', label: 'Data & Backup' },
 ] as const;
@@ -837,6 +879,7 @@ function Settings() {
         {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
         {sec === 'ssl' && <SslCard />}
         {sec === 'security' && <SecurityCard d={data} reload={reload} />}
+        {sec === 'apps' && <AppsCard />}
         {sec === 'access' && <AccessCard />}
         {sec === 'data' && <DataCard />}
       </div>

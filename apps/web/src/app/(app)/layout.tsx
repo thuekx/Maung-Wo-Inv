@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { fileUrl, imgUrl, getAct, ROLE_LABEL, roleText, setAct, SUBROLE_LABEL } from '@/lib/api';
+import { fileUrl, imgUrl, getAct, useFetch, ROLE_LABEL, roleText, setAct, SUBROLE_LABEL } from '@/lib/api';
 import { ThemeToggle } from '@/lib/theme';
 import { useBranding } from '@/lib/brand';
 import { Icon, IconName, MarkM } from '@/components/icons';
@@ -37,6 +37,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const path = usePathname();
   const brand = useBranding();
+  const { data: launcher } = useFetch<{ apps: unknown[] }>(user ? '/launcher' : null);
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -78,6 +79,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="mx-auto hidden min-w-0 flex-1 justify-center px-4 md:flex"><SearchBox /></div>
         <div className="ml-auto flex items-center gap-1 md:ml-0">
+          {(launcher?.apps.length ?? 0) > 1 && <Tip label="Beranda Maung (pilih aplikasi)" align="right"><Link href="/apps" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10" aria-label="Beranda Maung"><Icon name="layers" /></Link></Tip>}
           <span className="hidden sm:block"><ThemeToggle /></span>
           <NotificationBell />
           <div ref={menuRef} className="relative">

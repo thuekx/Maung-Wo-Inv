@@ -68,7 +68,9 @@ Lalu buka **https://wo.perusahaan.co.id** → login `admin@l1v.local` (password 
 - **Pemulihan darurat tanpa Admin:** `docker compose exec caddy sh -c 'printf ":80 {\n\treverse_proxy web:3000\n}\n" > /etc/caddy/Caddyfile'` (HTTP saja; Caddy memuat ulang otomatis).
 
 ### Aplikasi lain di VM yang sama (satu pintu, mis. CRM)
-Caddy (satu-satunya yang membuka port 80/443) juga dapat meneruskan domain aplikasi lain tanpa disentuh penulisan otomatis Admin:
+**Disarankan: jalur satu domain** (`maung.liv.net.id/crm`, ikon di beranda `/apps`) — langkah lengkap di docs/SUPER-APPS.md (berkas `proxy/apps/<nama>.caddy`, jaringan `maung_edge`, daftar di Admin → Aplikasi (Beranda)).
+
+Untuk **domain terpisah**, Caddy (satu-satunya yang membuka port 80/443) juga dapat meneruskan domain aplikasi lain tanpa disentuh penulisan otomatis Admin:
 1. `deploy.sh` membuat jaringan Docker bersama **`maung_edge`** (sekali, aman diulang). Hanya Caddy dan container **web** aplikasi lain yang ikut; database/Redis tiap aplikasi tetap di jaringan privatnya.
 2. Di compose aplikasi lain, sambungkan container web-nya ke jaringan itu dengan **nama service yang unik** (mis. `crm-web`):
    ```yaml

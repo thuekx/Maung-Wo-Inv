@@ -27,7 +27,8 @@ services:
       - ./proxy/caddy-entrypoint.sh:/caddy-entrypoint.sh:ro
       - ./proxy/Caddyfile.init:/init/Caddyfile.init:ro
       - caddyconf:/etc/caddy
-      - ./proxy/sites:/etc/caddy/sites:ro  # berkas *.caddy aplikasi lain (di-import oleh Caddyfile)
+      - ./proxy/sites:/etc/caddy/sites:ro  # berkas *.caddy untuk domain lain (di-import di level atas Caddyfile)
+      - ./proxy/apps:/etc/caddy/apps:ro    # berkas *.caddy aplikasi di jalur domain WO (di-import di dalam blok situs, mis. /crm)
       - caddy_data:/data
       - caddy_config:/config
     ports: ["80:80", "443:443", "443:443/udp"]
