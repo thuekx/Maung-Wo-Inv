@@ -159,14 +159,16 @@ export function DataView({ value, depth = 0, field }: { value: any; depth?: numb
 export const RADIUS_STATUS: Record<string, { label: string; tone: 'green' | 'amber' | 'red' | 'blue' | 'slate'; desc: string }> = {
   WAITING: { label: 'Waiting', tone: 'amber', desc: 'Pelanggan baru — memicu Form Berlangganan' },
   ONLINE: { label: 'Online', tone: 'green', desc: 'Layanan aktif & internet berjalan' },
-  OFFLINE: { label: 'Need Check', tone: 'red', desc: 'Offline — perlu dicek: kemungkinan masalah internet di sisi pelanggan' },
+  OFFLINE: { label: 'Offline', tone: 'red', desc: 'Masalah internet di sisi pelanggan (mungkin dimatikan/terputus) — status pelanggan menjadi Need Check' },
   ISOLIR: { label: 'Isolir', tone: 'blue', desc: 'Layanan ditangguhkan (suspend)' },
   DISABLE: { label: 'Disable', tone: 'slate', desc: 'Pelanggan di-terminate' },
 };
 export const RadiusStatusBadge = ({ s }: { s?: string | null }) => (s && RADIUS_STATUS[s] ? <span title={RADIUS_STATUS[s].desc}><Badge tone={RADIUS_STATUS[s].tone}>{RADIUS_STATUS[s].label}</Badge></span> : <span className="text-slate-400">-</span>);
 
+/** Label status pelanggan (nilai enum → tampilan). */
+export const custLabel = (s: string) => (s === 'NEED_CHECK' ? 'Need Check' : s);
 export const custTone = (s: string): 'green' | 'amber' | 'red' | 'blue' | 'slate' =>
-  s === 'ACTIVE' ? 'green' : s === 'SUSPENDED' ? 'amber' : s === 'TERMINATED' || s === 'TERMINATING' ? 'red' : s === 'INSTALLING' ? 'blue' : 'slate';
+  s === 'ACTIVE' ? 'green' : s === 'SUSPENDED' || s === 'NEED_CHECK' ? 'amber' : s === 'TERMINATED' || s === 'TERMINATING' ? 'red' : s === 'INSTALLING' ? 'blue' : 'slate';
 
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (

@@ -79,7 +79,7 @@ export type RadiusStatus = 'WAITING' | 'ONLINE' | 'OFFLINE' | 'ISOLIR' | 'DISABL
 export const RADIUS_STATUS_INFO: Record<RadiusStatus, { label: string; desc: string }> = {
   WAITING: { label: 'Waiting', desc: 'Pelanggan baru — memicu Form Berlangganan' },
   ONLINE: { label: 'Online', desc: 'Layanan aktif & internet berjalan' },
-  OFFLINE: { label: 'Need Check', desc: 'Offline — perlu dicek: kemungkinan masalah internet di sisi pelanggan' },
+  OFFLINE: { label: 'Offline', desc: 'Masalah internet di sisi pelanggan (mungkin dimatikan/terputus) — status pelanggan menjadi Need Check' },
   ISOLIR: { label: 'Isolir', desc: 'Layanan ditangguhkan (suspend)' },
   DISABLE: { label: 'Disable', desc: 'Pelanggan di-terminate' },
 };
@@ -103,7 +103,7 @@ export function areaRefOf(r: any): { code: string | null; name: string | null } 
   return /^\d+$/.test(t) ? { code: t, name: null } : { code: null, name: t };
 }
 /** Status Maung yang setara dengan status MSRadius (null = tidak mengubah). */
-export const customerStatusFor = (st: RadiusStatus | null) => (st === 'WAITING' ? 'PROSPECT' : st === 'ONLINE' || st === 'OFFLINE' ? 'ACTIVE' : st === 'ISOLIR' ? 'SUSPENDED' : st === 'DISABLE' ? 'TERMINATED' : null) as 'PROSPECT' | 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | null;
+export const customerStatusFor = (st: RadiusStatus | null) => (st === 'WAITING' ? 'PROSPECT' : st === 'ONLINE' ? 'ACTIVE' : st === 'OFFLINE' ? 'NEED_CHECK' : st === 'ISOLIR' ? 'SUSPENDED' : st === 'DISABLE' ? 'TERMINATED' : null) as 'PROSPECT' | 'ACTIVE' | 'NEED_CHECK' | 'SUSPENDED' | 'TERMINATED' | null;
 
 export interface Mapped { code: string; name: string; phone: string; address: string; lat: number | null; lng: number | null; packageName: string; radiusName: string; radiusIp: string | null; expiredAt: Date | null; resellerName: string | null; salesName: string | null; suspended: boolean; registeredAt: Date | null; radiusStatus: RadiusStatus | null; areaRef: { code: string | null; name: string | null } | null }
 
@@ -189,7 +189,7 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
         const isBusy = busy.has(cur.id); // ada WO berjalan → status pelanggan dikelola alur WO, tidak ditimpa
         const target = customerStatusFor(m.radiusStatus);
         if (target) {
-          const allowed = isBusy || target === 'PROSPECT' ? false : target === 'ACTIVE' ? ['PROSPECT', 'ACTIVE', 'SUSPENDED'].includes(cur.status) : target === 'SUSPENDED' ? cur.status === 'ACTIVE' : ['ACTIVE', 'SUSPENDED'].includes(cur.status);
+          const allowed = !isBusy && !['INSTALLING', 'TERMINATING'].includes(cur.status); // WO berjalan mengelola status sendiri; selain itu mengikuti MSRadius
           if (allowed && cur.status !== target) data.status = target;
         } else if (!isBusy && (cur.status === 'ACTIVE' || cur.status === 'SUSPENDED')) {
           const want = m.suspended ? 'SUSPENDED' : 'ACTIVE'; // tanpa field status: pakai disabled_username

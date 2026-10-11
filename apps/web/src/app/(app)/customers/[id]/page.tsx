@@ -6,7 +6,7 @@ import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
-import { Badge, custTone, DataGrid, ErrorMsg, Modal, PageHeader, RadiusStatusBadge, Table } from '@/components/ui';
+import { Badge, custLabel, custTone, DataGrid, ErrorMsg, Modal, PageHeader, RadiusStatusBadge, Table } from '@/components/ui';
 import { customerFields, NETWORK_FIELDS } from '../page';
 
 export default function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -22,7 +22,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
   return (
     <div className="space-y-4">
       <PageHeader pretitle="Pelanggan" title={`${c.name}`} sub={c.code}>
-        <Badge tone={custTone(c.status)}>{c.status}</Badge>
+        <Badge tone={custTone(c.status)}>{custLabel(c.status)}</Badge>
         {c.radiusStatus && <RadiusStatusBadge s={c.radiusStatus} />}
         {feat.includes('customers.manage') && <button className="btn-ghost" onClick={async () => { try { const r = await api<any>(`/customers/${c.id}/radius-pull`, { body: {} }); toast.success(`Data MSRadius ditarik (${r.updated ? 'diperbarui' : 'sudah sama'}).`); await reload(); } catch (e) { toast.error((e as Error).message); } }}>⟳ Tarik dari MSRadius</button>}
         {feat.includes('customers.edit') && <button className="btn-ghost" onClick={() => setEdit(true)}>✎ Edit</button>}

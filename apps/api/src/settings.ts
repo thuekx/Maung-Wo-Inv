@@ -148,19 +148,20 @@ export async function getDocs(): Promise<DocsCfg> {
 }
 
 /* ── Formulir Berlangganan (nomor registrasi, rekening, penandatangan bawaan) ── */
-export interface SubFormCfg { regSeqStart: number; regPrefix: string; city: string; managerName: string; bankName: string; accName: string; accNo: string; footer: string; defaultPayment: 'CASH' | 'TRANSFER' | 'DEBIT'; ppnNote: string }
+export interface SubFormCfg { regSeqStart: number; regPrefix: string; city: string; managerName: string; bankName: string; accName: string; accNo: string; footer: string; defaultPayment: 'CASH' | 'TRANSFER' | 'DEBIT'; ppnNote: string; /** true = Marketing boleh mengisi/mengubah nomor Reg. (masa migrasi); false = selalu otomatis */ regEditable: boolean }
 export const SUBFORM_DEFAULTS: SubFormCfg = {
   regSeqStart: 1, regPrefix: 'SM', city: 'Bandung', managerName: 'M Gugi Granada',
   bankName: 'BANK BCA KCP Buahbatu BANDUNG', accName: 'Lintas Satu Visi PT', accNo: '7753555511',
   footer: 'Jl. Magenta Raya No. 26\nBandung, 40173, Indonesia, Tlp : 022-21000234\nWeb : www.sunmori.net Mail : info@liv.co.id',
-  defaultPayment: 'TRANSFER', ppnNote: 'Include PPN 11%',
+  defaultPayment: 'TRANSFER', ppnNote: 'Include PPN 11%', regEditable: true,
 };
 export async function getSubForm(): Promise<SubFormCfg> {
   const d = (await getSetting<any>('subform')) ?? {};
   const out: any = { ...SUBFORM_DEFAULTS };
-  for (const k of Object.keys(SUBFORM_DEFAULTS) as (keyof SubFormCfg)[]) if (typeof d[k] === 'string' && d[k].trim()) out[k] = d[k].trim();
+  for (const k of Object.keys(SUBFORM_DEFAULTS) as (keyof SubFormCfg)[]) if (k !== 'regEditable' && typeof d[k] === 'string' && d[k].trim()) out[k] = d[k].trim();
   out.regSeqStart = Number.isInteger(Number(d.regSeqStart)) && Number(d.regSeqStart) >= 1 ? Number(d.regSeqStart) : 1;
   if (!['CASH', 'TRANSFER', 'DEBIT'].includes(out.defaultPayment)) out.defaultPayment = 'TRANSFER';
+  out.regEditable = d.regEditable === undefined ? true : d.regEditable === true;
   return out as SubFormCfg;
 }
 /** Awalan nomor registrasi: awalan + 3 digit tahun (2026 → 026, 2027 → 027). */

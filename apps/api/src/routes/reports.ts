@@ -59,7 +59,7 @@ const REPORTS: Report[] = [
     key: 'pelanggan-area', group: 'Pelanggan', title: 'Pelanggan per area & status', timed: false, description: 'Sebaran pelanggan (tidak diarsipkan) per area dengan rincian status layanan.',
     columns: [{ key: 'area', label: 'Area' }, { key: 'total', label: 'Total', align: R }, { key: 'aktif', label: 'Aktif', align: R }, { key: 'isolir', label: 'Diisolir', align: R }, { key: 'pasang', label: 'Dalam pemasangan', align: R }, { key: 'berhenti', label: 'Berhenti', align: R }],
     run: () => q`SELECT COALESCE(a.name, '(tanpa area)') AS area, COUNT(*) AS total,
-      COUNT(*) FILTER (WHERE c.status = 'ACTIVE') AS aktif, COUNT(*) FILTER (WHERE c.status = 'SUSPENDED') AS isolir,
+      COUNT(*) FILTER (WHERE c.status IN ('ACTIVE','NEED_CHECK')) AS aktif, COUNT(*) FILTER (WHERE c.status = 'SUSPENDED') AS isolir,
       COUNT(*) FILTER (WHERE c.status IN ('PROSPECT','INSTALLING')) AS pasang, COUNT(*) FILTER (WHERE c.status IN ('TERMINATING','TERMINATED')) AS berhenti
       FROM "Customer" c LEFT JOIN "Area" a ON a.id = c."areaId" WHERE c."archivedAt" IS NULL GROUP BY a.name ORDER BY total DESC`,
   },

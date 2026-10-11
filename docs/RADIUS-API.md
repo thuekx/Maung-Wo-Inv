@@ -86,9 +86,9 @@ MSRadius kini mengirim **status layanan** dan **area** per pelanggan. Maung meny
 
 | `status` MSRadius | Arti | Kolom "Status layanan" | Status Maung (bila tidak ada WO berjalan) |
 |---|---|---|---|
-| Waiting | Pelanggan baru → memicu Form Berlangganan | Waiting | Prospect (tidak menurunkan pelanggan yang sudah aktif) |
+| Waiting | Pelanggan baru → memicu Form Berlangganan | Waiting | Prospect |
 | Online | Layanan aktif & internet berjalan | Online | Active |
-| Offline (tampil "Need Check") | Masalah internet sisi pelanggan (mungkin dimatikan/terputus) | Offline | Active |
+| Offline | Masalah internet sisi pelanggan (mungkin dimatikan/terputus) | Offline | **Need Check** (kembali Active saat Online) |
 | Isolir | Suspend | Isolir | Suspended |
 | Disable | Terminate | Disable | Terminated |
 

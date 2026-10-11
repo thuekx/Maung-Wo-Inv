@@ -40,6 +40,7 @@ enum CustomerStatus {
   PROSPECT
   INSTALLING
   ACTIVE
+  NEED_CHECK // layanan Offline di MSRadius — perlu dicek
   SUSPENDED
   TERMINATING
   TERMINATED

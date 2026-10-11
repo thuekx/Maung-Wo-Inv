@@ -516,7 +516,7 @@ const trouble: Workflow = {
   description: 'Tiket gangguan: diagnosa remote NOC → (jika fisik) perbaikan FOC → verifikasi NOC → konfirmasi MKT.',
   createRoles: ['MKT', 'NOC'],
   createFields: [
-    { name: 'customerId', label: 'Pelanggan', type: 'customer', required: true, customerStatus: ['ACTIVE'] },
+    { name: 'customerId', label: 'Pelanggan', type: 'customer', required: true, customerStatus: ['ACTIVE', 'NEED_CHECK'] },
     { name: 'source', label: 'Sumber', type: 'select', options: ['Komplain pelanggan', 'Alarm monitoring'], required: true },
     { name: 'severity', label: 'Prioritas', type: 'select', options: ['Low', 'Medium', 'High', 'Critical'], required: true },
     { name: 'description', label: 'Keluhan / gejala', type: 'textarea', required: true },
@@ -525,7 +525,7 @@ const trouble: Workflow = {
   async create(tx, input) {
     const i = z.object({ customerId: z.string().min(1), source: z.string(), severity: z.string(), description: z.string().min(3) }).parse(input);
     const c = await tx.customer.findUnique({ where: { id: i.customerId } });
-    if (!c || !['ACTIVE', 'SUSPENDED'].includes(c.status)) throw new AppError(400, 'Pelanggan tidak aktif');
+    if (!c || !['ACTIVE', 'NEED_CHECK', 'SUSPENDED'].includes(c.status)) throw new AppError(400, 'Pelanggan tidak aktif');
     return { title: `Gangguan – ${c.name}`, customerId: c.id, data: { source: i.source, severity: i.severity, description: i.description } };
   },
   statuses: {
@@ -617,7 +617,7 @@ const trouble: Workflow = {
 
 /* ───────────────────────── 6. SUSPEND / UNSUSPEND ───────────────────────── */
 
-const customerPick = (st: ('ACTIVE' | 'SUSPENDED')[]): Field => ({ name: 'customerId', label: 'Pelanggan', type: 'customer', required: true, customerStatus: st });
+const customerPick = (st: ('ACTIVE' | 'NEED_CHECK' | 'SUSPENDED')[]): Field => ({ name: 'customerId', label: 'Pelanggan', type: 'customer', required: true, customerStatus: st });
 
 const suspend: Workflow = {
   type: 'SUSPEND',
@@ -625,7 +625,7 @@ const suspend: Workflow = {
   label: 'Suspend / Isolir',
   description: 'Otomatis dari billing (telat bayar) atau manual MKT (cuti) → NOC isolir profil jaringan.',
   createRoles: ['MKT', 'FIN'],
-  createFields: [customerPick(['ACTIVE']), { name: 'reason', label: 'Alasan', type: 'select', required: true, options: ['Tunggakan pembayaran', 'Cuti berlangganan', 'Lainnya'] }, note()],
+  createFields: [customerPick(['ACTIVE', 'NEED_CHECK']), { name: 'reason', label: 'Alasan', type: 'select', required: true, options: ['Tunggakan pembayaran', 'Cuti berlangganan', 'Lainnya'] }, note()],
   initial: 'NOC_ISOLATE',
   uniqueOpenPerCustomer: true,
   async create(tx, input) {
@@ -703,13 +703,13 @@ const terminate: Workflow = {
   label: 'Terminate & Penarikan Aset',
   description: 'Pengajuan MKT/FIN → NOC hapus konfigurasi → FOC dismantle & scan SN → GA QC → FIN tutup akun.',
   createRoles: ['MKT', 'FIN'],
-  createFields: [customerPick(['ACTIVE', 'SUSPENDED']), { name: 'reason', label: 'Alasan', type: 'select', required: true, options: ['Berhenti berlangganan', 'Bad debt (tunggakan kronis)', 'Pindah lokasi', 'Lainnya'] }, note()],
+  createFields: [customerPick(['ACTIVE', 'NEED_CHECK', 'SUSPENDED']), { name: 'reason', label: 'Alasan', type: 'select', required: true, options: ['Berhenti berlangganan', 'Bad debt (tunggakan kronis)', 'Pindah lokasi', 'Lainnya'] }, note()],
   initial: 'NOC_DEACTIVATE',
   uniqueOpenPerCustomer: true,
   async create(tx, input) {
     const i = z.object({ customerId: z.string().min(1), reason: z.string().min(1), note: optNote, ref: optNote }).parse(input);
     const c = await tx.customer.findUnique({ where: { id: i.customerId } });
-    if (!c || !['ACTIVE', 'SUSPENDED'].includes(c.status)) throw new AppError(400, 'Pelanggan tidak bisa di-terminate pada status ini');
+    if (!c || !['ACTIVE', 'NEED_CHECK', 'SUSPENDED'].includes(c.status)) throw new AppError(400, 'Pelanggan tidak bisa di-terminate pada status ini');
     await tx.customer.update({ where: { id: c.id }, data: { status: 'TERMINATING' } });
     return { title: `Terminate – ${c.name}`, customerId: c.id, data: { reason: i.reason, note: i.note, ref: i.ref, prevStatus: c.status } };
   },

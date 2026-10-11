@@ -23,7 +23,7 @@ masterRoutes.use(authenticate);
 const nul = (v: unknown) => (v === '' ? null : v); // '' → null (undefined tetap undefined)
 const optStr = z.preprocess(nul, z.string().trim().nullable().optional());
 const optNum = (min: number, max: number) => z.preprocess((v) => (v === '' || v === null || v === undefined ? null : v), z.coerce.number().min(min).max(max).nullable().optional());
-const CUST_STATUS = ['PROSPECT', 'INSTALLING', 'ACTIVE', 'SUSPENDED', 'TERMINATING', 'TERMINATED'] as const;
+const CUST_STATUS = ['PROSPECT', 'INSTALLING', 'ACTIVE', 'NEED_CHECK', 'SUSPENDED', 'TERMINATING', 'TERMINATED'] as const;
 
 /* ═════════════ Pelanggan: input manual ═════════════ */
 const customerBody = z.object({

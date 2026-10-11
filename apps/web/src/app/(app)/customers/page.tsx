@@ -6,10 +6,10 @@ import { API, api, ApiError, download, fmtDate, getToken, useFetch } from '@/lib
 import { Column, DataTable } from '@/components/DataTable';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm, Field } from '@/components/DynamicForm';
-import { Badge, custTone, ErrorMsg, Modal, PageHeader, RADIUS_STATUS, RadiusStatusBadge, Table } from '@/components/ui';
+import { Badge, custLabel, custTone, ErrorMsg, Modal, PageHeader, RADIUS_STATUS, RadiusStatusBadge, Table } from '@/components/ui';
 import { Select } from '@/components/Select';
 
-export const CUSTOMER_STATUS = ['ACTIVE', 'SUSPENDED', 'TERMINATED', 'PROSPECT', 'INSTALLING', 'TERMINATING'];
+export const CUSTOMER_STATUS = ['ACTIVE', 'NEED_CHECK', 'SUSPENDED', 'TERMINATED', 'PROSPECT', 'INSTALLING', 'TERMINATING'];
 
 export const NETWORK_FIELDS = ['status', 'odp', 'port', 'vlan', 'ip', 'publicIp'];
 
@@ -103,7 +103,7 @@ export default function Customers() {
     { key: 'ip', header: 'IP', sort: 'ip', className: 'font-mono text-xs', render: (c) => c.ip ?? '-' },
     { key: 'source', header: 'Sumber', className: 'text-xs', render: (c) => (c.source === 'RADIUS' ? <Badge tone="blue">MSRadius</Badge> : <Badge tone="slate">Manual</Badge>) },
     { key: 'radiusStatus', header: 'Status layanan', sort: 'radiusStatus', render: (c) => <RadiusStatusBadge s={c.radiusStatus} /> },
-    { key: 'status', header: 'Status', sort: 'status', render: (c) => <Badge tone={custTone(c.status)}>{c.status}</Badge> },
+    { key: 'status', header: 'Status', sort: 'status', render: (c) => <Badge tone={custTone(c.status)}>{custLabel(c.status)}</Badge> },
     ...(arch ? [{ key: 'act', header: '', render: (c: any) => <button className="btn-ghost !px-2.5 !py-1 !text-xs !text-brand-700" onClick={() => restore(c)}>Pulihkan</button> }] : []),
   ];
   const exportQs = new URLSearchParams({ ...(status ? { status } : {}) }).toString();
@@ -121,7 +121,7 @@ export default function Customers() {
       <DataTable<any> path="/customers" columns={cols} params={{ status, packageName: pkg, radiusStatus: rstat || undefined, archived: arch ? '1' : undefined }} defaultSort="createdAt" refreshKey={rk}
         searchPlaceholder="Cari nama / kode / telepon / IP…" empty="Belum ada pelanggan — tambah manual atau impor dari Excel"
         filters={<>
-          <Select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{CUSTOMER_STATUS.map((s) => <option key={s}>{s}</option>)}</Select>
+          <Select className="input w-44" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{CUSTOMER_STATUS.map((s) => <option key={s} value={s}>{custLabel(s)}</option>)}</Select>
           <Select className="input w-44" value={rstat} onChange={(e) => setRstat(e.target.value)} aria-label="Status layanan"><option value="">Semua status layanan</option>{Object.entries(RADIUS_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</Select>
           <Select className="input w-52" value={pkg} onChange={(e) => setPkg(e.target.value)} aria-label="Paket"><option value="">Semua paket</option>{pkgs?.map((p) => <option key={p.id}>{p.name}</option>)}</Select>
           {role === 'ADMIN' && <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={arch} onChange={(e) => setArch(e.target.checked)} /> Tampilkan arsip</label>}

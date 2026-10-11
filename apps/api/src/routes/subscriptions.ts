@@ -26,6 +26,7 @@ subscriptionRoutes.put('/admin/settings/subform', requireRole('ADMIN'), async (r
     regSeqStart: z.coerce.number().int('Harus bilangan bulat').min(1, 'Minimal 1').max(999999),
     city: t(40), managerName: t(80), bankName: t(80), accName: t(80),
     accNo: z.string().trim().min(3).max(30).regex(/^[0-9 -]+$/, 'Hanya angka'),
+    regEditable: z.boolean().default(true),
     footer: z.string().trim().min(1).max(300), defaultPayment: z.enum(['CASH', 'TRANSFER', 'DEBIT']), ppnNote: t(60),
   }).parse(req.body);
   await putSetting('subform', { ...SUBFORM_DEFAULTS, ...b }, req.user!.id);
@@ -83,7 +84,7 @@ subscriptionRoutes.post('/subscriptions', canWrite, async (req, res) => {
   const { formDate: _fd, ...rest } = b;
   const row = await transact(async (fx) => {
     // Nomor: kosong → otomatis; bila diisi sama dengan nomor berikutnya → pakai urutan; bila diisi lain → dicatat sesuai isian (tetap harus unik)
-    const suffix = z.preprocess(nul, z.string().trim().regex(/^[0-9]{1,6}$/, 'Hanya angka (maks. 6 digit)').nullable().optional()).parse(req.body?.regSuffix);
+    const suffix = !cfg.regEditable ? null : z.preprocess(nul, z.string().trim().regex(/^[0-9]{1,6}$/, 'Hanya angka (maks. 6 digit)').nullable().optional()).parse(req.body?.regSuffix);
     let regNo: string;
     if (suffix) {
       const want = `${cfg.regPrefix}${regYear3(date)}${suffix.padStart(4, '0')}`;
@@ -91,6 +92,11 @@ subscriptionRoutes.post('/subscriptions', canWrite, async (req, res) => {
       else {
         if (await fx.tx.subscription.findUnique({ where: { regNo: want } })) throw fieldError('regSuffix', `Nomor ${want} sudah dipakai formulir lain`, 409);
         regNo = want;
+        // nomor manual menggeser urutan otomatis: nomor otomatis berikutnya = (yang tertinggi) + 1
+        const key = `SUBREG-${date.getFullYear()}`, num = Number(suffix);
+        const c = await fx.tx.counter.findUnique({ where: { key } });
+        if (!c) await fx.tx.counter.create({ data: { key, value: num } });
+        else if (c.value < num) await fx.tx.counter.update({ where: { key }, data: { value: num } });
       }
     } else regNo = await issueRegNo(fx.tx, date);
     const r = await fx.tx.subscription.create({ data: { ...rest, regNo, formDate: date, payment: b.payment ?? cfg.defaultPayment, managerName: b.managerName === undefined ? cfg.managerName : b.managerName, marketingName: b.marketingName === undefined ? req.user!.name : b.marketingName, createdById: req.user!.id } as any });
