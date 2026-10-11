@@ -37,7 +37,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const path = usePathname();
   const brand = useBranding();
-  const { data: launcher } = useFetch<{ apps: unknown[] }>(user ? '/launcher' : null);
+  const { data: launcher } = useFetch<{ apps: unknown[]; home: { backLabel: string; alwaysShow: boolean } }>(user ? '/launcher' : null);
+  const showHome = !!launcher && (launcher.apps.length > 1 || launcher.home.alwaysShow); // tautan kembali ke beranda pilihan aplikasi
+  const homeLabel = launcher?.home.backLabel ?? 'Menu Utama';
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -79,7 +81,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="mx-auto hidden min-w-0 flex-1 justify-center px-4 md:flex"><SearchBox /></div>
         <div className="ml-auto flex items-center gap-1 md:ml-0">
-          {(launcher?.apps.length ?? 0) > 1 && <Tip label="Beranda Maung (pilih aplikasi)" align="right"><Link href="/apps" className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-200 hover:bg-white/10" aria-label="Beranda Maung"><Icon name="layers" /></Link></Tip>}
+          {showHome && <Link href="/apps" className="flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm text-slate-200 hover:bg-white/10" aria-label={homeLabel}><Icon name="layers" /><span className="hidden md:inline">{homeLabel}</span></Link>}
           <span className="hidden sm:block"><ThemeToggle /></span>
           <NotificationBell />
           <div ref={menuRef} className="relative">
@@ -118,6 +120,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="truncate text-[11px] text-accent-700">{roleText(user)}</div>
           </div>
         </div>
+        {showHome && (
+          <Link href="/apps" title={collapsed ? homeLabel : undefined} className={`menu-item mb-4 !bg-accent-500/10 font-semibold !text-accent-700 ${collapsed ? 'lg:justify-center lg:px-0' : ''}`}>
+            <Icon name="layers" />
+            <span className={collapsed ? 'lg:hidden' : ''}>{homeLabel}</span>
+          </Link>
+        )}
         {GROUPS.map((g) => {
           const items = g.items.filter((i) => canSee(i, user));
           if (!items.length) return null;

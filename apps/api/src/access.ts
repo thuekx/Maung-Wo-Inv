@@ -29,7 +29,7 @@ export const FEATURES: Feature[] = [
 export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
 /** Aplikasi lain yang didaftarkan di beranda (Admin → Pengaturan → Aplikasi). Tiap aplikasi menjadi fitur `app.<id>` di matriks Hak Akses. */
-export interface LauncherApp { id: string; name: string; description: string; icon: string; path: string; enabled: boolean }
+export interface LauncherApp { id: string; name: string; description: string; icon: string; iconUrl?: string | null; path: string; enabled: boolean }
 export async function getLauncherApps(): Promise<LauncherApp[]> {
   const v = await getSetting<{ apps?: LauncherApp[] }>('launcher');
   return Array.isArray(v?.apps) ? v!.apps! : [];

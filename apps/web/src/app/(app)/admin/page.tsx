@@ -1,6 +1,7 @@
 'use client';
 import { Fragment, useEffect, useState } from 'react';
 import { APP_ICONS, APP_ICON_ALIAS, AppIcon } from '@/components/appIcons';
+import { AppTileIcon } from '@/components/AppTileIcon';
 import { Icon } from '@/components/icons';
 import { API, api, doDelete, download, fileUrl, imgUrl, fmtDate, getToken, ROLE_LABEL, SUBROLE_LABEL, useFetch } from '@/lib/api';
 import { confirmDialog, toast } from '@/lib/dialog';
@@ -718,25 +719,41 @@ function DataCard() {
   );
 }
 
-/** Pemilih ikon dengan pratinjau: kisi ikon (Lucide, ISC) per kelompok + pratinjau ubin seperti di beranda. */
-function IconPicker({ value, onChange, name, description }: { value: string; onChange: (v: string) => void; name: string; description: string }) {
+/** Pemilih ikon dengan pratinjau: kisi ikon bawaan (Lucide, ISC) per kelompok, atau unggah ikon sendiri (PNG/JPEG/WebP → PNG 192 px). */
+function IconPicker({ value, iconUrl, onChange, name, description }: { value: string; iconUrl?: string | null; onChange: (v: { icon?: string; iconUrl?: string | null }) => void; name: string; description: string }) {
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState({ busy: false, err: '' });
   const cur = APP_ICON_ALIAS[value] ?? value;
   const groups = [...new Set(APP_ICONS.map((i) => i.group))];
+  async function upload(f: File | undefined) {
+    if (!f) return;
+    setUp({ busy: true, err: '' });
+    try {
+      const fd = new FormData(); fd.append('file', f);
+      const r = await fetch(`${API}/api/admin/launcher/icon`, { method: 'POST', headers: { authorization: `Bearer ${getToken()}` }, body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `Gagal (${r.status})`);
+      onChange({ iconUrl: j.url }); setUp({ busy: false, err: '' });
+    } catch (e) { setUp({ busy: false, err: (e as Error).message }); }
+  }
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-3">
         <span className="label !mb-0">Ikon</span>
         <button type="button" className="btn-ghost !px-3 !py-2" onClick={() => setOpen(!open)} aria-expanded={open}>
-          <span className="flex items-center gap-2"><AppIcon name={cur} size={22} /><span className="text-sm">{APP_ICONS.find((i) => i.key === cur)?.label ?? 'Pilih ikon'}</span><Icon name="chevronDown" size={14} /></span>
+          <span className="flex items-center gap-2"><AppTileIcon icon={cur} iconUrl={iconUrl} size={22} /><span className="text-sm">{iconUrl ? 'Ikon sendiri' : APP_ICONS.find((i) => i.key === cur)?.label ?? 'Pilih ikon'}</span><Icon name="chevronDown" size={14} /></span>
         </button>
+        <label className="btn-ghost cursor-pointer !px-3 !py-2 text-sm">{up.busy ? 'Mengunggah…' : '⬆ Unggah ikon sendiri'}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={up.busy} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} /></label>
+        {iconUrl && <button type="button" className="text-sm text-red-600 underline" onClick={() => onChange({ iconUrl: null })}>Hapus ikon sendiri</button>}
         {/* pratinjau ubin seperti di beranda */}
         <div className="card flex w-56 flex-col items-start p-3">
-          <span className="mb-2 grid h-11 w-11 place-items-center rounded-xl bg-accent-500/15 text-accent-600"><AppIcon name={cur} size={24} /></span>
+          <span className="mb-2 grid h-11 w-11 place-items-center rounded-xl bg-accent-500/15 text-accent-600"><AppTileIcon icon={cur} iconUrl={iconUrl} size={24} /></span>
           <span className="text-sm font-semibold text-slate-800">{name || 'Nama aplikasi'}</span>
           {description && <span className="mt-0.5 text-xs text-slate-500">{description}</span>}
         </div>
       </div>
+      {up.err && <p className="text-sm text-red-600" role="alert">{up.err}</p>}
+      <p className="text-[11px] text-slate-400">Ikon sendiri: PNG/JPEG/WebP maks. 2 MB, disarankan persegi dengan latar transparan (otomatis dijadikan 192×192 px). SVG tidak diterima demi keamanan.</p>
       {open && (
         <div className="space-y-3 rounded-lg border p-3">
           {groups.map((g) => (
@@ -744,57 +761,82 @@ function IconPicker({ value, onChange, name, description }: { value: string; onC
               <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{g}</div>
               <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
                 {APP_ICONS.filter((i) => i.group === g).map((i) => (
-                  <button type="button" key={i.key} title={i.label} aria-label={i.label} aria-pressed={cur === i.key} onClick={() => { onChange(i.key); setOpen(false); }}
-                    className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] leading-tight transition hover:bg-slate-50 dark:hover:bg-slate-800 ${cur === i.key ? 'border-accent-500 bg-accent-500/10 text-accent-600' : 'border-slate-200 text-slate-600'}`}>
+                  <button type="button" key={i.key} title={i.label} aria-label={i.label} aria-pressed={!iconUrl && cur === i.key} onClick={() => { onChange({ icon: i.key, iconUrl: null }); setOpen(false); }}
+                    className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] leading-tight transition hover:bg-slate-50 dark:hover:bg-slate-800 ${!iconUrl && cur === i.key ? 'border-accent-500 bg-accent-500/10 text-accent-600' : 'border-slate-200 text-slate-600'}`}>
                     <AppIcon name={i.key} size={24} /><span className="line-clamp-2 text-center">{i.label}</span>
                   </button>
                 ))}
               </div>
             </div>
           ))}
-          <p className="text-[11px] text-slate-400">Ikon: Lucide (lisensi ISC, bebas dipakai komersial). Tambah ikon lain: scripts/gen-app-icons.py.</p>
+          <p className="text-[11px] text-slate-400">Ikon bawaan: Lucide (lisensi ISC, bebas dipakai komersial). Tambah ikon bawaan lain: scripts/gen-app-icons.py.</p>
         </div>
       )}
     </div>
   );
 }
 
-/** Aplikasi (beranda satu pintu): daftar aplikasi lain di jalur domain yang sama. Siapa yang melihat ikonnya diatur di Hak Akses. */
+/** Aplikasi (beranda satu pintu): teks beranda, ubin WO, dan aplikasi lain di jalur domain yang sama. Siapa yang melihat ikonnya diatur di Hak Akses. */
 function AppsCard() {
   const { data, reload } = useFetch<any>('/admin/launcher');
   const [apps, setApps] = useState<any[] | null>(null);
+  const [home, setHome] = useState<any>(null);
+  const [wo, setWo] = useState<any>(null);
   const [err, setErr] = useState('');
   const a = useAction();
-  useEffect(() => { if (data) setApps(data.apps); }, [data]);
-  if (!data || !apps) return <p className="text-slate-500">Memuat…</p>;
-  const upd = (i: number, k: string, v: unknown) => setApps((p) => p!.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
-  const dirty = JSON.stringify(apps) !== JSON.stringify(data.apps);
+  useEffect(() => { if (data) { setApps(data.apps); setHome(data.home); setWo(data.wo); } }, [data]);
+  if (!data || !apps || !home || !wo) return <p className="text-slate-500">Memuat…</p>;
+  const upd = (i: number, patch: Record<string, unknown>) => setApps((p) => p!.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const dirty = JSON.stringify({ apps, home, wo }) !== JSON.stringify({ apps: data.apps, home: data.home, wo: data.wo });
   return (
-    <div className="card space-y-3">
-      <h2 className="font-semibold">Aplikasi di beranda (satu pintu)</h2>
-      <p className="text-sm text-slate-500">Setelah login, pengguna melihat beranda berisi ikon aplikasi. <b>Work Order &amp; Inventori</b> selalu ada. Aplikasi lain berjalan di jalur domain yang sama (mis. <code>/crm</code>) dan memakai login yang sama. Setelah menyimpan, atur siapa yang melihat ikonnya di <b>Hak Akses</b> (kelompok "Aplikasi"). Aplikasi itu tetap wajib memeriksa token dan perannya sendiri.</p>
-      {apps.length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Belum ada aplikasi lain.</p>}
-      {apps.map((x, i) => (
-        <div key={i} className="space-y-2 rounded-lg border p-3">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <label className="text-sm"><span className="label">ID</span><input className="input font-mono" value={x.id} onChange={(e) => upd(i, 'id', e.target.value.toLowerCase())} placeholder="crm" /></label>
-            <label className="text-sm"><span className="label">Nama</span><input className="input" value={x.name} onChange={(e) => upd(i, 'name', e.target.value)} placeholder="CRM Sales & Marketing" /></label>
-            <label className="text-sm"><span className="label">Jalur</span><input className="input font-mono" value={x.path} onChange={(e) => upd(i, 'path', e.target.value.toLowerCase())} placeholder="/crm" /></label>
-
-          </div>
-          <label className="block text-sm"><span className="label">Keterangan singkat</span><input className="input" value={x.description} onChange={(e) => upd(i, 'description', e.target.value)} placeholder="Aktivitas lapangan sales & marketing" /></label>
-          <IconPicker value={x.icon} onChange={(v) => upd(i, 'icon', v)} name={x.name} description={x.description} />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={x.enabled} onChange={(e) => upd(i, 'enabled', e.target.checked)} /> Tampil di beranda</label>
-            <button className="btn-ghost !border-red-300 !text-red-600" onClick={() => setApps((p) => p!.filter((_, j) => j !== i))}>Hapus</button>
-          </div>
-          <p className="text-xs text-slate-500">Di server: berkas <code>proxy/apps/{x.id || 'nama'}.caddy</code> berisi <code>handle {x.path || '/jalur'}/* {'{'} reverse_proxy {x.id || 'nama'}-web:3000 {'}'}</code> (lihat docs/SUPER-APPS.md).</p>
+    <div className="space-y-4">
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Beranda (menu utama)</h2>
+        <p className="text-sm text-slate-500">Setelah login, pengguna melihat beranda berisi ikon aplikasi. Dari dalam aplikasi, pengguna kembali lewat tombol <b>{home.backLabel || 'Menu Utama'}</b> (header dan menu samping). Pada teks, <code>{'{nama}'}</code> = nama lengkap dan <code>{'{nama_depan}'}</code> = kata pertama.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm sm:col-span-2"><span className="label">Judul beranda</span><input className="input" value={home.title} maxLength={80} onChange={(e) => setHome({ ...home, title: e.target.value })} /></label>
+          <label className="text-sm sm:col-span-2"><span className="label">Kalimat di bawah judul</span><input className="input" value={home.subtitle} maxLength={200} onChange={(e) => setHome({ ...home, subtitle: e.target.value })} /></label>
+          <label className="text-sm"><span className="label">Nama tombol kembali</span><input className="input" value={home.backLabel} maxLength={24} onChange={(e) => setHome({ ...home, backLabel: e.target.value })} /></label>
+          <label className="flex items-start gap-2 text-sm sm:mt-6"><input type="checkbox" className="mt-1" checked={home.alwaysShow} onChange={(e) => setHome({ ...home, alwaysShow: e.target.checked })} /><span>Selalu tampilkan beranda &amp; tombol kembali walau baru ada satu aplikasi</span></label>
         </div>
-      ))}
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="text-sm font-semibold">Ubin "Work Order &amp; Inventori"</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-sm"><span className="label">Nama</span><input className="input" value={wo.name} maxLength={40} onChange={(e) => setWo({ ...wo, name: e.target.value })} /></label>
+            <label className="text-sm"><span className="label">Keterangan singkat</span><input className="input" value={wo.description} maxLength={120} onChange={(e) => setWo({ ...wo, description: e.target.value })} /></label>
+          </div>
+          <IconPicker value={wo.icon} iconUrl={wo.iconUrl} onChange={(v) => setWo({ ...wo, ...v })} name={wo.name} description={wo.description} />
+        </div>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Aplikasi lain di beranda</h2>
+        <p className="text-sm text-slate-500">Aplikasi lain berjalan di jalur domain yang sama (mis. <code>/crm</code>) dan memakai login yang sama. Setelah menyimpan, atur siapa yang melihat ikonnya di <b>Hak Akses</b> (kelompok "Aplikasi"). Aplikasi itu tetap wajib memeriksa token dan perannya sendiri.</p>
+        {apps.length === 0 && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500">Belum ada aplikasi lain.</p>}
+        {apps.map((x, i) => (
+          <div key={i} className="space-y-2 rounded-lg border p-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <label className="text-sm"><span className="label">ID</span><input className="input font-mono" value={x.id} onChange={(e) => upd(i, { id: e.target.value.toLowerCase() })} placeholder="crm" /></label>
+              <label className="text-sm"><span className="label">Nama</span><input className="input" value={x.name} onChange={(e) => upd(i, { name: e.target.value })} placeholder="CRM Sales & Marketing" /></label>
+              <label className="text-sm"><span className="label">Jalur</span><input className="input font-mono" value={x.path} onChange={(e) => upd(i, { path: e.target.value.toLowerCase() })} placeholder="/crm" /></label>
+            </div>
+            <label className="block text-sm"><span className="label">Keterangan singkat</span><input className="input" value={x.description} onChange={(e) => upd(i, { description: e.target.value })} placeholder="Aktivitas lapangan sales & marketing" /></label>
+            <IconPicker value={x.icon} iconUrl={x.iconUrl} onChange={(v) => upd(i, v)} name={x.name} description={x.description} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={x.enabled} onChange={(e) => upd(i, { enabled: e.target.checked })} /> Tampil di beranda</label>
+              <button className="btn-ghost !border-red-300 !text-red-600" onClick={() => setApps((p) => p!.filter((_, j) => j !== i))}>Hapus</button>
+            </div>
+            <p className="text-xs text-slate-500">Di server: berkas <code>proxy/apps/{x.id || 'nama'}.caddy</code> berisi <code>handle {x.path || '/jalur'}/* {'{'} reverse_proxy {x.id || 'nama'}-web:3000 {'}'}</code> (lihat docs/SUPER-APPS.md).</p>
+          </div>
+        ))}
+        <button className="btn-ghost" onClick={() => setApps((p) => [...p!, { id: '', name: '', description: '', icon: 'users', iconUrl: null, path: '/', enabled: false }])}>+ Tambah aplikasi</button>
+      </div>
+
       <ErrorMsg>{err}</ErrorMsg>
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-ghost" onClick={() => setApps((p) => [...p!, { id: '', name: '', description: '', icon: 'users', path: '/', enabled: false }])}>+ Tambah aplikasi</button>
-        <button className="btn" disabled={a.busy || !dirty} onClick={() => { setErr(''); a.run(async () => { try { await api('/admin/launcher', { method: 'PUT', body: { apps } }); reload(); } catch (e) { setErr((e as any).fields ? Object.values((e as any).fields).join(' · ') : (e as Error).message); throw e; } }, 'Daftar aplikasi disimpan.'); }}>Simpan</button>
+        <button className="btn" disabled={a.busy || !dirty} onClick={() => { setErr(''); a.run(async () => { try { await api('/admin/launcher', { method: 'PUT', body: { apps, home, wo } }); reload(); } catch (e) { setErr((e as any).fields ? Object.values((e as any).fields).join(' · ') : (e as Error).message); throw e; } }, 'Beranda disimpan.'); }}>Simpan</button>
+        <button className="btn-ghost" disabled={a.busy} onClick={() => { setHome(data.defaults.home); setWo({ ...data.defaults.wo }); }}>Kembalikan teks & ubin WO ke bawaan</button>
+        {dirty && <span className="text-xs text-amber-600">Ada perubahan belum disimpan</span>}
       </div>
       <Msg m={a.msg} />
     </div>

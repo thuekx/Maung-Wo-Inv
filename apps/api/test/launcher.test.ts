@@ -64,12 +64,53 @@ test('launcher API', { skip: process.env.DATABASE_URL ? false : 'DATABASE_URL ti
     assert.deepEqual((await get(mktStaff)).apps.map((a: any) => a.id), ['wo']);
     assert.deepEqual((await get(noc)).apps.map((a: any) => a.id), ['wo']);
     const crmApp = (await get(mkt)).apps[1];
-    assert.deepEqual(Object.keys(crmApp).sort(), ['description', 'icon', 'id', 'name', 'path']);
+    assert.deepEqual(Object.keys(crmApp).sort(), ['description', 'icon', 'iconUrl', 'id', 'name', 'path']);
   });
 
   await t.test('aplikasi dinonaktifkan tidak tampil (bahkan untuk Admin)', async () => {
     assert.equal((await put({ apps: [{ ...crm, enabled: false }] })).status, 200);
     assert.deepEqual((await get(admin)).apps.map((a: any) => a.id), ['wo']);
     assert.deepEqual((await get(mkt)).apps.map((a: any) => a.id), ['wo']);
+  });
+
+  await t.test('teks beranda & ubin WO dapat diubah Admin dan sampai ke /launcher (bawaan bila belum diatur)', async () => {
+    const def = await get(mkt);
+    assert.equal(def.home.title, 'Selamat datang, {nama_depan}'); assert.equal(def.home.backLabel, 'Menu Utama'); assert.equal(def.home.alwaysShow, false);
+    assert.equal(def.apps[0].name, 'Work Order & Inventori'); assert.equal(def.apps[0].path, '/');
+    const body = { apps: [{ ...crm, enabled: true }], home: { title: 'Halo {nama}', subtitle: '', backLabel: 'Beranda', alwaysShow: true }, wo: { name: 'WO Utama', description: 'Tiket & stok', icon: 'wrench', iconUrl: null } };
+    assert.equal((await put(body)).status, 200);
+    const g = await get(mkt);
+    assert.equal(g.home.title, 'Halo {nama}'); assert.equal(g.home.backLabel, 'Beranda'); assert.equal(g.home.alwaysShow, true);
+    assert.deepEqual([g.apps[0].name, g.apps[0].icon, g.apps[0].description], ['WO Utama', 'wrench', 'Tiket & stok']);
+    assert.equal((await put({ ...body, home: { ...body.home, title: '' } })).status, 400);
+    assert.equal((await put({ ...body, wo: { ...body.wo, icon: 'tidak-ada' } })).status, 400);
+    assert.equal((await put({ ...body, wo: { ...body.wo, iconUrl: 'https://evil.example/x.png' } })).status, 400, 'iconUrl harus berkas unggahan sendiri');
+    assert.equal((await put({ ...body, wo: { ...body.wo, iconUrl: '/uploads/../../etc/passwd' } })).status, 400);
+  });
+
+  await t.test('ikon sendiri: PNG/WebP/JPEG dinormalkan 192px PNG; SVG & non-gambar ditolak; hanya Admin', async () => {
+    const sharp = (await import('sharp')).default;
+    const png = await sharp({ create: { width: 40, height: 20, channels: 4, background: { r: 200, g: 30, b: 30, alpha: 1 } } }).png().toBuffer();
+    const send = (buf: Buffer, type: string, name: string, u: any = admin) => {
+      const fd = new FormData(); fd.append('file', new Blob([new Uint8Array(buf)], { type }), name);
+      return fetch(`${base}/admin/launcher/icon`, { method: 'POST', headers: { authorization: `Bearer ${signToken(u)}` }, body: fd });
+    };
+    assert.equal((await send(png, 'image/png', 'a.png', mkt)).status, 403);
+    assert.equal((await send(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'), 'image/svg+xml', 'a.svg')).status, 400);
+    assert.equal((await send(Buffer.from('bukan gambar'), 'image/png', 'rusak.png')).status, 400, 'PNG rusak');
+    const ok = await send(png, 'image/png', 'ikon.png');
+    assert.equal(ok.status, 201);
+    const { url } = (await ok.json()) as { url: string };
+    assert.match(url, /^\/uploads\/app-icon-[a-z0-9-]+\.png$/);
+    const { config } = await import('../src/config');
+    const file = (await import('node:path')).join(config.uploadDir, url.replace('/uploads/', ''));
+    const meta = await sharp(file).metadata();
+    assert.deepEqual([meta.width, meta.height, meta.format], [192, 192, 'png']);
+    // dipakai di WO & aplikasi lain
+    const body = { apps: [{ ...crm, iconUrl: url }], home: { title: 'T', subtitle: '', backLabel: 'Menu Utama', alwaysShow: false }, wo: { name: 'WO', description: '', icon: 'clipboard-check', iconUrl: url } };
+    assert.equal((await put(body)).status, 200);
+    const g = await get(admin);
+    assert.equal(g.apps[0].iconUrl, url); assert.equal(g.apps[1].iconUrl, url);
+    (await import('node:fs')).unlinkSync(file);
   });
 });
