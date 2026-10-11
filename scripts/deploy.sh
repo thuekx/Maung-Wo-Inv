@@ -73,7 +73,10 @@ else
 fi
 
 echo "==> Build & start (selama beberapa menit aplikasi bisa sementara menampilkan error 502/500 — normal saat container diganti; tunggu skrip selesai)"
-docker compose "${FILES[@]}" up -d --build
+if ! docker compose "${FILES[@]}" up -d --build; then
+  echo; echo "!! Gagal memulai. Log migrasi database (penyebab paling umum):"; docker compose "${FILES[@]}" logs --tail 40 migrate 2>&1 || true
+  echo "!! Kirim keluaran di atas untuk dianalisa. Data tidak berubah oleh migrasi yang gagal."; exit 1
+fi
 echo "==> Menunggu API siap"
 # Gate: lanjut hanya bila healthcheck container api (fetch /health via Node) berstatus healthy.
 API_OK=0
