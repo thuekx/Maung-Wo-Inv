@@ -1,0 +1,40 @@
+# Garage bersama (S3) untuk semua aplikasi Maung — stack TERSENDIRI (siklus hidup & volume terpisah dari WO/CRM).
+# Dipasang/dikelola lewat scripts/garage-platform.sh (jangan `docker compose up` manual saat adopsi volume CRM).
+# Jaringan: hanya `maung_storage` (eksternal). Tidak ada port host. API admin Garage tidak diaktifkan.
+# Konfigurasi sensitif di platform/garage/.env (dibuat skrip, izin 600, tidak di-commit): GARAGE_RPC_SECRET, GARAGE_META_VOLUME, GARAGE_DATA_VOLUME.
+name: maung-garage
+
+services:
+  garage:
+    image: dxflrs/garage:v1.0.1
+    container_name: maung-garage
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?isi GARAGE_RPC_SECRET (dibuat scripts/garage-platform.sh)}
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - meta:/var/lib/garage/meta
+      - data:/var/lib/garage/data
+    networks:
+      storage:
+        aliases: [maung-garage]
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+
+networks:
+  storage:
+    name: maung_storage
+    external: true # dibuat scripts/garage-platform.sh
+
+volumes:
+  # Eksternal agar `docker compose down -v` tidak pernah menghapus data. Skrip membuat bila belum ada, atau mengadopsi volume CRM yang sudah ada.
+  meta:
+    name: ${GARAGE_META_VOLUME:-maung-garage_meta}
+    external: true
+  data:
+    name: ${GARAGE_DATA_VOLUME:-maung-garage_data}
+    external: true

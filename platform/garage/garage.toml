@@ -1,0 +1,14 @@
+# Garage satu-node untuk semua aplikasi Maung. Rahasia RPC dibaca dari env GARAGE_RPC_SECRET.
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+# Snapshot metadata berkala (Garage menyimpan 2 terakhir di <metadata_dir>/snapshots) — dasar backup yang konsisten.
+metadata_auto_snapshot_interval = "6h"
+replication_factor = 1
+
+rpc_bind_addr = "0.0.0.0:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "0.0.0.0:3900"
+# Tanpa [admin] → API admin Garage nonaktif. Tanpa root_domain → akses path-style (https://host/bucket/objek).

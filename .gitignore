@@ -10,3 +10,6 @@ apps/web/AGENTS.md
 # Berkas jalur/situs aplikasi lain di VM (dipasang scripts/app-route.sh; bukan bagian kode)
 proxy/apps/*.caddy
 proxy/sites/*.caddy
+
+# Garage bersama: rahasia RPC & nama volume (dibuat scripts/garage-platform.sh)
+platform/garage/.env
