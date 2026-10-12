@@ -63,6 +63,12 @@ case "$1" in
     esac; exit 0;;
   exec)
     if [[ "$a" == *"node -e"* ]]; then echo "HTTP 403"; exit 0; fi
+    if [[ "$a" == "exec maung-crm-garage-1 /garage "* ]]; then
+      case "${a#exec maung-crm-garage-1 /garage }" in
+        status) echo "${OLD_NODE_ID:-0123456789abcdef}  maung-apps  127.0.0.1:3901  [dc1]";;
+        "layout show") echo "==== CURRENT CLUSTER LAYOUT ===="; echo "${OLD_NODE_ID:-0123456789abcdef}  dc1  10 GB";;
+      esac; exit 0
+    fi
     sub="${a#exec maung-garage /garage }"
     echo "garage $sub" >> "$L"
     case "$sub" in
@@ -96,7 +102,7 @@ EOF
 chmod +x "$SIM/bin/"*
 export SIMLOG="$SIM/log" SIMSTATE="$S"
 reset() { rm -rf "$S"; mkdir -p "$S"; touch "$S/crm_running"; : > "$SIMLOG"; rm -f "$R/platform/garage/.env"; rm -rf "$H/maung-wo-logs" "$H/maung-garage-backups"; }
-run() { script="$1"; shift; ( cd /tmp && PATH="$SIM/bin:$PATH" HOME="$H" APP_DIR="$R" WAIT_N=2 POLL=0 bash "$R/scripts/$script" "$@" </dev/null 2>&1 ); }
+run() { script="$1"; shift; ( cd /tmp && PATH="$SIM/bin:$PATH" HOME="$H" APP_DIR="$R" WAIT_N=2 POLL=0 LAYOUT_TRIES="${LAYOUT_TRIES:-2}" bash "$R/scripts/$script" "$@" </dev/null 2>&1 ); }
 res() { printf '%s\n' "$1" | sed -n 's/^'"$2"'=//p' | head -1; }
 ENVSUM="$(sha256sum "$R/.env" | cut -d' ' -f1)"
 
@@ -127,8 +133,17 @@ t "Garage CRM dinyalakan kembali" "$([ -f "$S/crm_running" ] && echo jalan)" jal
 t "Garage bersama dihentikan" "$([ -f "$S/platform_running" ] && echo jalan || echo berhenti)" berhenti
 t "alias dilepas" "$([ -f "$S/alias" ] && echo ada || echo tidak)" tidak
 
+echo "== A2b. ID node berbeda dari Garage CRM lama = rollback + pesan jelas"
+reset; O="$(OLD_NODE_ID=fedcba9876543210 run garage-platform.sh adopt-crm)"
+t "FAIL" "$(res "$O" status)" FAIL
+t "alasan: ID node berubah" "$(res "$O" reason)" "ID node berubah setelah adopsi"
+t "pesan ID berbeda dicetak" "$(printf '%s\n' "$O" | grep -c 'ID node BERBEDA')" 1
+t "rolled_back + Garage CRM hidup" "$(res "$O" rolled_back)/$([ -f "$S/crm_running" ] && echo jalan)" ya/jalan
+t "ID lama dicatat sebelum stop" "$(printf '%s\n' "$O" | grep -c 'Garage CRM lama: ID node fedcba9876543210')" 1
+
 echo "== A3. layout lama tidak terbaca = rollback"
-reset; O="$(NO_LAYOUT=1 run garage-platform.sh adopt-crm)"
+reset; O="$(NO_LAYOUT=1 LAYOUT_TRIES=2 run garage-platform.sh adopt-crm)"
+t "diagnosis layout dicetak" "$(printf '%s\n' "$O" | grep -c 'layout show baru')" 1
 t "FAIL + rolled_back" "$(res "$O" status)/$(res "$O" rolled_back)" FAIL/ya
 t "Garage CRM hidup lagi" "$([ -f "$S/crm_running" ] && echo jalan)" jalan
 

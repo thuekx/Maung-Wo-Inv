@@ -160,6 +160,13 @@ dc config >/dev/null 2>&1 && ok "docker compose config valid" || abort "docker c
 
 phase 5 "Hentikan Garage CRM (konsisten) lalu backup volume"
 if [ "$MODE" = adopt-crm ]; then
+  OLD_NODE=""; OLD_LAYOUT=""
+  if running "$CRM_GC"; then
+    OLD_NODE="$(docker exec "$CRM_GC" /garage status 2>/dev/null | awk '/^[0-9a-f]{16}/{print $1; exit}')"
+    OLD_LAYOUT="$(docker exec "$CRM_GC" /garage layout show 2>/dev/null | head -25)"
+    ok "Garage CRM lama: ID node ${OLD_NODE:-(tidak terbaca)}"
+    printf '%s\n' "$OLD_LAYOUT" | sed 's/^/      [layout lama] /' | head -12
+  fi
   if running "$CRM_GC"; then docker stop "$CRM_GC" >/dev/null 2>&1 && STOPPED_CRM="$CRM_GC" && ok "Garage CRM dihentikan ($CRM_GC) — foto CRM sementara tidak terlayani sampai langkah 7" || die "gagal menghentikan $CRM_GC"; else ok "Garage CRM sudah berhenti"; STOPPED_CRM="$CRM_GC"; fi
   BF="$BK_DIR/garage-adopt-$TS.tgz"
   if docker run --rm -v "$META_VOL":/m:ro -v "$DATA_VOL":/d:ro -v "$BK_DIR":/b alpine sh -c "tar czf /b/garage-adopt-$TS.tgz -C / m d && chown $(id -u):$(id -g) /b/garage-adopt-$TS.tgz && chmod 600 /b/garage-adopt-$TS.tgz" >/dev/null 2>&1 && [ -s "$BF" ]; then V_BACKUP="$BF ($(du -h "$BF" | cut -f1))"; ok "backup volume (konsisten, Garage berhenti): $V_BACKUP"; else die "backup volume gagal — tidak dilanjutkan (Garage CRM dinyalakan kembali)"; fi
@@ -176,7 +183,20 @@ V_NODE="$(G status 2>/dev/null | awk '/^[0-9a-f]{16}/{print $1; exit}')"; [ -n "
 if [ "$MODE" = up ]; then
   G layout show 2>/dev/null | grep -q "$V_NODE" || { G layout assign -z dc1 -c 10G "$V_NODE" >/dev/null 2>&1 && G layout apply --version 1 >/dev/null 2>&1 && ok "layout awal diterapkan" || die "layout awal gagal"; }
 else
-  G layout show 2>/dev/null | grep -q "$V_NODE" && ok "layout lama terbaca (node punya peran)" || die "layout lama tidak terbaca — volume tidak teradopsi dengan benar"
+  if [ -n "${OLD_NODE:-}" ] && [ "$OLD_NODE" != "$V_NODE" ]; then
+    bad "ID node BERBEDA: lama=$OLD_NODE baru=$V_NODE (node_key tidak teradopsi — volume meta yang terpasang bukan milik Garage CRM?)"
+    echo "  isi volume meta yang terpasang di Garage bersama:"; docker run --rm -v "$META_VOL":/m:ro alpine sh -c 'ls -la /m; ls -la /m/*/ 2>/dev/null | head -20' 2>&1 | sed 's/^/      /'
+    die "ID node berubah setelah adopsi"
+  fi
+  LAY_OK=0; for i in $(seq 1 "${LAYOUT_TRIES:-10}"); do G layout show 2>/dev/null | grep -q "$V_NODE" && { LAY_OK=1; break; }; sleep "${POLL:-3}"; done
+  if [ "$LAY_OK" = 1 ]; then ok "layout lama terbaca (node punya peran)"
+  else
+    bad "layout tidak memuat node $V_NODE — keluaran untuk diagnosis:"
+    echo "      [status baru]"; G status 2>&1 | head -12 | sed 's/^/      /'
+    echo "      [layout show baru]"; G layout show 2>&1 | head -25 | sed 's/^/      /'
+    echo "      [isi volume meta]"; docker run --rm -v "$META_VOL":/m:ro alpine sh -c 'ls -la /m; ls -la /m/*/ 2>/dev/null | head -20' 2>&1 | sed 's/^/      /'
+    die "layout lama tidak terbaca — volume tidak teradopsi dengan benar"
+  fi
   V_BUCKET="$(G bucket list 2>/dev/null | grep -c "$BUCKET")"; V_KEY="$(G key list 2>/dev/null | grep -c "$KEYNAME")"
   [ "$V_BUCKET" -ge 1 ] && ok "bucket $BUCKET ada (data utuh)" || die "bucket $BUCKET tidak ada setelah adopsi"
   [ "$V_KEY" -ge 1 ] && ok "kunci $KEYNAME ada (kredensial CRM tetap berlaku)" || die "kunci $KEYNAME tidak ada setelah adopsi"
