@@ -21,12 +21,12 @@ function Packages({ canManage }: { canManage: boolean }) {
       <p className="mb-3 text-sm text-slate-500">Daftar ini menjadi pilihan <b>Paket langganan</b> di WO Pasang Baru dan form pelanggan. Menonaktifkan paket menyembunyikannya dari pilihan baru tanpa mengubah pelanggan yang sudah memakainya; mengganti nama ikut memperbarui pelanggan.</p>
       {canManage && <button className="btn mb-3" onClick={() => setEdit({})}>+ Tambah paket</button>}
       <ErrorMsg>{error}</ErrorMsg>
-      <Table head={['Paket / jasa', 'Keterangan', 'Urutan', 'Pelanggan', 'Status', '']}>
+      <Table head={['Paket / jasa', 'Jenis', 'Keterangan', 'Urutan', 'Pelanggan', 'Status', '']}>
         {data?.map((p) => (
           <tr key={p.id}>
-            <td className="td font-medium">{p.name}</td><td className="td text-slate-500">{p.description ?? '-'}</td><td className="td">{p.sortOrder}</td><td className="td">{p.customers}</td>
-            <td className="td">{canManage ? <button onClick={async () => { await api(`/packages/${p.id}`, { method: 'PATCH', body: { active: !p.active } }); reload(); }}><Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
-            <td className="td whitespace-nowrap">{canManage && <><LinkBtn onClick={() => setEdit(p)}>Edit</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/packages/${p.id}`, `paket ${p.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
+            <td className="td font-medium">{p.name}</td><td className="td">{p.crmId ? <Badge tone="blue">{p.kind === 'PRODUCT' ? 'Produk (CRM)' : 'Jasa (CRM)'}</Badge> : <span className="text-slate-500">Internet</span>}</td><td className="td text-slate-500">{p.description ?? '-'}</td><td className="td">{p.sortOrder}</td><td className="td">{p.customers}</td>
+            <td className="td">{canManage && !p.crmId ? <button onClick={async () => { await api(`/packages/${p.id}`, { method: 'PATCH', body: { active: !p.active } }); reload(); }}><Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'Aktif' : 'Nonaktif'}</Badge></button> : <Badge tone={p.active ? 'green' : 'slate'}>{p.active ? 'Aktif' : 'Nonaktif'}</Badge>}</td>
+            <td className="td whitespace-nowrap">{canManage && !p.crmId && <><LinkBtn onClick={() => setEdit(p)}>Edit</LinkBtn><LinkBtn danger onClick={async () => { if (await doDelete(`/packages/${p.id}`, `paket ${p.name}`)) reload(); }}>Hapus</LinkBtn></>}</td>
           </tr>
         ))}
       </Table>

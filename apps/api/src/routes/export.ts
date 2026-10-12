@@ -99,11 +99,11 @@ const resources: Record<string, Resource> = {
     },
   },
   packages: {
-    description: 'Master paket (nama, kecepatan, harga jual, aktif, sumber). Tanpa harga modal/komisi.',
+    description: 'Master paket/katalog (nama, kind INTERNET|SERVICE|PRODUCT, satuan, kecepatan, harga jual, aktif, sumber). Tanpa harga modal/komisi.',
     sinceField: 'updatedAt',
     fetch: async (q) => prisma.package.findMany({
       ...page(q, 'updatedAt'),
-      select: { id: true, name: true, description: true, speed: true, priceSell: true, active: true, source: true, updatedAt: true },
+      select: { id: true, name: true, description: true, kind: true, unit: true, sku: true, crmId: true, speed: true, priceSell: true, active: true, source: true, updatedAt: true },
     }),
   },
   areas: {

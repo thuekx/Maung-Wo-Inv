@@ -28,7 +28,7 @@ Base URL: `https://<domain-aplikasi>` (mode SSL satu domain; web meneruskan `/ap
 | `GET /api/export/items` | Master barang: SKU, kategori, satuan, `tracked`, `minStock` | – |
 | `GET /api/export/warehouses` | Gudang (pusat/cabang/mobile) | – |
 | `GET /api/export/stock` | Stok kuantitas per gudang per barang (`qty`, `minStock`) | – |
-| `GET /api/export/packages` | Master paket: `id`, `name`, `description`, `speed`, `priceSell` (harga jual; tanpa harga modal/komisi), `active`, `source` (MANUAL/RADIUS/CRM), `updatedAt` | `updatedAt` |
+| `GET /api/export/packages` | Master paket: `id`, `name`, `description`, `speed`, `kind` (INTERNET/SERVICE/PRODUCT), `unit`, `sku`, `crmId`, `priceSell` (harga jual; tanpa harga modal/komisi), `active`, `source` (MANUAL/RADIUS/CRM), `updatedAt` | `updatedAt` |
 | `GET /api/export/areas` | Master area: `id`, `code` (id_area MSRadius), `name`, `active` | – |
 | `GET /api/export/assets` | Aset ber-SN: merk, tipe, status, lokasi, pelanggan, jadwal maintenance | `createdAt` |
 | `GET /api/export/movements` | Riwayat mutasi stok/aset | `createdAt` |
@@ -141,3 +141,13 @@ curl -X POST https://<domain-aplikasi>/api/integrations/billing/events \
 | `POST /api/stock/transfer` | GA/Admin | Transfer stok antar gudang tanpa WO |
 | `GET /api/customers/:id/changes` | MKT/NOC/FIN/GA/Admin | Riwayat perubahan data pelanggan (MSRadius) |
 | `/api/admin/data/*` | Admin asli | overview, backup, backups/:name/(download\|restore), backups/upload, purge, demo, uploads.tar.gz, uploads/restore |
+
+## Integrasi CRM → WO (tulis; Tahap 2a)
+
+Khusus aplikasi CRM. Header `x-api-key: $CRM_INTEGRATION_KEY` (kunci **terpisah** dari `EXPORT_API_KEY`; kosong di server = endpoint nonaktif, 503). Batas 60 permintaan/menit. Semua idempoten menurut `crmId`; setiap perubahan tercatat di jejak audit (sumber "CRM"). Tahap ini **belum** membuat pelanggan/WO (itu Tahap 2b, saat status WON).
+
+| Endpoint | Fungsi |
+|---|---|
+| `PUT /api/integrations/crm/catalog/:crmId` | Upsert katalog jasa/produk. Badan: `name`, `kind` (`SERVICE`\|`PRODUCT`), `unit`, `priceSell`, `active`, `description`, `sku` (PRODUCT; SKU di Master Barang). 201 baru / 200 perbarui. Nama sudah dipakai paket lain (MSRadius/manual/katalog lain) → 409, tidak pernah menimpa. Respons memuat `skuFound` bila `sku` dikirim. Katalog CRM tidak tampil di pilihan Paket langganan dan hanya-baca di Master Paket. |
+| `PUT /api/integrations/crm/quotations/:crmId` | Upsert penawaran: `number`, `rev`, `status` (`QUOTED`\|`WON`\|`LOST`), `validUntil`, `sentAt`, `decidedAt`, `lostReason`, `customer` {`code` (pelanggan existing; tak dikenal → 404), `name`, `phone`, `email`, `address`, `lat`, `lng`, `areaCode`, `picName`}, `marketingUserId` (**id pengguna WO** dari `/api/auth/me`; pencocokan pasti) + `marketingName`, `lines` [{`catalogCrmId`, `name`, `kind`, `qty`, `unit`, `unitPrice`, `note`, `sku`}], `total`, `taxNote`, `terms`. `rev` lebih rendah dari tersimpan → 200 `{stale:true}`; revisi/ status sama → `{duplicate:true}`; penawaran `WON` terkunci (409 bila ada revisi baru/ status lain). SKU baris (atau SKU katalog) dipetakan otomatis ke barang. Respons: `{ok, quotationId, status, woNumber, warnings:{marketingMatched, unknownCatalog[], skuNotFound[], areaNotFound}}`. |
+| `GET /api/integrations/crm/quotations/:crmId` | Baca status penawaran (`woNumber` terisi setelah Tahap 2b). |

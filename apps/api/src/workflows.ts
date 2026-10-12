@@ -283,7 +283,7 @@ const newInstall: Workflow = {
     if (area && !area.warehouseId) throw fieldError('areaId', `Area "${area.name}" belum dihubungkan ke gudang (Master Data → Area)`);
     const wh = await tx.warehouse.findFirst({ where: { id: area?.warehouseId ?? i.warehouseId!, kind: { not: 'MOBILE' }, active: true } });
     if (!wh) throw new AppError(400, 'Gudang tidak valid');
-    if (!(await tx.package.findFirst({ where: { name: i.packageName, active: true } }))) throw new AppError(400, `Paket "${i.packageName}" tidak ada di Master Paket / sudah nonaktif`);
+    if (!(await tx.package.findFirst({ where: { name: i.packageName, active: true, kind: 'INTERNET' } }))) throw new AppError(400, `Paket "${i.packageName}" tidak ada di Master Paket / sudah nonaktif`);
     if (i.customerId) {
       // Lanjutan dari Formulir Berlangganan otomatis (pelanggan Waiting di MSRadius): pakai pelanggan yang sudah ada
       const ex = await tx.customer.findUnique({ where: { id: i.customerId } });

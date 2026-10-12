@@ -456,6 +456,37 @@ model Package {
   speed       String?
   priceSell   Decimal? @db.Decimal(18, 2)
   updatedAt   DateTime @default(now()) @updatedAt
+  kind        String   @default("INTERNET") // INTERNET | SERVICE | PRODUCT (SERVICE/PRODUCT dari katalog CRM; tidak tampil di pilihan paket langganan)
+  unit        String?
+  crmId       String?  @unique // id katalog di aplikasi CRM
+  sku         String? // PRODUCT: SKU barang di Master Barang (pemetaan otomatis; dapat diubah reviewer)
+}
+
+// Penawaran dari aplikasi CRM (hanya status yang berarti bagi WO: QUOTED | WON | LOST)
+model CrmQuotation {
+  id              String    @id @default(cuid())
+  crmId           String    @unique
+  number          String
+  rev             Int
+  status          String // QUOTED | WON | LOST
+  validUntil      DateTime?
+  sentAt          DateTime?
+  decidedAt       DateTime?
+  lostReason      String?
+  customerCode    String? // kode pelanggan WO bila Lead untuk pelanggan existing; null = pelanggan baru
+  customer        Json // name, phone, email, address, lat, lng, areaCode, picName
+  marketingUserId String? // pengguna WO (id dari /auth/me) yang membuat penawaran di CRM
+  marketingName   String?
+  lines           Json // [{catalogCrmId,name,kind,qty,unit,unitPrice,note,sku,itemId}]
+  total           Decimal   @db.Decimal(18, 2)
+  taxNote         String?
+  terms           String?
+  woId            String? // WO SERVICE_ORDER yang dibuat saat WON (Tahap 2b)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+  @@index([updatedAt])
 }
 
 // Jejak audit: ubah/hapus/reset password/impor

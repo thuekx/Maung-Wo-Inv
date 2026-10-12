@@ -16,6 +16,7 @@ import { areaRoutes } from './routes/areas';
 import { subscriptionRoutes } from './routes/subscriptions';
 import { integrationRoutes } from './routes/integrations';
 import { exportRoutes } from './routes/export';
+import { crmRoutes } from './routes/crm';
 import { launcherRoutes } from './routes/launcher';
 import { adminRoutes } from './routes/admin';
 import { masterRoutes } from './routes/masters';
@@ -44,6 +45,7 @@ api.use(kancaWebhook); // tanpa JWT: webhook Kanca (tanda tangan HMAC)
 api.use(imgRoutes); // tanpa JWT: versi terkompresi gambar unggahan
 api.use(integrationRoutes); // tanpa JWT (pakai API key / secret)
 api.use(exportRoutes); // tanpa JWT (pakai EXPORT_API_KEY)
+api.use(crmRoutes); // tanpa JWT (pakai CRM_INTEGRATION_KEY)
 api.use(publicRoutes); // tanpa JWT: info aset dari label QR (hanya data aman)
 api.use(core);
 api.use(teamRoutes);

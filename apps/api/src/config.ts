@@ -25,6 +25,8 @@ export const config = {
   },
   // API baca-saja /api/export/* (kosong = nonaktif)
   exportApiKey: env.EXPORT_API_KEY || '',
+  // Pintu masuk tulis dari aplikasi CRM (katalog & penawaran); kunci terpisah dari EXPORT_API_KEY (kosong = nonaktif)
+  crmIntegrationKey: env.CRM_INTEGRATION_KEY || '',
   billing: {
     apiKey: env.BILLING_API_KEY ?? 'dev-billing-key', // dipakai billing saat memanggil WO App
     webhookUrl: env.BILLING_WEBHOOK_URL, // tujuan event keluar dari WO App

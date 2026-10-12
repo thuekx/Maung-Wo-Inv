@@ -360,9 +360,10 @@ masterRoutes.post('/customers/import', requireFeature('customers.edit'), upload.
 
 /* ═════════════ Master paket / jasa ═════════════ */
 masterRoutes.get('/packages', async (req, res) => {
+  // tanpa ?all=1 (pilihan paket langganan): hanya paket internet aktif; katalog jasa/produk CRM tidak ikut
   const all = req.query.all === '1';
   const [rows, used] = await Promise.all([
-    prisma.package.findMany({ where: all ? {} : { active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    prisma.package.findMany({ where: all ? {} : { active: true, kind: 'INTERNET' },  orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     prisma.customer.groupBy({ by: ['packageName'], _count: true }),
   ]);
   res.json(rows.map((p) => ({ ...p, customers: used.find((u) => u.packageName === p.name)?._count ?? 0 })));
@@ -383,6 +384,7 @@ masterRoutes.patch('/packages/:id', pkgRoles, async (req, res) => {
   const b = pkgBody.partial().parse(req.body);
   const cur = await prisma.package.findUnique({ where: { id } });
   if (!cur) throw new AppError(404, 'Paket tidak ditemukan');
+  if (cur.crmId) throw new AppError(409, 'Katalog bersumber CRM dikelola dari aplikasi CRM (hanya-baca di sini)');
   const ch = changes(cur, b);
   res.json(await auditedUpdate(whoOf(req), 'paket', id, cur.name, ch, async (fx) => {
     const p = await fx.tx.package.update({ where: { id }, data: b });
@@ -394,6 +396,7 @@ masterRoutes.delete('/packages/:id', pkgRoles, async (req, res) => {
   const id = String(req.params.id);
   const p = await prisma.package.findUnique({ where: { id } });
   if (!p) throw new AppError(404, 'Paket tidak ditemukan');
+  if (p.crmId) throw new AppError(409, 'Katalog bersumber CRM dikelola dari aplikasi CRM — nonaktifkan di CRM');
   const n = await prisma.customer.count({ where: { packageName: p.name } });
   if (n) throw new AppError(409, `Paket dipakai ${n} pelanggan — nonaktifkan saja (tidak muncul di pilihan baru)`);
   await auditedDelete(whoOf(req), 'paket', id, p.name, p as any, (fx) => fx.tx.package.delete({ where: { id } }));
