@@ -6,3 +6,7 @@ uploads
 *.log
 dump.rdb
 apps/web/AGENTS.md
+
+# Berkas jalur/situs aplikasi lain di VM (dipasang scripts/app-route.sh; bukan bagian kode)
+proxy/apps/*.caddy
+proxy/sites/*.caddy
