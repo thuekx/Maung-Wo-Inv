@@ -40,6 +40,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
       <PageHeader title={`${wo.number} · ${wo.title}`} sub={`${TYPE_LABEL[wo.type]} · dibuat ${fmtDate(wo.createdAt)} oleh ${createdBy.name}${wo.source === 'BILLING' ? ' (otomatis dari Billing)' : ''}`}>
         <Badge tone={statusTone(wo.final, wo.status)}>{wo.statusLabel}</Badge>
         {wo.type === 'NEW_INSTALL' && data?.activation && ['MKT', 'ADMIN'].includes(user?.role ?? '') && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
+        {wo.type === 'SERVICE_ORDER' && wo.docs?.soBa && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
         {wo.docs?.reportNumber && <Link href={`/doc/report/${wo.id}`} className="btn-ghost">📄 {wo.docs.reportKind === 'INS' ? 'Laporan Instalasi (PDF)' : 'Laporan Troubleshooting (PDF)'}</Link>}
         {!wo.closedAt && (user?.role === 'ADMIN' || wo.createdById === user?.id) && <button className="btn-ghost" onClick={() => setEditWo(true)}>✎ Edit</button>}
         {user?.role === 'ADMIN' && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/work-orders/${wo.id}`, `WO ${wo.number}`)) router.replace('/work-orders'); }}>🗑 Hapus</button>}
@@ -47,7 +48,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
 
       {wf && (
         <ol className="flex flex-wrap gap-1 text-xs">
-          {Object.entries<any>(wf.statuses).filter(([k]) => !['REJECTED'].includes(k)).map(([k, s]) => (
+          {Object.entries<any>(wf.statuses).filter(([k]) => !['REJECTED', 'SO_SOURCE_CHECK', 'SO_CANCELLED'].includes(k)).map(([k, s]) => (
             <li key={k} className={`rounded-full px-2 py-1 ${k === wo.status ? 'bg-brand-900 font-semibold text-white dark:bg-accent-500 dark:text-brand-900' : 'bg-slate-100 text-slate-500'}`}>{s.label}</li>
           ))}
         </ol>
@@ -96,6 +97,27 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
             </div>
           )}
 
+          {wo.type === 'SERVICE_ORDER' && Array.isArray(data?.lines) && (
+            <div className="card">
+              <h2 className="mb-1 font-semibold">Penawaran CRM {data.crmQuotation?.number && <span className="text-sm font-normal text-slate-500">· {data.crmQuotation.number} rev {data.crmQuotation.rev}</span>}</h2>
+              <p className="mb-2 text-sm text-slate-500">
+                Marketing: <b>{data.marketing?.name ?? '-'}</b>{data.mktOwner ? <> · pemegang order: <b>{data.mktOwner.name}</b></> : ' · antrean Marketing (belum ada pemegang)'}
+                {data.prNumber && <> · PR proyek: <b>{data.prNumber}</b></>}{data.stockRequest && <> · Permintaan barang: <b>{data.stockRequest}</b></>}
+              </p>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="border-b text-left text-slate-500"><th className="py-1 pr-3">Item</th><th className="py-1 pr-3 text-right">Qty</th><th className="py-1 pr-3 text-right">Harga</th><th className="py-1">Sumber barang</th></tr></thead>
+                <tbody>{data.lines.map((l: any, i: number) => (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="py-1.5 pr-3">{l.name} <span className="text-xs text-slate-500">{l.kind === 'SERVICE' ? 'Jasa' : 'Produk'}{l.sku ? ` · SKU ${l.sku}` : ''}</span></td>
+                    <td className="py-1.5 pr-3 text-right">{l.qty} {l.unit ?? ''}</td>
+                    <td className="py-1.5 pr-3 text-right">Rp {Math.round(l.unitPrice).toLocaleString('id-ID')}</td>
+                    <td className="py-1.5"><Badge tone={l.source === 'STOCK' ? 'green' : l.source === 'PROJECT' ? 'amber' : 'slate'}>{l.source === 'STOCK' ? 'Pakai stok' : l.source === 'PROJECT' ? 'PR proyek' : 'Tanpa barang'}</Badge></td>
+                  </tr>))}</tbody>
+              </table></div>
+              <p className="mt-2 text-right text-sm font-semibold">Total Rp {Math.round(data.crmQuotation?.total ?? 0).toLocaleString('id-ID')} {data.crmQuotation?.taxNote && <span className="font-normal text-slate-500">({data.crmQuotation.taxNote})</span>}</p>
+            </div>
+          )}
+
           {wo.canProgress && (
             <div className="card">
               <h2 className="mb-1 font-semibold">Update progres lapangan</h2>
@@ -126,7 +148,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
 
           <div className="card">
             <h2 className="mb-2 font-semibold">Detail & laporan</h2>
-            <RefsContext.Provider value={refs ?? {}}><DataView value={data} /></RefsContext.Provider>
+            <RefsContext.Provider value={refs ?? {}}><DataView value={wo.type === 'SERVICE_ORDER' ? Object.fromEntries(Object.entries(data ?? {}).filter(([k]) => !['lines', 'crmQuotation', 'marketing', 'mktOwner', 'newCustomer', 'confirmedBy', 'stockOk', 'prReceived'].includes(k))) : data} /></RefsContext.Provider>
           </div>
 
           <div className="card">

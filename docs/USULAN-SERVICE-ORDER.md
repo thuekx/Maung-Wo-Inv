@@ -1,6 +1,6 @@
 # Usulan Tahap 2 — Order Jasa/Produk (SERVICE_ORDER) dari Quotation CRM
 
-Status: **USULAN, belum ada kode — menunggu persetujuan pemilik.**
+Status: **DIKERJAKAN (Tahap 2a + 2b di kode; belum di VM saat ditulis).** Rincian akhir alur di bawah; status SO_STOCK_CHECK/SO_STOCK_PENDING/SO_PR_PENDING digabung menjadi `SO_SOURCE_CHECK` (otomatis) + `SO_SOURCING` (menunggu stok/barang proyek).
 Dasar: `docs/PERMINTAAN-PERUBAHAN-WO.md` (repo CRM) bagian B–D, keputusan pemilik 2026-10-12, dan mesin WO yang ada (`workflows.ts`: `newInstall`, `stockRequest`, `maintenance`; PR di `PurchaseRequest`).
 
 ## Keputusan pemilik yang menjadi dasar
@@ -85,3 +85,11 @@ Respons idempoten `quotations/:crmId` sudah memuat `woNumber`. Untuk status lanj
 
 ### Jejak marketing (aturan pemilik, berlaku di 2b)
 `marketingUserId` + `marketingName` dari penawaran disalin **apa adanya** ke: pelanggan CRM baru (`salesName` = snapshot nama; id di `data`/riwayat), WO `SERVICE_ORDER` (`data.crmQuotation.marketing = {id, name}`), dan PR proyek turunan (kolom/ catatan khusus, bukan `createdBy` — yang tetap pengguna sistem). Tidak pernah ditimpa nama pengguna WO saat ini; marketing nonaktif hanya mengubah pemegang WO (antrean MKT), bukan jejaknya.
+
+## Implementasi 2b (ringkas)
+- Status: `SO_NEW` (MKT: `claim`, `confirm`, `cancel_order`) → `SO_SOURCE_CHECK` (otomatis) ⇄ `SO_SOURCING` (GA: `recheck`, `pr_received`, `force_ready`) → `SO_SCHEDULING` → `SO_SCHEDULED` (`start` boleh mengambil barang) → `SO_IN_PROGRESS` (`submit_report`: foto GPS wajib, SN + kepemilikan "Dibeli pelanggan" → aset `SOLD_TO_CUSTOMER` atau "Milik perusahaan" → `INSTALLED`) → `SO_AWAITING_BA` (MKT `send_ba`) → `SO_DONE`; batal → `SO_CANCELLED`.
+- Dipicu saat `PUT quotation` berstatus WON (satu transaksi; WON lama tanpa order diproses ulang saat dikirim ulang). Pelanggan baru `source='CRM'` (aktif setelah BA) atau pelanggan existing (data internet tidak diubah).
+- Pemegang order = marketing pembuat; marketing lain ditolak (403), supervisor/manager MKT boleh mengambil alih; tanpa pemegang = antrean MKT (`claim`).
+- PR proyek: satu penawaran = satu PR draf (dibuat oleh pengguna yang mengonfirmasi; jejak marketing di kolom `crmMarketing*`).
+- Template BA/garansi: Admin → Pengaturan → "BA & Garansi Order Jasa" (`serviceorder` di tabel Setting). Cetak: `/doc/ba/:id` (varian jasa).
+- Tes: `test/service-order.test.ts` (alur penuh, stok kurang, existing, antrean, batal) + uji browser (form sumber barang, PR, BA, Admin).

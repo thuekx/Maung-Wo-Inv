@@ -11,7 +11,7 @@ import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/comp
 import { Select } from '@/components/Select';
 
 const CAT: Record<string, string> = { CONSUMABLE: 'Material Habis Pakai', NETWORK: 'Perangkat Jaringan', GA: 'Aset General (GA)' };
-const ST_TONE: Record<string, any> = { IN_STOCK: 'green', REFURBISHED: 'green', INSTALLED: 'blue', IN_USE: 'blue', RETURNED_PENDING_QC: 'amber', DAMAGED: 'red', SCRAP: 'red', QTY: 'slate' };
+const ST_TONE: Record<string, any> = { IN_STOCK: 'green', REFURBISHED: 'green', INSTALLED: 'blue', IN_USE: 'blue', SOLD_TO_CUSTOMER: 'violet', RETURNED_PENDING_QC: 'amber', DAMAGED: 'red', SCRAP: 'red', QTY: 'slate' };
 
 /* ───── Stok ───── */
 function StockTab() {
@@ -148,7 +148,7 @@ function AssetsTab({ canManage, initialQ = '' }: { canManage: boolean; initialQ?
         selectable selected={sel} onSelectedChange={setSel}
         filters={<>
           <Select className="input w-48" value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Kategori"><option value="">Semua kategori</option><option value="NETWORK">Perangkat Jaringan</option><option value="GA">Aset GA</option></Select>
-          <Select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['IN_STOCK', 'INSTALLED', 'IN_USE', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}</Select>
+          <Select className="input w-52" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{['IN_STOCK', 'INSTALLED', 'IN_USE', 'SOLD_TO_CUSTOMER', 'RETURNED_PENDING_QC', 'REFURBISHED', 'DAMAGED', 'SCRAP'].map((s) => <option key={s}>{s}</option>)}</Select>
         </>}
         selectionBar={({ total, q }) => (
           <div className="flex flex-wrap items-center gap-3 text-sm">

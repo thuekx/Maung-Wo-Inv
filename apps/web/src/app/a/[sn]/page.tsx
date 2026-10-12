@@ -40,7 +40,7 @@ export default function AssetInfo({ params }: { params: Promise<{ sn: string }> 
     ...(c.facebook ? [{ label: 'Facebook', icon: <Ico k="facebook" />, href: /^https?:/.test(c.facebook) ? c.facebook : `https://facebook.com/${c.facebook}` }] : []),
     ...(c.instagram ? [{ label: 'Instagram', icon: <Ico k="instagram" />, href: /^https?:/.test(c.instagram) ? c.instagram : `https://instagram.com/${c.instagram.replace(/^@/, '')}` }] : []),
   ];
-  const tone = !a ? '' : a.status === 'DAMAGED' || a.status === 'SCRAP' ? 'bg-red-100 text-red-800' : a.status === 'INSTALLED' || a.status === 'IN_USE' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800';
+  const tone = !a ? '' : a.status === 'DAMAGED' || a.status === 'SCRAP' ? 'bg-red-100 text-red-800' : a.status === 'INSTALLED' || a.status === 'IN_USE' || a.status === 'SOLD_TO_CUSTOMER' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800';
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-8">
       <div className="mb-4 text-center">

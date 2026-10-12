@@ -4,7 +4,7 @@ import { Effects } from './effects';
 
 export type FieldType =
   | 'text' | 'number' | 'textarea' | 'datetime' | 'select' | 'bool'
-  | 'technician' | 'technicians' | 'warehouse' | 'area' | 'customer' | 'package' | 'serials' | 'materials' | 'photos' | 'qc';
+  | 'technician' | 'technicians' | 'warehouse' | 'area' | 'customer' | 'package' | 'serials' | 'materials' | 'photos' | 'qc' | 'soLines';
 
 /** Metadata form — dikirim ke frontend agar form dirender dinamis. Validasi sebenarnya ada di handler (zod). */
 export interface Field {

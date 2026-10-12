@@ -13,4 +13,6 @@ export async function aliasForArea(tx: Pick<Tx, 'area'>, areaId?: string | null)
 
 /** BA: BAA/ALIAS/20261009-0007 · Laporan instalasi: FOC/INS-ALIAS/… · Laporan troubleshooting/maintenance: FOC/TBS-ALIAS/… */
 export const baNumber = (alias: string, woNumber: string) => `BAA/${alias}/${woDigits(woNumber)}`;
+/** BA Order Jasa/Produk: BAJ/ALIAS/20261009-0007 */
+export const baJasaNumber = (alias: string, woNumber: string) => `BAJ/${alias}/${woDigits(woNumber)}`;
 export const reportNumber = (kind: 'INS' | 'TBS', alias: string, woNumber: string) => `FOC/${kind}-${alias}/${woDigits(woNumber)}`;

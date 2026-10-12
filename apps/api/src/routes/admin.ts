@@ -8,7 +8,7 @@ import nodemailer from 'nodemailer';
 import { AppError, fieldError, prisma } from '../db';
 import { requireRole } from '../auth';
 import { config } from '../config';
-import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, refreshWebUrl, webUrl, getSessionMinutes, WA_FONNTE_URL } from '../settings';
+import { encryptSecret, getAppName, getAssetInfo, getBranding, getSetting, getSmtp, getTelegram, getWhatsapp, putSetting, refreshWebUrl, webUrl, getSessionMinutes, WA_FONNTE_URL, getServiceOrderCfg, SERVICE_ORDER_DEFAULTS } from '../settings';
 import { DIVISIONS, SUBROLES, allFeatures, defaultTokens, effectiveMatrix, getOverrides, saveOverrides } from '../access';
 import { fromHeader, sendTelegram, sendWhatsApp, telegramApi, waNumber } from '../senders';
 
@@ -253,6 +253,16 @@ adminRoutes.put('/admin/settings/branding', async (req, res) => {
   const old = (await getSetting<any>('branding')) ?? {};
   await putSetting('branding', { ...old, ...b }, req.user!.id);
   res.json(await overview());
+});
+
+/** Template Berita Acara & garansi Order Jasa/Produk (SERVICE_ORDER); kosong = kembali ke bawaan. */
+adminRoutes.get('/admin/settings/service-order', async (_req, res) => res.json({ ...(await getServiceOrderCfg()), defaults: SERVICE_ORDER_DEFAULTS }));
+adminRoutes.put('/admin/settings/service-order', async (req, res) => {
+  const t = (max: number) => z.string().max(max).transform((v) => v.trim());
+  const b = z.object({ baTitle: t(120), baIntro: t(1500), warrantyText: t(2500), baFooter: t(600) }).partial().parse(req.body);
+  const old = (await getSetting<any>('serviceorder')) ?? {};
+  await putSetting('serviceorder', { ...old, ...b }, req.user!.id);
+  res.json({ ...(await getServiceOrderCfg()), defaults: SERVICE_ORDER_DEFAULTS });
 });
 
 /** Kembalikan semua teks & warna ke bawaan panduan brand (logo tidak dihapus). */

@@ -33,6 +33,7 @@ enum WoType {
   TERMINATE
   STOCK_REQUEST
   STOCK_RETURN // serah-terima sisa material teknisi → gudang
+  SERVICE_ORDER // order jasa/produk non-internet dari quotation CRM (WON)
   MAINTENANCE // maintenance / troubleshoot mandiri (bukan dari tiket), ditugaskan supervisor/manager FOC
 }
 
@@ -65,6 +66,7 @@ enum AssetStatus {
   IN_USE // aset GA yang sedang dipakai
   RETURNED_PENDING_QC
   REFURBISHED // siap pakai kembali
+  SOLD_TO_CUSTOMER // perangkat dibeli pelanggan (hak milik pelanggan, bukan aset perusahaan)
   DAMAGED
   SCRAP
 }
@@ -569,6 +571,9 @@ model PurchaseRequest {
   approvedAt         DateTime?
   approvalRef        String? // no. PR/persetujuan di sistem lain (Accurate)
   approvalNote       String?
+  crmMarketingUserId String? // jejak marketing dari penawaran CRM (snapshot apa adanya; PR proyek turunan SERVICE_ORDER)
+  crmMarketingName   String?
+  crmQuotationNo     String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

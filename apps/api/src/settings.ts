@@ -167,6 +167,21 @@ export async function getSubForm(): Promise<SubFormCfg> {
 /** Awalan nomor registrasi: awalan + 3 digit tahun (2026 → 026, 2027 → 027). */
 export const regYear3 = (d: Date) => String(d.getFullYear() % 1000).padStart(3, '0');
 
+/* ── Order Jasa/Produk (SERVICE_ORDER): template Berita Acara & garansi — dapat diubah Admin ── */
+export interface ServiceOrderCfg { baTitle: string; baIntro: string; warrantyText: string; baFooter: string }
+export const SERVICE_ORDER_DEFAULTS: ServiceOrderCfg = {
+  baTitle: 'Berita Acara Serah Terima Pekerjaan / Barang',
+  baIntro: 'Yth. {nama},\n\nPekerjaan/pengadaan sesuai penawaran {penawaran} telah selesai dilaksanakan dan diserahterimakan.',
+  warrantyText: 'Garansi barang mengikuti ketentuan pabrikan/distributor selama 12 (dua belas) bulan sejak tanggal serah terima, tidak berlaku untuk kerusakan akibat kelalaian pengguna, bencana alam, atau perubahan oleh pihak lain. Garansi jasa pemasangan 30 (tiga puluh) hari.',
+  baFooter: 'Dokumen ini sah sebagai bukti serah terima. Terima kasih atas kepercayaan Anda.',
+};
+export async function getServiceOrderCfg(): Promise<ServiceOrderCfg> {
+  const d = (await getSetting<any>('serviceorder')) ?? {};
+  const out: any = { ...SERVICE_ORDER_DEFAULTS };
+  for (const k of Object.keys(SERVICE_ORDER_DEFAULTS) as (keyof ServiceOrderCfg)[]) if (typeof d[k] === 'string' && d[k].trim()) out[k] = d[k].trim();
+  return out as ServiceOrderCfg;
+}
+
 /** Nama aplikasi untuk email/notifikasi (Admin → Tampilan & brand → Nama aplikasi). */
 export const getAppName = async () => (((await getSetting<any>('branding')) ?? {}).appName as string) || APP_NAME_DEFAULT;
 

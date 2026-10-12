@@ -4,6 +4,8 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { config } from '../config';
+import { transact } from '../effects';
+import { createWorkOrder, systemActor } from '../engine';
 
 /**
  * Pintu masuk tulis dari aplikasi CRM (Tahap 2a): katalog jasa/produk dan penawaran.
@@ -112,7 +114,10 @@ const quotationBody = z.object({
   terms: optStr(2000),
 });
 
-const view = (q: any) => ({ quotationId: q.id, crmId: q.crmId, number: q.number, rev: q.rev, status: q.status, woNumber: null as string | null });
+const view = async (q: any) => ({
+  quotationId: q.id, crmId: q.crmId, number: q.number, rev: q.rev, status: q.status,
+  woNumber: q.woId ? (await prisma.workOrder.findUnique({ where: { id: q.woId }, select: { number: true } }))?.number ?? null : null,
+});
 
 crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   const crmId = idParam(req);
@@ -125,9 +130,10 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
 
   // idempoten / urutan revisi
   if (cur) {
-    if (b.rev < cur.rev) return void res.json({ ok: true, stale: true, ...view(cur) });
+    if (b.rev < cur.rev) return void res.json({ ok: true, stale: true, ...(await view(cur)) });
     if (cur.status === 'WON' && (b.rev > cur.rev || b.status !== 'WON')) throw new AppError(409, `Penawaran ${cur.number} sudah WON dan terkunci — perubahan lingkup dibuat sebagai penawaran baru`);
-    if (b.rev === cur.rev && b.status === cur.status) return void res.json({ ok: true, duplicate: true, ...view(cur) });
+    // WON yang belum punya order (diterima sebelum Tahap 2b aktif) diproses ulang agar order terbentuk
+    if (b.rev === cur.rev && b.status === cur.status && !(cur.status === 'WON' && !cur.woId)) return void res.json({ ok: true, duplicate: true, ...(await view(cur)) });
     if (b.rev === cur.rev && cur.status === 'LOST') throw new AppError(409, `Penawaran ${cur.number} sudah LOST pada revisi ${cur.rev} — kirim revisi lebih tinggi untuk membukanya lagi`);
   }
 
@@ -163,16 +169,29 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
     marketingUserId: b.marketingUserId ?? null, marketingName: b.marketingName ?? null,
     lines: lines as any, total: b.total, taxNote: b.taxNote ?? null, terms: b.terms ?? null,
   };
-  const row = await prisma.$transaction(async (tx) => {
-    const r = cur ? await tx.crmQuotation.update({ where: { id: cur.id }, data }) : await tx.crmQuotation.create({ data: { ...data, crmId } });
+  const row = await transact(async (fx) => {
+    const tx = fx.tx;
+    let r = cur ? await tx.crmQuotation.update({ where: { id: cur.id }, data }) : await tx.crmQuotation.create({ data: { ...data, crmId } });
     await audit(tx, { action: cur ? 'UPDATE' : 'CREATE', entity: 'penawaran CRM', entityId: r.id, summary: `CRM ${cur ? 'memperbarui' : 'mengirim'} penawaran ${r.number} rev ${r.rev} (${r.status})`, before: cur ? { rev: cur.rev, status: cur.status } : undefined, after: { rev: r.rev, status: r.status, total: b.total } });
+    if (r.status === 'WON' && !r.woId) {
+      // WON → Pelanggan (baru / existing) + WO Order Jasa/Produk dibuat sistem; jejak marketing disalin apa adanya ke order
+      const wo = await createWorkOrder(fx, { type: 'SERVICE_ORDER', actor: await systemActor(tx), system: true, source: 'CRM', input: { quotationId: r.id } });
+      r = await tx.crmQuotation.update({ where: { id: r.id }, data: { woId: wo.id } });
+      await audit(tx, { action: 'CREATE', entity: 'WO', entityId: wo.id, summary: `Penawaran CRM ${r.number} WON → order ${wo.number}` });
+      await fx.notify({
+        ...(marketingMatched ? { userIds: [mkt!.id] } : { roles: ['MKT'] as any }),
+        woId: wo.id,
+        subject: `[${wo.number}] Order baru dari penawaran ${r.number}`,
+        body: `Penawaran ${r.number} (${(r.customer as any).name}) diterima pelanggan.\nKonfirmasi sumber barang (stok / PR proyek) di WO ${wo.number}.${marketingMatched ? '' : '\nPemasaran pembuat tidak aktif/ bukan MKT: order masuk antrean MKT.'}`,
+      });
+    }
     return r;
   });
-  res.status(cur ? 200 : 201).json({ ok: true, ...view(row), warnings });
+  res.status(cur ? 200 : 201).json({ ok: true, ...(await view(row)), warnings });
 });
 
 crmRoutes.get('/integrations/crm/quotations/:crmId', async (req, res) => {
   const q = await prisma.crmQuotation.findUnique({ where: { crmId: idParam(req) } });
   if (!q) throw new AppError(404, 'Penawaran tidak ditemukan');
-  res.json(view(q));
+  res.json(await view(q));
 });

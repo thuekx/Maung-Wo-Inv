@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { WoType } from './orm';
-import { AppError, fieldError } from './db';
+import { AppError, fieldError, type Tx } from './db';
 import { webUrl } from './settings';
 import { AVAILABLE, installAvailability, mobileWarehouse, moveAsset, moveStock, mustAsset, nextNumber, normSn, qcAssets } from './inventory';
-import { aliasForArea, baNumber } from './docnum';
+import { aliasForArea, baNumber, baJasaNumber } from './docnum';
+import { getServiceOrderCfg } from './settings';
 import { assertNetworkFree, internalIp, odpName, portName, publicIp, vlanId } from './network';
-import { inTeam, isLead, type ActionDef, type Ctx, type Field, type Workflow } from './wf-types';
+import { inTeam, isLead, type ActionDef, type Ctx, type Field, type Workflow, type WoFull } from './wf-types';
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -1133,6 +1134,371 @@ async function receiveReturn(ctx: Ctx, items: { itemId: string; qty: number }[],
   ctx.data.received = { items: [...(d.received?.items ?? []), ...items], serials: [...(d.received?.serials ?? []), ...serials], at: new Date() };
 }
 
+/* ───────────────────────── 9. ORDER JASA/PRODUK (SERVICE_ORDER, dari quotation CRM) ───────────────────────── */
+
+type SoSource = 'STOCK' | 'PROJECT' | 'NONE';
+interface SoLine { name: string; kind: 'SERVICE' | 'PRODUCT'; qty: number; unit?: string | null; unitPrice: number; note?: string | null; sku?: string | null; itemId?: string | null; source: SoSource }
+const soLinesOf = (d: any): SoLine[] => (d?.lines ?? []) as SoLine[];
+const rupiah = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`;
+
+/** Pemegang order = marketing pembuat penawaran; yang lain tidak boleh bertindak kecuali supervisor/manager MKT (atau Admin). Tanpa pemegang = antrean MKT. */
+function soAssertOwner(ctx: Ctx) {
+  const owner = (ctx.wo.data as any)?.mktOwner as { id: string; name: string } | null | undefined;
+  if (owner && owner.id !== ctx.actor.id && !isLead(ctx.actor)) throw new AppError(403, `Order ini dipegang ${owner.name}; supervisor/manager MKT dapat mengambil alih`);
+  return owner;
+}
+
+const soCancel: ActionDef = {
+  key: 'cancel_order',
+  label: 'Batalkan order',
+  roles: ['MKT'],
+  to: 'SO_CANCELLED',
+  danger: true,
+  fields: [note(true)],
+  run: async (ctx, input) => {
+    soAssertOwner(ctx);
+    const i = z.object({ note: z.string().trim().min(3, 'Isi alasan pembatalan').max(1000) }).parse(input);
+    const d = ctx.wo.data as any;
+    ctx.data.cancel = { reason: i.note, by: ctx.actor.name, at: new Date() };
+    await ctx.fx.notify({
+      roles: ['GA'],
+      woId: ctx.wo.id,
+      subject: `[${ctx.wo.number}] Order jasa dibatalkan`,
+      body: `${ctx.wo.title}\nAlasan: ${i.note}${d.pr ? `\nPR proyek ${d.prNumber ?? ''} tidak dibatalkan otomatis: barang yang sudah dipesan masuk stok gudang biasa.` : ''}${d.stockRequest ? `\nPermintaan barang ${d.stockRequest} tetap berjalan.` : ''}\n${link(ctx)}`,
+    });
+  },
+};
+
+/** PR proyek (satu penawaran = satu PR) berisi semua baris yang bersumber PROYEK; jejak marketing disalin apa adanya. */
+async function soCreatePr(ctx: Ctx, lines: SoLine[]) {
+  const d = ctx.wo.data as any;
+  const q = d.crmQuotation as { number: string };
+  const mk = (d.marketing ?? {}) as { id?: string; name?: string };
+  const docs = (await ctx.tx.setting.findUnique({ where: { key: 'docs' } }))?.value as any;
+  const pr = await ctx.tx.purchaseRequest.create({
+    data: {
+      subject: `Pengadaan proyek – ${q.number} (${cname(ctx)})`,
+      note: `Dari ${ctx.wo.number} / penawaran ${q.number}`,
+      woId: ctx.wo.id,
+      areaId: ctx.wo.customer?.areaId ?? null,
+      createdById: ctx.actor.id,
+      taxPct: docs?.taxPct ?? 11,
+      crmMarketingUserId: mk.id ?? null,
+      crmMarketingName: mk.name ?? null,
+      crmQuotationNo: q.number,
+      lines: { create: lines.map((l, k) => ({ sort: k, description: l.name, qty: Math.max(1, Math.ceil(l.qty)), unit: l.unit || 'Unit', itemId: l.itemId ?? null, note: l.note ?? null })) },
+    },
+  });
+  ctx.data.pr = pr.id;
+  ctx.data.prNumber = pr.number ?? `draf …${pr.id.slice(-6)}`; // nomor surat terbit saat PDF PR diterbitkan
+  await ctx.fx.notify({ roles: ['GA'], woId: ctx.wo.id, subject: `[${ctx.wo.number}] PR proyek draf dibuat`, body: `Penawaran ${q.number} – ${cname(ctx)}\n${lines.length} baris barang. Mohon proses PR (terbit → persetujuan → PO).\n${link(ctx)}` });
+}
+
+/** Isi BA Order Jasa/Produk (nomor, judul, badan) dari template Admin + data order; dipakai saat kirim dan pratinjau. */
+export async function soBaContent(tx: Tx, wo: WoFull) {
+  const c = wo.customer!;
+  const d = wo.data as any;
+  const cfg = await getServiceOrderCfg();
+  const number = baJasaNumber(await aliasForArea(tx, c.areaId), wo.number);
+  const qno = d.crmQuotation?.number ?? '-';
+  const sub = (t: string) => t.replace(/\{nama\}/g, c.name).replace(/\{penawaran\}/g, qno).replace(/\{nomor_ba\}/g, number).replace(/\{alamat\}/g, c.address).replace(/\{tanggal\}/g, new Date().toLocaleDateString('id-ID'));
+  const daftar = soLinesOf(d).map((l, k) => `${k + 1}. ${l.name} — ${l.qty} ${l.unit ?? ''}`.trimEnd()).join('\n');
+  const sns = (d.report?.serials ?? []) as string[];
+  const body = `${sub(cfg.baIntro)}\n\nNo. BA: ${number}\nPenawaran: ${qno}\nAlamat: ${c.address}\n\nRincian:\n${daftar}${sns.length ? `\n\nNo. seri perangkat: ${sns.join(', ')}${d.report?.ownership ? ` (${d.report.ownership})` : ''}` : ''}\n\nGaransi:\n${sub(cfg.warrantyText)}\n\n${sub(cfg.baFooter)}`;
+  return { number, title: cfg.baTitle, body, sections: { intro: sub(cfg.baIntro), warranty: sub(cfg.warrantyText), footer: sub(cfg.baFooter) } };
+}
+
+const serviceOrder: Workflow = {
+  type: 'SERVICE_ORDER',
+  prefix: 'WO-SO',
+  label: 'Order Jasa/Produk',
+  description: 'Dari penawaran CRM yang diterima (WON): Marketing memastikan sumber barang → GA menyiapkan (stok / PR proyek) → FOC menjadwalkan & mengerjakan → BA jasa dikirim Marketing.',
+  createRoles: [], // dibuat sistem saat penawaran CRM berstatus WON
+  createFields: [],
+  initial: 'SO_NEW',
+  async create(tx, input) {
+    const { quotationId } = z.object({ quotationId: z.string().min(1) }).parse(input);
+    const q = await tx.crmQuotation.findUnique({ where: { id: quotationId } });
+    if (!q) throw new AppError(404, 'Penawaran CRM tidak ditemukan');
+    if (q.status !== 'WON') throw new AppError(409, `Penawaran ${q.number} belum WON`);
+    if (q.woId) throw new AppError(409, `Penawaran ${q.number} sudah punya order (${q.woId})`);
+    const cu = q.customer as any;
+    const rawLines = q.lines as any[];
+    let customerId: string;
+    let newCustomer = false;
+    if (q.customerCode) {
+      const ex = await tx.customer.findUnique({ where: { code: q.customerCode } });
+      if (!ex) throw new AppError(404, `Pelanggan ${q.customerCode} tidak ditemukan`);
+      customerId = ex.id; // pelanggan existing: data internet/MSRadius TIDAK diubah
+    } else {
+      const area = cu.areaCode ? await tx.area.findFirst({ where: { code: cu.areaCode, active: true } }) : null;
+      const made = await tx.customer.create({
+        data: { code: await nextNumber(tx, 'CUST'), name: cu.name, phone: cu.phone, email: cu.email ?? null, address: cu.address, lat: cu.lat ?? null, lng: cu.lng ?? null, packageName: rawLines[0]?.name ?? 'Order jasa', source: 'CRM', salesName: q.marketingName, areaId: area?.id ?? null, warehouseId: area?.warehouseId ?? null },
+      });
+      customerId = made.id;
+      newCustomer = true;
+    }
+    const owner = q.marketingUserId ? await tx.user.findFirst({ where: { id: q.marketingUserId, role: 'MKT', active: true }, select: { id: true, name: true } }) : null;
+    const lines: SoLine[] = rawLines.map((l) => ({ name: l.name, kind: l.kind, qty: l.qty, unit: l.unit ?? null, unitPrice: l.unitPrice, note: l.note ?? null, sku: l.sku ?? null, itemId: l.itemId ?? null, source: l.kind === 'SERVICE' ? 'NONE' : l.itemId ? 'STOCK' : 'PROJECT' }));
+    return {
+      title: `Order jasa – ${cu.name} (${q.number})`,
+      customerId,
+      note: `Dari penawaran ${q.number} rev ${q.rev}`,
+      data: {
+        crmQuotation: { id: q.id, crmId: q.crmId, number: q.number, rev: q.rev, total: Number(q.total), taxNote: q.taxNote, terms: q.terms },
+        marketing: { id: q.marketingUserId, name: q.marketingName }, // jejak permanen, apa adanya dari CRM
+        mktOwner: owner, // null = antrean MKT
+        newCustomer,
+        lines,
+      },
+    };
+  },
+  statuses: {
+    SO_NEW: {
+      label: 'Order Baru – Konfirmasi Sumber Barang (MKT)',
+      owner: 'MKT',
+      actions: [
+        {
+          key: 'claim',
+          label: 'Ambil order ini',
+          roles: ['MKT'],
+          to: 'SO_NEW',
+          fields: [],
+          run: async (ctx) => {
+            soAssertOwner(ctx);
+            ctx.data.mktOwner = { id: ctx.actor.id, name: ctx.actor.name };
+            return 'SO_NEW';
+          },
+        },
+        {
+          key: 'confirm',
+          label: 'Konfirmasi sumber barang → lanjut',
+          roles: ['MKT'],
+          to: 'SO_SOURCE_CHECK',
+          fields: [{ name: 'lines', label: 'Baris penawaran: sumber barang & pemetaan barang', type: 'soLines', required: true, help: 'Jasa murni = Tanpa barang. Produk: Pakai stok (pilih barang di Master Barang) atau PR proyek.' }, note()],
+          run: async (ctx, input) => {
+            soAssertOwner(ctx);
+            const i = z
+              .object({
+                lines: z.array(z.object({ idx: z.coerce.number().int().min(0), source: z.enum(['STOCK', 'PROJECT', 'NONE']), itemId: z.preprocess(blankToUndef, z.string().optional()) })).min(1),
+                note: optNote,
+              })
+              .parse(input);
+            const cur = soLinesOf(ctx.wo.data);
+            const next: SoLine[] = [];
+            for (const [k, l] of cur.entries()) {
+              const ch = i.lines.find((x) => x.idx === k);
+              const source = ch?.source ?? l.source;
+              if (l.kind === 'SERVICE' && source !== 'NONE') throw fieldError('lines', `Baris "${l.name}" adalah jasa — sumber barang harus "Tanpa barang"`);
+              const itemId = source === 'STOCK' ? ch?.itemId ?? l.itemId ?? null : source === 'PROJECT' ? ch?.itemId ?? l.itemId ?? null : null;
+              if (source === 'STOCK') {
+                if (!itemId) throw fieldError('lines', `Baris "${l.name}": pilih barang di Master Barang untuk "Pakai stok"`);
+                if (!(await ctx.tx.item.findUnique({ where: { id: itemId } }))) throw fieldError('lines', `Baris "${l.name}": barang tidak ditemukan`);
+              }
+              next.push({ ...l, source, itemId });
+            }
+            if (!ctx.wo.assigneeId && !(ctx.wo.data as any)?.mktOwner) ctx.data.mktOwner = { id: ctx.actor.id, name: ctx.actor.name };
+            ctx.data.lines = next;
+            ctx.data.confirmedBy = { name: ctx.actor.name, at: new Date() };
+            const proj = next.filter((l) => l.source === 'PROJECT');
+            if (proj.length && !(ctx.wo.data as any)?.pr) await soCreatePr(ctx, proj);
+          },
+        },
+        soCancel,
+      ],
+    },
+    SO_SOURCE_CHECK: {
+      label: 'Cek Kesiapan Barang (otomatis)',
+      owner: 'GA',
+      actions: [],
+      onEnter: async (ctx) => {
+        const d = ctx.wo.data as any;
+        const lines = soLinesOf(d);
+        const stockLines = lines.filter((l) => l.source === 'STOCK');
+        const projLines = lines.filter((l) => l.source === 'PROJECT');
+        const pending: string[] = [];
+        if (stockLines.length && !d.stockOk) {
+          const wh = ctx.wo.customer?.warehouseId ?? (await ctx.tx.warehouse.findFirst({ where: { kind: 'MAIN', active: true }, orderBy: { code: 'asc' } }))?.id;
+          if (!wh) throw new AppError(400, 'Tidak ada gudang untuk pengecekan stok (hubungkan Area pelanggan ke gudang)');
+          const need = new Map<string, number>();
+          for (const l of stockLines) need.set(l.itemId!, (need.get(l.itemId!) ?? 0) + Math.ceil(l.qty));
+          const short: { itemId: string; name: string; have: number; need: number }[] = [];
+          for (const [itemId, n] of need) {
+            const it = await ctx.tx.item.findUniqueOrThrow({ where: { id: itemId } });
+            const have = it.tracked
+              ? await ctx.tx.asset.count({ where: { itemId, warehouseId: wh, status: { in: AVAILABLE } } })
+              : ((await ctx.tx.stockLevel.findUnique({ where: { warehouseId_itemId: { warehouseId: wh, itemId } } }))?.qty ?? 0);
+            if (have < n) short.push({ itemId, name: it.name, have, need: n });
+          }
+          if (!short.length) ctx.data.stockOk = true;
+          else {
+            const prev = d.stockRequest ? await ctx.tx.workOrder.findFirst({ where: { number: d.stockRequest }, select: { closedAt: true } }) : null;
+            if (!prev || prev.closedAt) {
+              const child = await ctx.createChild('STOCK_REQUEST', { toWarehouseId: wh, reason: `Otomatis dari ${ctx.wo.number} (${cname(ctx)})`, lines: short.map((s) => ({ itemId: s.itemId, qty: s.need - s.have })) });
+              ctx.data.stockRequest = child.number;
+            }
+            pending.push(`stok kurang: ${short.map((s) => `${s.name} (${s.have}/${s.need})`).join(', ')} → ${ctx.data.stockRequest ?? d.stockRequest}`);
+          }
+        }
+        if (projLines.length && !d.prReceived) pending.push(`menunggu barang PR proyek ${d.prNumber ?? ''}`.trim());
+        if (!pending.length) return { to: 'SO_SCHEDULING', note: 'Semua barang siap (stok aman / barang proyek diterima)' };
+        return { to: 'SO_SOURCING', note: pending.join('; ') };
+      },
+    },
+    SO_SOURCING: {
+      label: 'Menyiapkan Barang (GA/Procurement)',
+      owner: 'GA',
+      actions: [
+        { key: 'recheck', label: 'Cek ulang kesiapan', roles: ['GA'], to: 'SO_SOURCE_CHECK', fields: [] },
+        {
+          key: 'pr_received',
+          label: 'Barang PR proyek sudah diterima',
+          roles: ['GA'],
+          to: 'SO_SOURCE_CHECK',
+          fields: [note()],
+          run: async (ctx) => {
+            if (!soLinesOf(ctx.wo.data).some((l) => l.source === 'PROJECT')) throw new AppError(409, 'Order ini tidak punya baris proyek');
+            ctx.data.prReceived = true;
+            ctx.data.prReceivedBy = { name: ctx.actor.name, at: new Date() };
+          },
+        },
+        { key: 'force_ready', label: 'Lanjutkan tanpa cek (override)', roles: ['GA'], to: 'SO_SCHEDULING', fields: [note(true)] },
+        soCancel,
+      ],
+    },
+    SO_SCHEDULING: { label: 'Siap Dijadwalkan (FOC)', owner: 'FOC', actions: [scheduleAction('schedule', 'Jadwalkan teknisi', 'SO_SCHEDULED'), soCancel] },
+    SO_SCHEDULED: {
+      label: 'Terjadwal (FOC)',
+      owner: 'FOC',
+      actions: [
+        scheduleAction('reschedule', 'Jadwalkan ulang / ganti tim', 'SO_SCHEDULED'),
+        {
+          key: 'start',
+          label: 'Mulai pekerjaan (& ambil barang bila ada)',
+          roles: ['FOC'],
+          assigneeOnly: true,
+          to: 'SO_IN_PROGRESS',
+          fields: [
+            { name: 'sourceWarehouseId', label: 'Ambil dari gudang (bila ada barang)', type: 'warehouse' },
+            { name: 'serials', label: 'SN perangkat yang diambil', type: 'serials' },
+            { name: 'materials', label: 'Material habis pakai yang diambil', type: 'materials', itemCategory: 'CONSUMABLE' },
+            note(),
+          ],
+          run: async (ctx, input) => {
+            const i = z.object({ sourceWarehouseId: z.preprocess(blankToUndef, z.string().optional()), serials: sn.default([]), materials }).passthrough().parse(input ?? {});
+            if (i.sourceWarehouseId) await pickup(ctx, i);
+            else if (i.serials.length || i.materials.length) throw fieldError('sourceWarehouseId', 'Pilih gudang asal barang yang diambil');
+          },
+        },
+        soCancel,
+      ],
+    },
+    SO_IN_PROGRESS: {
+      label: 'Pekerjaan Berjalan (FOC)',
+      owner: 'FOC',
+      actions: [
+        changeTeamAction('SO_IN_PROGRESS'),
+        {
+          key: 'submit_report',
+          label: 'Kirim laporan pekerjaan',
+          roles: ['FOC'],
+          assigneeOnly: true,
+          to: 'SO_AWAITING_BA',
+          fields: [
+            { name: 'serials', label: 'SN perangkat yang diserahkan / dipasang', type: 'serials' },
+            { name: 'ownership', label: 'Status kepemilikan perangkat', type: 'select', options: ['Dibeli pelanggan', 'Milik perusahaan (sewa/pinjam)'], help: 'Wajib diisi bila ada SN. "Dibeli pelanggan" = aset berstatus Terjual ke pelanggan' },
+            { name: 'materials', label: 'Material habis pakai terpakai', type: 'materials' },
+            photosF,
+            { name: 'workDone', label: 'Uraian pekerjaan', type: 'textarea', required: true },
+            note(),
+          ],
+          run: async (ctx, input) => {
+            const i = z
+              .object({
+                serials: sn.default([]),
+                ownership: z.preprocess(blankToUndef, z.enum(['Dibeli pelanggan', 'Milik perusahaan (sewa/pinjam)']).optional()),
+                materials,
+                photos: z.array(z.string()).min(1, 'Unggah minimal 1 foto').max(10, 'Maksimal 10 foto'),
+                workDone: z.string().trim().min(3, 'Isi uraian pekerjaan').max(1500),
+                note: optNote,
+              })
+              .parse(input);
+            if (i.serials.length && !i.ownership) throw fieldError('ownership', 'Pilih status kepemilikan perangkat');
+            if (i.materials.length) await consume(ctx, 0, i.materials);
+            if (i.serials.length) {
+              const mob = await mobileWarehouse(ctx.tx, stockOwner(ctx));
+              const status = i.ownership === 'Dibeli pelanggan' ? 'SOLD_TO_CUSTOMER' : 'INSTALLED';
+              for (const s of i.serials) {
+                const a = await mustAsset(ctx.tx, s);
+                if (a.warehouseId !== mob.id || !AVAILABLE.includes(a.status)) throw new AppError(409, `SN ${a.serialNumber} tidak ada di Stok Berjalan teknisi — ambil barang dulu saat "Mulai pekerjaan"`);
+                await moveAsset(ctx.tx, a, { status, toWarehouseId: null, customerId: ctx.wo.customerId, reason: `${status === 'SOLD_TO_CUSTOMER' ? 'Terjual ke pelanggan' : 'Terpasang'} – ${ctx.wo.number}`, woId: ctx.wo.id, actorId: ctx.actor.id });
+              }
+            }
+            ctx.data.report = { ...i, team: await teamNames(ctx, ctx.wo.teamIds), submittedBy: ctx.actor.name, at: new Date() };
+          },
+        },
+      ],
+    },
+    SO_AWAITING_BA: {
+      label: 'Pekerjaan Selesai – BA Jasa (MKT)',
+      owner: 'MKT',
+      actions: [
+        {
+          key: 'send_ba',
+          label: 'Kirim BA ke pelanggan',
+          roles: ['MKT'],
+          to: 'SO_DONE',
+          fields: [
+            { name: 'sendEmail', label: 'Kirim lewat Email', type: 'bool' },
+            { name: 'recipientEmail', label: 'Email penerima', type: 'text', help: 'Terisi dari email pelanggan; boleh diganti' },
+            { name: 'sendWhatsapp', label: 'Kirim lewat WhatsApp', type: 'bool', help: 'Berbiaya per pesan; hanya terkirim bila sakelar WhatsApp di Admin aktif' },
+            { name: 'recipientPhone', label: 'Nomor WhatsApp penerima', type: 'text', help: 'Terisi dari telepon pelanggan; boleh diganti' },
+            { name: 'sendTelegram', label: 'Kirim lewat Telegram', type: 'bool' },
+            { name: 'recipientTelegram', label: 'ID chat Telegram penerima', type: 'text' },
+            note(),
+          ],
+          run: async (ctx, input) => {
+            soAssertOwner(ctx);
+            const i = z
+              .object({
+                sendEmail: z.boolean().default(false), recipientEmail: z.preprocess(blankToUndef, z.string().email('Format email tidak valid').optional()),
+                sendWhatsapp: z.boolean().default(false), recipientPhone: z.preprocess(blankToUndef, z.string().trim().regex(/^[0-9+][0-9 +()-]{7,20}$/, 'Nomor WhatsApp tidak valid').optional()),
+                sendTelegram: z.boolean().default(false), recipientTelegram: z.preprocess(blankToUndef, z.string().trim().max(40).optional()),
+                note: optNote,
+              })
+              .parse(input);
+            const c = ctx.wo.customer!;
+            const d = ctx.wo.data as any;
+            const email = i.recipientEmail ?? c.email ?? undefined;
+            const phone = i.recipientPhone ?? c.phone ?? undefined;
+            if (!i.sendEmail && !i.sendWhatsapp && !i.sendTelegram) throw new AppError(400, 'Pilih minimal satu cara pengiriman BA (Email, WhatsApp, atau Telegram)');
+            if (i.sendEmail && !email) throw fieldError('recipientEmail', 'Isi email penerima');
+            if (i.sendWhatsapp && !phone) throw fieldError('recipientPhone', 'Isi nomor WhatsApp penerima');
+            if (i.sendTelegram && !i.recipientTelegram) throw fieldError('recipientTelegram', 'Isi ID chat Telegram penerima');
+            const content = await soBaContent(ctx.tx, ctx.wo);
+            const { number: baNo, title: baTitle, body } = content;
+            const qno = d.crmQuotation?.number ?? '-';
+            const subject = `${baTitle} ${baNo}`;
+            await ctx.fx.notify({ emails: i.sendEmail ? [email!] : [], whatsapps: i.sendWhatsapp ? [phone!] : [], telegrams: i.sendTelegram ? [i.recipientTelegram!] : [], woId: ctx.wo.id, subject, body });
+            const channels = [i.sendEmail && 'Email', i.sendWhatsapp && 'WhatsApp', i.sendTelegram && 'Telegram'].filter(Boolean) as string[];
+            ctx.data.ba = { number: baNo, title: baTitle, channels, sentTo: [i.sendEmail && email, i.sendWhatsapp && phone, i.sendTelegram && i.recipientTelegram].filter(Boolean).join(', '), body, at: new Date() };
+            if (d.newCustomer) await setCustomer(ctx, { status: 'ACTIVE', activatedAt: new Date() });
+            await ctx.fx.notify({
+              roles: ['FIN'],
+              woId: ctx.wo.id,
+              subject: `🔔 [${ctx.wo.number}] BA jasa terkirim – siapkan invoice ${c.name}`,
+              body: `BA ${baNo} (penawaran ${qno}) sudah dikirim ke ${c.name} (${c.code}) lewat ${channels.join(' & ')}.\nNilai penawaran: ${rupiah(Number(d.crmQuotation?.total ?? 0))} ${d.crmQuotation?.taxNote ?? ''}\nPengingat: siapkan invoice sesuai penawaran.\n${link(ctx)}`,
+            });
+          },
+        },
+        soCancel,
+      ],
+    },
+    SO_DONE: { label: 'Selesai', owner: 'MKT', final: true, actions: [] },
+    SO_CANCELLED: { label: 'Dibatalkan', owner: 'MKT', final: true, actions: [] },
+  },
+};
+
 export const workflows: Record<WoType, Workflow> = {
   NEW_INSTALL: newInstall,
   TROUBLE: trouble,
@@ -1142,6 +1508,7 @@ export const workflows: Record<WoType, Workflow> = {
   STOCK_REQUEST: stockRequest,
   STOCK_RETURN: stockReturn,
   MAINTENANCE: maintenance,
+  SERVICE_ORDER: serviceOrder,
 };
 
 /** Versi serializable untuk frontend. */

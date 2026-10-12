@@ -264,6 +264,47 @@ function TeamPicker({ value, onChange, techs }: { value: string[]; onChange: (v:
   );
 }
 
+/** Order Jasa/Produk: sumber barang per baris penawaran (Tanpa barang / Pakai stok / PR proyek) + pemetaan ke Master Barang (dapat diedit). */
+export function SoLinesInput({ value, onChange, woId }: { value: { idx: number; source: string; itemId?: string }[]; onChange: (v: any[]) => void; woId?: string }) {
+  const { data: wo } = useFetch<any>(woId ? `/work-orders/${woId}` : null);
+  const { data: items } = useFetch<any[]>('/items');
+  const lines: any[] = wo?.data?.lines ?? [];
+  useEffect(() => {
+    if (lines.length && (!Array.isArray(value) || value.length === 0)) onChange(lines.map((l, idx) => ({ idx, source: l.source, itemId: l.itemId ?? '' })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines.length]);
+  if (!wo) return <p className="text-sm text-slate-500">Memuat baris penawaran…</p>;
+  const set = (idx: number, patch: object) => onChange(value.map((r) => (r.idx === idx ? { ...r, ...patch } : r)));
+  return (
+    <div className="space-y-3">
+      {lines.map((l, idx) => {
+        const row = value.find((r) => r.idx === idx) ?? { idx, source: l.source, itemId: l.itemId ?? '' };
+        const svc = l.kind === 'SERVICE';
+        return (
+          <div key={idx} className="rounded-lg border border-slate-200 p-3 text-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div className="font-medium">{l.name} <span className="font-normal text-slate-500">· {l.qty} {l.unit ?? ''} · {svc ? 'Jasa' : 'Produk'}</span></div>
+              {l.sku && <span className="text-xs text-slate-500">SKU {l.sku}</span>}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Select className="input w-56" value={row.source} disabled={svc} onChange={(e) => set(idx, { source: e.target.value })} aria-label={`Sumber barang ${l.name}`}>
+                {svc ? <option value="NONE">Tanpa barang (jasa)</option> : <><option value="STOCK">Pakai stok</option><option value="PROJECT">PR proyek (beli baru)</option><option value="NONE">Tanpa barang</option></>}
+              </Select>
+              {row.source !== 'NONE' && (
+                <Select className="input min-w-[14rem] flex-1" value={row.itemId ?? ''} onChange={(e) => set(idx, { itemId: e.target.value })} aria-label={`Barang ${l.name}`}>
+                  <option value="">{row.source === 'STOCK' ? '— pilih barang di Master Barang —' : '— barang (opsional; masuk stok bila dipilih) —'}</option>
+                  {(items ?? []).map((x) => <option key={x.id} value={x.id}>{itemLabel(x)}</option>)}
+                </Select>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <p className="text-xs text-slate-500">Pemetaan barang diambil otomatis dari SKU katalog CRM; Marketing/Admin boleh mengubahnya di sini sebelum konfirmasi.</p>
+    </div>
+  );
+}
+
 export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, woId, woNumber, photoKind, busy, initial, sendEmpty }: {
   fields: Field[]; onSubmit: (values: Record<string, any>) => void | Promise<void>; submitLabel?: string; danger?: boolean; woId?: string; woNumber?: string; photoKind?: 'REPORT' | 'PROGRESS'; busy?: boolean;
   /** nilai awal (mode edit) */ initial?: Record<string, any>;
@@ -272,7 +313,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
   const { user } = useAuth();
   const [v, setV] = useState<Record<string, any>>(() => {
     const init: Record<string, any> = {};
-    for (const f of fields) init[f.name] = initial && initial[f.name] !== undefined && initial[f.name] !== null ? (f.type === 'datetime' ? String(initial[f.name]).slice(0, 16) : initial[f.name]) : f.type === 'brandmodel' ? {} : ['serials', 'technicians', 'photos', 'materials', 'qc'].includes(f.type) ? [] : f.type === 'bool' ? false : '';
+    for (const f of fields) init[f.name] = initial && initial[f.name] !== undefined && initial[f.name] !== null ? (f.type === 'datetime' ? String(initial[f.name]).slice(0, 16) : initial[f.name]) : f.type === 'brandmodel' ? {} : ['serials', 'technicians', 'photos', 'materials', 'qc', 'soLines'].includes(f.type) ? [] : f.type === 'bool' ? false : '';
     return init;
   });
   const [err, setErr] = useState('');
@@ -322,7 +363,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
       if (f.type === 'materials') x = x.filter((m: any) => m.itemId && Number(m.qty) > 0).map((m: any) => ({ itemId: m.itemId, qty: Number(m.qty) }));
       if (f.type === 'qc') x = x.map((r: any) => ({ ...r, warehouseId: r.warehouseId || undefined, note: r.note || undefined }));
       if (f.type === 'brandmodel') { out.brandId = x?.brandId; out.modelId = x?.modelId; continue; }
-      if ((x === '' || x == null) && sendEmpty && !['serials', 'photos', 'materials', 'qc'].includes(f.type)) { out[f.name] = null; continue; }
+      if ((x === '' || x == null) && sendEmpty && !['serials', 'photos', 'materials', 'qc', 'soLines'].includes(f.type)) { out[f.name] = null; continue; }
       if (x === '' || x == null) continue;
       if (f.type === 'datetime') x = new Date(x).toISOString(); // zona waktu browser → UTC
       out[f.name] = x;
@@ -377,6 +418,7 @@ export function DynamicForm({ fields, onSubmit, submitLabel = 'Simpan', danger, 
             : f.type === 'serials' ? <SerialInput value={v[f.name]} onChange={(x) => set(f.name, x)} onPending={(t) => setPending((p) => ({ ...p, [f.name]: t }))} />
             : f.type === 'materials' ? <MaterialsInput value={v[f.name]} onChange={(x) => set(f.name, x)} category={f.itemCategory} woId={woId} pickedOnly={f.pickedOnly} />
             : f.type === 'photos' ? <PhotosInput plain={f.plain} value={v[f.name]} onChange={(x) => set(f.name, x)} woId={woId} kind={photoKind} label={woNumber ? `${woNumber}${photoKind === 'PROGRESS' ? ' · Progres' : ' · Laporan'}` : undefined} />
+            : f.type === 'soLines' ? <SoLinesInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : f.type === 'qc' ? <QcInput woId={woId} value={v[f.name]} onChange={(x) => set(f.name, x)} />
             : f.type === 'password' ? <PasswordInput className="input" value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />
             : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : 'text'} step={f.type === 'number' ? 'any' : undefined} value={v[f.name]} onChange={(e) => set(f.name, e.target.value)} />}

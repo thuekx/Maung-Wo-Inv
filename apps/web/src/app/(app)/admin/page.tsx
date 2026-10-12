@@ -485,6 +485,32 @@ function SubFormCard() {
   );
 }
 
+function ServiceOrderCard() {
+  const { data, reload } = useFetch<any>('/admin/settings/service-order');
+  const [v, setV] = useState<any>(null);
+  const [err, setErr] = useState('');
+  const cur = v ?? data;
+  if (!cur) return null;
+  const f = (k: string, label: string, help: string, rows: number) => (
+    <div><label className="mb-1 block text-sm font-medium">{label}</label><textarea className="input" rows={rows} value={cur[k]} onChange={(e) => setV({ ...cur, [k]: e.target.value })} /><p className="mt-0.5 text-xs text-slate-500">{help}</p></div>
+  );
+  return (
+    <div className="card space-y-3">
+      <h2 className="font-semibold">Berita Acara &amp; Garansi — Order Jasa/Produk</h2>
+      <p className="text-sm text-slate-500">Template BA untuk order non-internet (dari penawaran CRM). Dipakai pada pesan BA dan halaman cetak. Kata pengganti yang tersedia: <code>{'{nama}'}</code> <code>{'{penawaran}'}</code> <code>{'{nomor_ba}'}</code> <code>{'{alamat}'}</code> <code>{'{tanggal}'}</code>. Kosongkan kolom lalu simpan untuk kembali ke teks bawaan.</p>
+      <div><label className="mb-1 block text-sm font-medium">Judul BA</label><input className="input" value={cur.baTitle} onChange={(e) => setV({ ...cur, baTitle: e.target.value })} /></div>
+      {f('baIntro', 'Kalimat pembuka', 'Contoh: Yth. {nama}, pekerjaan sesuai penawaran {penawaran} telah selesai…', 4)}
+      {f('warrantyText', 'Ketentuan garansi', 'Dicantumkan pada bagian "Garansi" di BA. Atur masa garansi barang & jasa sesuai kebijakan.', 6)}
+      {f('baFooter', 'Kalimat penutup', 'Muncul di bawah garansi, di atas tanda tangan.', 3)}
+      <ErrorMsg>{err}</ErrorMsg>
+      <div className="flex gap-2">
+        <button className="btn" onClick={async () => { setErr(''); try { const { defaults: _d, ...body } = cur; void _d; await api('/admin/settings/service-order', { method: 'PUT', body }); toast.success('Template BA jasa disimpan'); setV(null); await reload(); } catch (e) { setErr((e as Error).message); } }}>Simpan</button>
+        <button className="btn-ghost" onClick={() => setV({ ...cur, baTitle: '', baIntro: '', warrantyText: '', baFooter: '' })}>Isi ulang dengan bawaan</button>
+      </div>
+    </div>
+  );
+}
+
 function DocsCard() {
   const { data, reload } = useFetch<any>('/settings/docs');
   const [v, setV] = useState<any>(null);
@@ -932,6 +958,7 @@ const SETTING_SECTIONS = [
   { key: 'radius', label: 'MSRadius' },
   { key: 'subform', label: 'Formulir Berlangganan' },
   { key: 'docs', label: 'Dokumen PR' },
+  { key: 'serviceorder', label: 'BA & Garansi Order Jasa' },
   { key: 'assetinfo', label: 'Info aset (QR)' },
   { key: 'ssl', label: 'SSL & Domain' },
   { key: 'security', label: 'Keamanan' },
@@ -962,6 +989,7 @@ function Settings() {
         {sec === 'radius' && <RadiusCard />}
         {sec === 'subform' && <SubFormCard />}
         {sec === 'docs' && <DocsCard />}
+        {sec === 'serviceorder' && <ServiceOrderCard />}
         {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
         {sec === 'ssl' && <SslCard />}
         {sec === 'security' && <SecurityCard d={data} reload={reload} />}

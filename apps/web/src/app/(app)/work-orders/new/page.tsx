@@ -16,7 +16,7 @@ function NewWo() {
   const fromForm = sp.get('fromForm');
   const { data: sub } = useFetch<any>(fromForm ? `/subscriptions/${fromForm}` : null);
   const isLead = user?.role === 'ADMIN' || user?.subRole === 'SUPERVISOR' || user?.subRole === 'MANAGER';
-  const allowed = (meta ?? []).filter((m) => (user?.role === 'ADMIN' || m.createRoles.includes(user?.role)) && (m.type !== 'MAINTENANCE' || isLead));
+  const allowed = (meta ?? []).filter((m) => (user?.role === 'ADMIN' || m.createRoles.includes(user?.role)) && (m.type !== 'MAINTENANCE' || isLead) && m.type !== 'SERVICE_ORDER'); // Order Jasa dibuat sistem dari penawaran CRM (WON)
   const wf = allowed.find((m) => m.type === type);
 
   if (error) return <ErrorMsg>{error}</ErrorMsg>;

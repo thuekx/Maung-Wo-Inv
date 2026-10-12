@@ -10,6 +10,47 @@ import { useBranding } from '@/lib/photo';
 /** Redaman (dB, positif); data lama menyimpan opmDbm negatif. */
 const att = (r: any) => (r?.attenuationDb != null ? r.attenuationDb : r?.opmDbm != null ? Math.abs(r.opmDbm) : null);
 
+/** BA Order Jasa/Produk: isi dari template Admin (garansi dapat diedit) + rincian penawaran + perangkat (SN) + lampiran foto. */
+function SoBa({ wo, id, user, brand }: { wo: any; id: string; user: any; brand: any }) {
+  const soBa = wo.docs?.soBa, ba = wo.data?.ba, c = wo.customer, d = wo.data;
+  if (!soBa) return <ErrorMsg>BA tersedia setelah teknisi mengirim laporan pekerjaan.</ErrorMsg>;
+  const number = ba?.number ?? soBa.number;
+  const row = (k: string, v: React.ReactNode) => <tr><td className="w-44 py-0.5 align-top">{k}</td><td className="w-4 align-top">:</td><td className="py-0.5">{v || '-'}</td></tr>;
+  const rep = d.report ?? {};
+  return (
+    <DocShell title={`BA ${number}`} fileName={String(number)} back={`/work-orders/${id}`}>
+      {!ba && <p className="mx-auto mb-3 max-w-[210mm] rounded bg-amber-100 px-3 py-2 text-sm text-amber-900 print:hidden">Ini pratinjau — BA belum dikirim. Isi garansi diatur Admin (Pengaturan → Order Jasa).</p>}
+      <DocPage>
+        <h1 className="text-center text-[14pt] font-bold underline uppercase">{soBa.title}</h1>
+        <div className="mb-5 text-center font-semibold">No. {number}</div>
+        <p className="mb-3 whitespace-pre-line">{soBa.sections.intro}</p>
+        <table className="mb-4 w-full"><tbody>
+          {row('ID Pelanggan', c.code)}{row('Nama', c.name)}{row('Telepon / WA', c.phone)}{row('Alamat', c.address)}{row('Penawaran', `${d.crmQuotation?.number ?? '-'}${d.crmQuotation?.rev ? ` rev ${d.crmQuotation.rev}` : ''}`)}{row('Tanggal serah terima', longDate(rep.at ?? new Date()))}
+        </tbody></table>
+        <p className="mb-1 font-semibold">Rincian pekerjaan / barang</p>
+        <table className="mb-4 w-full border-collapse text-[10.5pt]"><thead><tr className="border-b"><th className="py-1 text-left">No</th><th className="text-left">Uraian</th><th className="text-right">Qty</th></tr></thead>
+          <tbody>{(d.lines ?? []).map((l: any, i: number) => <tr key={i} className="border-b"><td className="w-10 py-1">{i + 1}</td><td>{l.name}</td><td className="text-right">{l.qty} {l.unit ?? ''}</td></tr>)}</tbody></table>
+        {rep.workDone && <><p className="mb-1 font-semibold">Uraian pekerjaan</p><p className="mb-4 whitespace-pre-line">{rep.workDone}</p></>}
+        {(rep.serials ?? []).length > 0 && <><p className="mb-1 font-semibold">Perangkat {rep.ownership ? `(${rep.ownership})` : ''}</p><ul className="mb-4 list-disc pl-6">{rep.serials.map((s: string) => <li key={s} className="font-mono">{s}</li>)}</ul></>}
+        <p className="mb-1 font-semibold">Garansi</p>
+        <p className="mb-4 whitespace-pre-line">{soBa.sections.warranty}</p>
+        <p className="mb-6 whitespace-pre-line">{soBa.sections.footer}</p>
+        <div className="grid grid-cols-2 gap-8 text-center">
+          <div><div>Pihak Pertama</div><div className="font-semibold">{brand.companyName}</div><div className="h-20" /><div className="font-semibold underline">{user?.name ?? ' '}</div><div className="text-[10pt]">Marketing</div></div>
+          <div><div>Pihak Kedua</div><div className="font-semibold">Pelanggan</div><div className="h-20" /><div className="font-semibold underline">{c.name}</div></div>
+        </div>
+      </DocPage>
+      {(rep.photos?.length ?? 0) > 0 && (
+        <DocPage>
+          <h2 className="mb-1 text-center font-bold">LAMPIRAN — FOTO PEKERJAAN</h2>
+          <div className="mb-4 text-center text-[10pt]">No. {number}</div>
+          <div className="space-y-4">{rep.photos.map((u: string) => <img key={u} src={imgUrl(u, { w: 1200 })} alt="Foto pekerjaan" className="mx-auto max-h-[110mm] max-w-full rounded border object-contain" />)}</div>
+        </DocPage>
+      )}
+    </DocShell>
+  );
+}
+
 export default function BaPrint({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
@@ -24,6 +65,7 @@ export default function BaPrint({ params }: { params: Promise<{ id: string }> })
   if (user && !['MKT', 'ADMIN'].includes(user.role)) return <ErrorMsg>BA Digital hanya dapat dilihat dan dikirim oleh Marketing.</ErrorMsg>;
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!wo) return <p className="p-6 text-slate-500">Memuat…</p>;
+  if (wo.type === 'SERVICE_ORDER') return <SoBa wo={wo} id={id} user={user} brand={brand} />;
   if (wo.type !== 'NEW_INSTALL' || !wo.data?.activation) return <ErrorMsg>BA hanya tersedia untuk WO Pasang Baru yang sudah diaktivasi NOC.</ErrorMsg>;
   const c = wo.customer, act = wo.data.activation, ba = wo.data.ba;
   const number = ba?.number ?? wo.docs?.baNumber ?? `BAA/XXX/${wo.number}`;
