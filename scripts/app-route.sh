@@ -22,7 +22,7 @@ BK_FILE="$LOG_DIR/app-route-apps-$TS.tgz"
 CADDY_IMAGE="${CADDY_IMAGE:-caddy:2-alpine}"
 CONF_VOL="${CONF_VOL:-maung-wo-inv_caddyconf}"
 N=7
-STATUS="FAIL"; REASON="-"; ROLLED="no"; INSTALLED=0
+STATUS="FAIL"; REASON="-"; ROLLED="no"; INSTALLED=0; EXACT_ADDED=0
 SHA_FILE="-"; V_VALIDATE="n/a"; V_RULES="n/a"; R_CODE="n/a"; V_LOGIN="n/a"; V_BRAND="n/a"; ENV_OK="n/a"; WO_CT="n/a"; HAD_OLD=0
 
 banner() { printf '\n==================================================================\n  %s\n==================================================================\n' "$1"; }
@@ -45,10 +45,12 @@ file_sha256=$SHA_FILE
 rules_check=$V_RULES
 caddy_validate=$V_VALIDATE
 route_http_status=$R_CODE
+route_exact_http_status=${R_EXACT:-n/a}
 wo_login_status=$V_LOGIN
 wo_branding_status=$V_BRAND
 env_unchanged=$ENV_OK
 wo_containers_unchanged=$WO_CT
+exact_block_added=$EXACT_ADDED
 rolled_back=$ROLLED
 backup_apps_dir=$BK_FILE
 log_file=$LOG
@@ -164,7 +166,17 @@ fi
 # caddy validate di container sementara: Caddyfile aktif + semua berkas jalur (berkas ini menggantikan yang lama) — tanpa menyentuh konfigurasi hidup
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
 for f in proxy/apps/*.caddy; do [ -e "$f" ] && [ "$(basename "$f" .caddy)" != "$NAME" ] && cp "$f" "$TMPD/"; done
-[ "$MODE" = add ] && cp "$SRC" "$TMPD/$NAME.caddy"
+AUG=""
+if [ "$MODE" = add ]; then
+  AUG="$TMPD/$NAME.caddy"; cp "$SRC" "$AUG"
+  # Aplikasi Next.js ber-basePath menormalkan /<nama>/ → /<nama> (308). Tanpa blok tepat /<nama>, jalur itu jatuh ke 404 milik WO.
+  # Bila berkas hanya punya `handle /<nama>/*`, tambahkan blok `handle /<nama>` dengan upstream yang sama.
+  if ! grep -Eq "^[[:space:]]*handle[[:space:]]+/$NAME[[:space:]]*\{" "$SRC"; then
+    UP="$(awk -v pat="/$NAME/*" '{ l=$0; sub(/#.*/,"",l); gsub(/^[ \t]+|[ \t\r]+$/,"",l) } l ~ /^handle[ \t]/ { m=l; sub(/^handle[ \t]+/,"",m); sub(/[ \t]*\{$/,"",m); cur=m } l ~ /^reverse_proxy[ \t]/ && cur==pat && !done { u=l; sub(/^reverse_proxy[ \t]+/,"",u); sub(/[ \t]*\{$/,"",u); print u; done=1 }' "$SRC")"
+    if [ -n "$UP" ]; then printf '\n# jalur tepat /%s (Next.js mengalihkan /%s/ → /%s)\nhandle /%s {\n\treverse_proxy %s\n}\n' "$NAME" "$NAME" "$NAME" "$NAME" "$UP" >> "$AUG"; EXACT_ADDED=1; ok "ditambahkan blok 'handle /$NAME' (upstream $UP) — tanpa ini /$NAME polos akan 404"
+    else warn "tidak ada 'handle /$NAME/*' untuk ditiru; blok /$NAME tepat tidak ditambahkan"; fi
+  fi
+fi
 chmod 755 "$TMPD"; chmod 644 "$TMPD"/* 2>/dev/null || true
 if docker run --rm -v "$CONF_VOL":/etc/caddy:ro -v "$TMPD":/etc/caddy/apps:ro -v "$APP_DIR/proxy/sites":/etc/caddy/sites:ro "$CADDY_IMAGE" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then V_VALIDATE=ok; ok "caddy validate: konfigurasi (dengan perubahan) sah"; else V_VALIDATE=GAGAL; die "caddy validate GAGAL dengan berkas ini — konfigurasi hidup TIDAK diubah"; fi
 
@@ -178,7 +190,7 @@ if [ -f "$TARGET" ]; then HAD_OLD=1; cp -p "$TARGET" "$OLD_COPY"; ok "berkas lam
 phase 5 "Pasang & muat ulang Caddy"
 INSTALLED=1
 if [ "$MODE" = add ]; then
-  { printf '# Dipasang oleh scripts/app-route.sh (%s) dari %s — sha256 %s\n' "$TS" "$SRC" "$SHA_FILE"; cat "$SRC"; } > "$TARGET" && chmod 644 "$TARGET" && ok "$TARGET ditulis" || die "gagal menulis $TARGET"
+  { printf '# Dipasang oleh scripts/app-route.sh (%s) dari %s — sha256 %s\n' "$TS" "$SRC" "$SHA_FILE"; cat "$AUG"; } > "$TARGET" && chmod 644 "$TARGET" && ok "$TARGET ditulis" || die "gagal menulis $TARGET"
 else
   [ -f "$TARGET" ] || { INSTALLED=0; abort "tidak ada $TARGET untuk dihapus"; }
   rm -f "$TARGET" && ok "$TARGET dihapus"
@@ -191,7 +203,9 @@ phase 6 "Bukti terhadap sistem asli"
 V_LOGIN="$(code /login)"; V_BRAND="$(code /api/branding)"
 [ "$V_LOGIN" = 200 ] && [ "$V_BRAND" = 200 ] && ok "WO tidak terganggu: /login=200 /api/branding=200" || die "WO terganggu: /login=$V_LOGIN /api/branding=$V_BRAND"
 if [ "$MODE" = add ]; then
-  R_CODE="$(code "/$NAME/")"
+  R_CODE="$(code "/$NAME/")"; R_EXACT="$(code "/$NAME")"
+  [ "$R_EXACT" = 404 ] && die "jalur /$NAME (tanpa garis miring) → 404 milik WO: blok 'handle /$NAME' tidak berlaku"
+  ok "jalur /$NAME (tanpa garis miring) → HTTP $R_EXACT (bukan 404 WO)"
   case "$R_CODE" in
     2??|3??|401|403) ok "jalur /$NAME/ aktif dan aplikasinya menjawab (HTTP $R_CODE)" ;;
     502|503|504) warn "jalur /$NAME/ AKTIF di Caddy tetapi aplikasinya belum menjawab (HTTP $R_CODE) — wajar bila container belum berjalan/sehat di jaringan maung_edge" ;;

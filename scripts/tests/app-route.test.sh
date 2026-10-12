@@ -25,6 +25,7 @@ case "$url" in
   */login) echo -n "${CODE_LOGIN:-200}";;
   */api/branding) echo -n "${CODE_BRAND:-200}";;
   */crm/|*/blog/) echo -n "${CODE_ROUTE:-200}";;
+  */crm|*/blog) echo -n "${CODE_EXACT:-${CODE_ROUTE:-200}}";;
   *) echo -n 200;;
 esac
 EOF
@@ -75,6 +76,19 @@ t "reload sekali" "$(nreload)" 1
 t "route status 200" "$(res "$O" route_http_status)" 200
 t ".env tidak berubah" "$(res "$O" env_unchanged)" yes
 t ".env checksum sama" "$(sha256sum "$R/.env" | cut -d' ' -f1)" "$ENV_BEFORE"
+
+echo "== 1b. blok /crm tepat ditambahkan otomatis (Next.js: /crm/ → /crm)"
+t "exact_block_added" "$(res "$O" exact_block_added)" 1
+t "ada handle /crm {" "$(grep -cE '^handle /crm \{' "$R/proxy/apps/crm.caddy")" 1
+t "upstream sama dgn /crm/*" "$(awk '/^handle \/crm \{/{f=1} f&&/reverse_proxy/{print $2; exit}' "$R/proxy/apps/crm.caddy")" "crm-web:3000"
+t "route_exact_http_status 200" "$(res "$O" route_exact_http_status)" 200
+O="$(run add crm "$GOOD")"; t "pasang ulang tetap satu blok /crm" "$(grep -cE '^handle /crm \{' "$R/proxy/apps/crm.caddy")" 1
+WITH="$SIM/with.caddy"; printf 'handle /crm {\n\treverse_proxy crm-web:3000\n}\nhandle /crm/* {\n\treverse_proxy crm-web:3000\n}\n' > "$WITH"
+O="$(run add crm "$WITH")"; t "berkas sudah punya /crm: tidak ditambah" "$(res "$O" exact_block_added)" 0
+t "tetap satu blok /crm" "$(grep -cE '^handle /crm \{' "$R/proxy/apps/crm.caddy")" 1
+O="$(CODE_EXACT=404 run add crm "$GOOD")"; t "/crm tepat 404 → FAIL" "$(res "$O" status)" FAIL
+t "rollback" "$(res "$O" rolled_back)" ya
+rm -f "$R/proxy/apps/crm.caddy"
 
 echo "== 2. aplikasi mati (502) = tetap terpasang dengan peringatan"
 O="$(run add crm "$GOOD")"; CODE_ROUTE=502 O="$(CODE_ROUTE=502 run add crm "$GOOD")"
