@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { AppError, prisma } from '../db';
 import { config } from '../config';
+import { WoType } from '../orm';
 
 /**
  * API baca-saja untuk menarik data keluar (BI, spreadsheet, sistem lain).
@@ -30,37 +31,40 @@ exportRoutes.use(
 );
 
 type Row = Record<string, unknown>;
-interface Q { take: number; cursor?: string; since?: Date; include: Set<string> }
+interface Q { take: number; cursor?: string; since?: Date; include: Set<string>; type?: string }
 interface Resource {
   description: string;
   sinceField: 'createdAt' | 'updatedAt' | null; // null = resource tanpa kolom waktu, ?since diabaikan
   fetch: (q: Q) => Promise<Row[]>;
 }
 
-const page = (q: Q, sinceField: string) => ({
-  take: q.take + 1, // +1 untuk mengetahui apakah masih ada halaman berikutnya
-  orderBy: { id: 'asc' as const },
-  ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
-  ...(q.since ? { where: { [sinceField]: { gte: q.since } } } : {}),
-});
+const page = (q: Q, sinceField: string, extra: Record<string, unknown> = {}) => {
+  const where = { ...extra, ...(q.since ? { [sinceField]: { gte: q.since } } : {}) };
+  return {
+    take: q.take + 1, // +1 untuk mengetahui apakah masih ada halaman berikutnya
+    orderBy: { id: 'asc' as const },
+    ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+    ...(Object.keys(where).length ? { where } : {}),
+  };
+};
 
 const resources: Record<string, Resource> = {
   customers: {
     description: 'Data pelanggan (kode, kontak, paket, status, ODP/port/VLAN/IP, tanggal aktivasi)',
-    sinceField: 'createdAt',
+    sinceField: 'updatedAt',
     fetch: async (q) => {
-      const rows = await prisma.customer.findMany({ ...page(q, 'createdAt'), include: { warehouse: { select: { code: true } }, area: { select: { name: true } } } });
+      const rows = await prisma.customer.findMany({ ...page(q, 'updatedAt'), include: { warehouse: { select: { code: true } }, area: { select: { name: true } } } });
       return rows.map(({ warehouse, area, ...c }) => ({ ...c, warehouseCode: warehouse?.code ?? null, areaName: area?.name ?? null }));
     },
   },
   subscriptions: {
-    description: 'Formulir Berlangganan (Reg. No., tanggal, nama, telepon, paket, sumber, marketing, kode pelanggan, nomor WO). Tanpa data biaya.',
-    sinceField: 'createdAt',
+    description: 'Formulir Berlangganan (Reg. No., tanggal, nama, telepon, alamat, paket, sumber, marketing, kode pelanggan, nomor WO). Tanpa data biaya.',
+    sinceField: 'updatedAt',
     fetch: async (q) => {
       // select eksplisit: kolom biaya (installFee/monthlyFee) dan data lain yang tidak diminta tidak pernah ikut keluar
       const rows = await prisma.subscription.findMany({
-        ...page(q, 'createdAt'),
-        select: { id: true, regNo: true, formDate: true, name: true, phone: true, packageName: true, source: true, marketingName: true, customerId: true, woId: true, createdAt: true },
+        ...page(q, 'updatedAt'),
+        select: { id: true, regNo: true, formDate: true, name: true, phone: true, address: true, packageName: true, source: true, marketingName: true, customerId: true, woId: true, createdAt: true, updatedAt: true },
       });
       const cids = [...new Set(rows.map((r) => r.customerId).filter((x): x is string => !!x))];
       const wids = [...new Set(rows.map((r) => r.woId).filter((x): x is string => !!x))];
@@ -73,11 +77,11 @@ const resources: Record<string, Resource> = {
     },
   },
   'work-orders': {
-    description: 'Work order beserta data form (JSON). Tambah ?include=events untuk riwayat transisi.',
+    description: 'Work order beserta data form (JSON). Tambah ?include=events untuk riwayat transisi; ?type=NEW_INSTALL|… menyaring tipe WO.',
     sinceField: 'updatedAt',
     fetch: async (q) => {
       const rows = await prisma.workOrder.findMany({
-        ...page(q, 'updatedAt'),
+        ...page(q, 'updatedAt', q.type ? { type: q.type } : {}),
         include: {
           customer: { select: { code: true, name: true } },
           createdBy: { select: { name: true } },
@@ -92,6 +96,22 @@ const resources: Record<string, Resource> = {
         createdByName: createdBy.name,
         assigneeName: assignee?.name ?? null,
       }));
+    },
+  },
+  packages: {
+    description: 'Master paket (nama, kecepatan, harga jual, aktif, sumber). Tanpa harga modal/komisi.',
+    sinceField: 'updatedAt',
+    fetch: async (q) => prisma.package.findMany({
+      ...page(q, 'updatedAt'),
+      select: { id: true, name: true, description: true, speed: true, priceSell: true, active: true, source: true, updatedAt: true },
+    }),
+  },
+  areas: {
+    description: 'Master area (kode MSRadius, nama, aktif)',
+    sinceField: null,
+    fetch: async (q) => {
+      const { where: _w, ...p } = page(q, 'createdAt');
+      return prisma.area.findMany({ ...p, select: { id: true, code: true, name: true, active: true } });
     },
   },
   items: {
@@ -146,6 +166,7 @@ const query = z.object({
   cursor: z.string().min(1).optional(),
   since: z.coerce.date().optional(),
   include: z.string().optional(),
+  type: z.nativeEnum(WoType).optional(),
 });
 
 /** Ratakan objek bersarang → kolom bertitik; array/JSON dijadikan string JSON. */
@@ -174,7 +195,7 @@ function toCsv(rows: Row[]) {
 exportRoutes.get('/export', (_req, res) => {
   res.json({
     resources: Object.fromEntries(Object.entries(resources).map(([k, r]) => [k, { path: `/api/export/${k}`, description: r.description, sinceField: r.sinceField }])),
-    params: { format: 'json|csv', limit: '1..5000 (default 1000)', cursor: 'nextCursor dari respons sebelumnya', since: 'ISO date; filter createdAt/updatedAt >= nilai', include: 'khusus work-orders: events' },
+    params: { format: 'json|csv', limit: '1..5000 (default 1000)', cursor: 'nextCursor dari respons sebelumnya', since: 'ISO date; filter createdAt/updatedAt >= nilai', include: 'khusus work-orders: events', type: 'khusus work-orders: tipe WO, mis. NEW_INSTALL' },
   });
 });
 
@@ -182,7 +203,7 @@ exportRoutes.get('/export/:resource', async (req: Request, res: Response) => {
   const r = resources[String(req.params.resource)];
   if (!r) throw new AppError(404, `Resource tidak dikenal. Daftar: ${Object.keys(resources).join(', ')}`);
   const p = query.parse(req.query);
-  const rows = await r.fetch({ take: p.limit, cursor: p.cursor, since: p.since, include: new Set((p.include ?? '').split(',').filter(Boolean)) });
+  const rows = await r.fetch({ take: p.limit, cursor: p.cursor, since: p.since, include: new Set((p.include ?? '').split(',').filter(Boolean)), type: p.type });
   const hasMore = rows.length > p.limit;
   const data = hasMore ? rows.slice(0, p.limit) : rows;
   const nextCursor = hasMore ? (data[data.length - 1].id as string) : null;

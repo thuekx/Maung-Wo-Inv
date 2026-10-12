@@ -126,6 +126,7 @@ model Customer {
   syncedAt       DateTime?
   activatedAt    DateTime?
   createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @default(now()) @updatedAt // dipakai Export API (?since) agar perubahan status terlihat
   archivedAt     DateTime? // diarsipkan (dihapus dari daftar tetapi riwayat WO tetap utuh); Admin dapat memulihkan
 
   warehouse  Warehouse?  @relation(fields: [warehouseId], references: [id])
@@ -139,6 +140,7 @@ model Customer {
   @@index([archivedAt])
   @@index([publicIp])
   @@index([createdAt])
+  @@index([updatedAt])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_name_trgm")
   @@index([code(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_code_trgm")
   @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_phone_trgm")
@@ -450,9 +452,10 @@ model Package {
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
-  source      String   @default("MANUAL") // MANUAL | RADIUS
+  source      String   @default("MANUAL") // MANUAL | RADIUS (nilai lain, mis. CRM, tidak pernah ditimpa sinkron MSRadius)
   speed       String?
   priceSell   Decimal? @db.Decimal(18, 2)
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 // Jejak audit: ubah/hapus/reset password/impor

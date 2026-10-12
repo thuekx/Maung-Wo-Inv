@@ -272,6 +272,7 @@ export async function applyPackages(rows: any[]): Promise<number> {
     const speed = str(r.speed) || null;
     const price = Number.isFinite(Number(r.price_sell)) && str(r.price_sell) !== '' ? Number(r.price_sell) : null;
     const cur = await prisma.package.findUnique({ where: { name } });
+    if (cur && !['MANUAL', 'RADIUS'].includes(cur.source)) continue; // paket bersumber aplikasi lain (mis. CRM) tidak pernah ditimpa sinkron MSRadius
     if (!cur) { await prisma.package.create({ data: { name, source: 'RADIUS', speed, priceSell: price, sortOrder: 100 } }); n++; }
     else if (cur.source !== 'RADIUS' || cur.speed !== speed || (cur.priceSell != null ? Number(cur.priceSell) : null) !== price) { await prisma.package.update({ where: { name }, data: { source: 'RADIUS', speed, priceSell: price } }); n++; }
   }

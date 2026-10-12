@@ -22,12 +22,14 @@ Base URL: `https://<domain-aplikasi>` (mode SSL satu domain; web meneruskan `/ap
 | Path | Isi | Filter `since` |
 |---|---|---|
 | `GET /api/export` | Daftar resource dan parameter | – |
-| `GET /api/export/customers` | Pelanggan: `code`, `name`, `phone`, alamat, paket, `status`, `radiusStatus`, `salesName`, ODP/port/VLAN/IP, `activatedAt`, `warehouseCode`, `areaName`, `createdAt` | `createdAt` |
-| `GET /api/export/subscriptions` | Formulir Berlangganan: `regNo`, `formDate`, `name`, `phone`, `packageName`, `source` (MANUAL/RADIUS), `marketingName`, `customerCode` (dari pelanggan terkait), `woNumber` (dari WO terkait), `createdAt`. **Tanpa data biaya** (kolom dipilih eksplisit) | `createdAt` |
+| `GET /api/export/customers` | Pelanggan: `code`, `name`, `phone`, alamat, paket, `status`, `radiusStatus`, `salesName`, ODP/port/VLAN/IP, `activatedAt`, `warehouseCode`, `areaName`, `createdAt`, `updatedAt` | `updatedAt` (perubahan status/data terlihat di tarikan inkremental) |
+| `GET /api/export/subscriptions` | Formulir Berlangganan: `regNo`, `formDate`, `name`, `phone`, `packageName`, `source` (MANUAL/RADIUS), `marketingName`, `customerCode` (dari pelanggan terkait), `woNumber` (dari WO terkait), `address`, `createdAt`, `updatedAt`. **Tanpa data biaya** (kolom dipilih eksplisit) | `updatedAt` |
 | `GET /api/export/work-orders` | WO + `customerCode/Name`, pembuat, teknisi, `data` (JSON isian form). `?include=events` menambah riwayat transisi | `updatedAt` |
 | `GET /api/export/items` | Master barang: SKU, kategori, satuan, `tracked`, `minStock` | – |
 | `GET /api/export/warehouses` | Gudang (pusat/cabang/mobile) | – |
 | `GET /api/export/stock` | Stok kuantitas per gudang per barang (`qty`, `minStock`) | – |
+| `GET /api/export/packages` | Master paket: `id`, `name`, `description`, `speed`, `priceSell` (harga jual; tanpa harga modal/komisi), `active`, `source` (MANUAL/RADIUS/CRM), `updatedAt` | `updatedAt` |
+| `GET /api/export/areas` | Master area: `id`, `code` (id_area MSRadius), `name`, `active` | – |
 | `GET /api/export/assets` | Aset ber-SN: merk, tipe, status, lokasi, pelanggan, jadwal maintenance | `createdAt` |
 | `GET /api/export/movements` | Riwayat mutasi stok/aset | `createdAt` |
 | `GET /api/export/purchase-orders` | PO + baris barang | `createdAt` |
@@ -40,6 +42,7 @@ Base URL: `https://<domain-aplikasi>` (mode SSL satu domain; web meneruskan `/ap
 | `limit` | `1000` | 1–5000 baris per halaman |
 | `cursor` | – | Nilai `nextCursor` dari respons sebelumnya |
 | `since` | – | Tanggal ISO (`2026-10-01` atau `2026-10-01T00:00:00Z`); hanya baris dengan kolom waktu ≥ nilai ini (lihat tabel). Dipakai untuk sinkronisasi inkremental |
+| `type` | – | Khusus `work-orders`: saring tipe WO (mis. `NEW_INSTALL`); nilai tidak dikenal → 400 |
 | `include` | – | Khusus `work-orders`: `events` |
 
 ## Paginasi
