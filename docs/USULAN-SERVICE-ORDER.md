@@ -69,11 +69,16 @@ Respons idempoten `quotations/:crmId` sudah memuat `woNumber`. Untuk status lanj
 - **2a** — intake: kunci, katalog (`Package.kind/unit/crmId`), `CrmQuotation`, endpoint, pelanggan CRM. Belum membuat WO. Aman diuji CRM lebih dulu.
 - **2b** — workflow `SERVICE_ORDER` lengkap + UI. Dikerjakan setelah alur di bawah disetujui.
 
-## Yang perlu diputuskan pemilik (jawaban singkat cukup)
-1. **Siapa MKT yang memegang `SO_NEW`?** Usulan: marketing yang tercantum di quotation bila akun cocok; jika tidak, antrean seluruh MKT (supervisor/manager menugaskan).
-2. **Pemetaan baris produk → Master Barang** (mode STOK): dipilih manual oleh MKT per order (usulan), atau katalog CRM memuat kolom `sku` barang WO sehingga otomatis?
-3. **PR proyek**: apakah satu quotation = **satu PR** berisi semua baris barang (usulan), dan siapa penyetuju PR proyek — alur PR yang ada (Procurement → persetujuan) tanpa perubahan?
-4. **Campuran**: boleh satu order berisi baris STOK dan baris PROYEK sekaligus (usulan: boleh; WO lanjut ke jadwal setelah **semua** baris siap)?
-5. **Perangkat sewa/hak milik**: perangkat ber-SN yang diserahkan ditautkan ke pelanggan di Aset (usulan), dan status asetnya apa (mis. `INSTALLED`/`DEPLOYED` — mengikuti yang ada)?
-6. **BA**: format sama dengan BA internet (usulan) atau perlu template khusus jasa (mis. memuat daftar barang & garansi)?
-7. **Pembatalan setelah barang dibeli (mode PROYEK)**: barang masuk stok gudang biasa (usulan), PR tidak dibatalkan otomatis bila sudah menjadi PO.
+## Keputusan pemilik (2026-10-12)
+1. **Pemegang `SO_NEW`** — MENUNGGU jawaban (dijelaskan di chat: antrean MKT vs. marketing sesuai quotation).
+2. **Pemetaan produk → Master Barang**: DIBAWA OTOMATIS dari katalog CRM (kolom `sku` barang WO), dengan **kemampuan edit oleh Marketing dan Admin (reviewer)** sebelum konfirmasi.
+3. **PR proyek**: satu quotation = satu PR berisi semua baris barang; persetujuan lewat alur PR yang ada. DISETUJUI.
+4. **Campuran STOK + PROYEK** dalam satu order diizinkan; lanjut ke jadwal setelah semua baris siap. DISETUJUI.
+5. **Perangkat ber-SN yang diserahkan**: tautan ke pelanggan di Aset dengan **status khusus** (mis. `SOLD_TO_CUSTOMER` untuk dibeli pelanggan, selain status sewa/terpasang yang sudah ada), karena pelanggan bisa membeli perangkat.
+6. **BA**: **template khusus jasa** (daftar barang, nomor SN, **format garansi yang dapat diedit** Admin di Pengaturan, seperti pengaturan dokumen lain).
+7. **Batal setelah barang dibeli**: barang masuk stok gudang biasa; PR yang sudah menjadi PO tidak dibatalkan otomatis. DISETUJUI.
+
+### Dampak keputusan pada rancangan
+- Katalog CRM→WO membawa `sku` (opsional) untuk produk; `CrmQuotation.lines` menyimpan `itemId` hasil pemetaan; Marketing/Admin dapat mengubahnya di `SO_NEW`.
+- `AssetStatus` perlu nilai baru untuk perangkat terjual ke pelanggan (migrasi enum); laporan/Export API aset ikut membawa nilainya.
+- Pengaturan Admin baru: template teks garansi + syarat BA jasa (disimpan di tabel `Setting`, dapat diedit, ada nilai bawaan).
