@@ -38,7 +38,7 @@ Pengguna hanya mengenal **satu alamat (`maung.liv.net.id`) dan satu login**. Set
      edge: { name: maung_edge, external: true }
    ```
 2. Next.js aplikasi: `basePath: '/crm'` (dan `assetPrefix` bila perlu), jalankan di port 3000 dalam container.
-3. Di repo Maung-Wo-Inv pada VM: taruh `proxy/apps/crm.caddy` (tanpa menghapus prefix — aplikasi memakai `basePath`):
+3. Di VM, pasang jalurnya dengan skrip aman (disarankan, bukan menyalin manual): `cd ~/Maung-Wo-Inv && bash scripts/app-route.sh add crm </dev/null` (sumber bawaan `~/maung-crm/deploy/crm.caddy`; atau beri jalur berkas sebagai argumen ke-3). Skrip memvalidasi berkas (hanya `handle /<nama>… → reverse_proxy <layanan>:<port>`, jalur wajib diawali `/<nama>`, upstream bukan layanan WO) dan menjalankan `caddy validate` sungguhan di container sementara, mencadangkan `proxy/apps`, memasang + `caddy reload`, membuktikan WO tidak terganggu (`/login`, `/api/branding`, `.env` dan container WO tak berubah), lalu rollback otomatis bila gagal. Juga: `remove <nama>` dan `status`. Isi berkasnya (tanpa menghapus prefix — aplikasi memakai `basePath`):
    ```
    handle /crm/* {
    	reverse_proxy crm-web:3000
