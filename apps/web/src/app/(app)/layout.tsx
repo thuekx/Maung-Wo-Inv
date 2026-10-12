@@ -27,7 +27,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     { href: '/purchase-orders', label: 'Purchase Order', icon: 'receipt', feature: ['purchase_orders'] },
   ] },
   { title: 'Data', items: [{ href: '/master', label: 'Master Data', icon: 'layers', feature: ['master.packages', 'master.ga'] }] },
-  { title: 'Sistem', items: [{ href: '/admin', label: 'Admin', icon: 'settings', roles: ['ADMIN'] }, { href: '/laporan', label: 'Laporan', icon: 'dashboard', roles: ['ADMIN'] }, { href: '/riwayat-gangguan', label: 'Riwayat Gangguan', icon: 'clipboard', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-sistem', label: 'API Sistem', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-kanca', label: 'API Kanca', icon: 'layers', roles: ['ADMIN'] }] },
+  { title: 'Sistem', items: [{ href: '/laporan', label: 'Laporan', icon: 'dashboard', roles: ['ADMIN'] }, { href: '/riwayat-gangguan', label: 'Riwayat Gangguan', icon: 'clipboard', roles: ['ADMIN'] }, { href: '/api-msradius', label: 'API MSRadius', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-sistem', label: 'API Sistem', icon: 'layers', roles: ['ADMIN'] }, { href: '/api-kanca', label: 'API Kanca', icon: 'layers', roles: ['ADMIN'] }] },
 ];
 
 const canSee = (i: Item, u: { role: string; subRole?: string; features?: string[] }) => i.feature ? i.feature.some((f) => (u.features ?? []).includes(f)) : i.manager ? u.role !== 'ADMIN' && u.subRole === 'MANAGER' : !i.roles || i.roles.includes(u.role) || (!!i.lead && (u.subRole === 'SUPERVISOR' || u.subRole === 'MANAGER'));

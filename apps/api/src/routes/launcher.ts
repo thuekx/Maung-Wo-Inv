@@ -24,6 +24,8 @@ export const launcherRoutes = Router();
 const ICONS = APP_ICON_KEYS;
 /** Placeholder teks: {nama} = nama lengkap pengguna, {nama_depan} = kata pertama. */
 export const HOME_DEFAULTS = { title: 'Selamat datang, {nama_depan}', subtitle: 'Pilih aplikasi yang ingin dibuka. Satu login berlaku untuk semuanya.', backLabel: 'Menu Utama', alwaysShow: false };
+/** Ikon Admin bawaan (hanya untuk Admin): membuka Pusat Admin (pengaturan platform + per aplikasi). */
+export const ADMIN_TILE = { id: 'admin', name: 'Admin', description: 'Pengaturan, pengguna, hak akses, data & backup', icon: 'settings', iconUrl: null as string | null, path: '/admin' };
 export const WO_DEFAULTS = { name: 'Work Order & Inventori', description: 'Work order, pelanggan, inventori, pengadaan', icon: 'clipboard-check', iconUrl: null as string | null };
 /** Jalur milik aplikasi WO sendiri — tidak boleh dipakai aplikasi lain. */
 export const RESERVED_PATHS = new Set(['api', 'uploads', 'login', 'reset-password', 'a', 'doc', 'qr-print', 'brand', '_next', 'apps', 'admin', 'work-orders', 'customers', 'inventory', 'subscriptions', 'purchase-requests', 'purchase-orders', 'master', 'my-stock', 'tim-saya', 'laporan', 'riwayat-gangguan', 'api-msradius', 'api-sistem', 'api-kanca', 'profile', 'notifications', 'health', 'favicon.ico', 'icon.svg']);
@@ -41,7 +43,7 @@ launcherRoutes.get('/launcher', authenticate, async (req, res) => {
   const feats = new Set(await featuresFor(req.user!));
   const cfg = await getCfg();
   const extra = cfg.apps.filter((a) => a.enabled && feats.has(`app.${a.id}`)).map(({ id, name, description, icon, iconUrl, path: p }) => ({ id, name, description, icon, iconUrl: iconUrl ?? null, path: p }));
-  res.json({ apps: [{ id: 'wo', ...cfg.wo, path: '/' }, ...extra], home: cfg.home });
+  res.json({ apps: [{ id: 'wo', ...cfg.wo, path: '/' }, ...extra, ...(req.user!.role === 'ADMIN' ? [ADMIN_TILE] : [])], home: cfg.home });
 });
 
 launcherRoutes.get('/admin/launcher', authenticate, requireRole('ADMIN'), async (_req, res) => {

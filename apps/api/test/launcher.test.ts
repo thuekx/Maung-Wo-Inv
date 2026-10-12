@@ -42,6 +42,7 @@ test('launcher API', { skip: process.env.DATABASE_URL ? false : 'DATABASE_URL ti
 
   await t.test('tanpa aplikasi lain: hanya WO', async () => {
     assert.deepEqual((await get(mkt)).apps.map((a: any) => a.id), ['wo']);
+    assert.ok(!(await get(mkt)).apps.some((a: any) => a.id === 'admin'), 'ikon Admin hanya untuk Admin');
   });
 
   await t.test('hanya Admin yang boleh mengubah daftar; validasi jalur & ID', async () => {
@@ -55,7 +56,7 @@ test('launcher API', { skip: process.env.DATABASE_URL ? false : 'DATABASE_URL ti
 
   await t.test('aplikasi baru: bawaan tak ada yang melihat kecuali Admin; Hak Akses mengatur per divisi/sub-role', async () => {
     assert.equal((await put({ apps: [crm] })).status, 200);
-    assert.deepEqual((await get(admin)).apps.map((a: any) => a.id), ['wo', 'crm']);
+    assert.deepEqual((await get(admin)).apps.map((a: any) => a.id), ['wo', 'crm', 'admin']);
     assert.deepEqual((await get(mkt)).apps.map((a: any) => a.id), ['wo']);
     const m = await fetch(`${base}/admin/access`, { headers: tok(admin) }).then((r) => r.json() as Promise<any>);
     assert.ok(m.features.some((f: any) => f.key === 'app.crm' && f.group === 'Aplikasi'));
@@ -69,7 +70,7 @@ test('launcher API', { skip: process.env.DATABASE_URL ? false : 'DATABASE_URL ti
 
   await t.test('aplikasi dinonaktifkan tidak tampil (bahkan untuk Admin)', async () => {
     assert.equal((await put({ apps: [{ ...crm, enabled: false }] })).status, 200);
-    assert.deepEqual((await get(admin)).apps.map((a: any) => a.id), ['wo']);
+    assert.deepEqual((await get(admin)).apps.map((a: any) => a.id), ['wo', 'admin']);
     assert.deepEqual((await get(mkt)).apps.map((a: any) => a.id), ['wo']);
   });
 

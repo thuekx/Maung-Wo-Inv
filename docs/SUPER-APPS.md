@@ -90,3 +90,9 @@ Aplikasi baru cukup memanggil ini (cache singkat, mis. 60 dtk) lalu memetakan `r
 Saat ini foto & logo disimpan di volume `uploads` pada container api (asli utuh; versi tampil dibuat on-demand di `uploads/.cache`). Bila kelak butuh object storage:
 - **Gunakan container terpisah di VM yang sama** (bukan VM baru) — MinIO atau Garage (lebih ringan, cocok VM kecil) dengan volume sendiri. Pisahkan ke VM sendiri hanya bila berkas sangat besar atau API perlu multi-node.
 - Perlu perubahan kecil di API (adapter unggah S3 + `/api/img` membaca dari S3). Belum dikerjakan karena volume lokal masih memadai; backup cukup `uploads` + dump Postgres.
+
+## Pusat Admin (ikon Admin di beranda)
+- Ikon **Admin** (`ADMIN_TILE` di `routes/launcher.ts`) muncul di `/apps` hanya untuk Admin dan membuka `/admin` — halaman tersendiri (`apps/web/src/app/admin/`), bukan bagian menu Work Order. Menu "Admin" di sidebar WO dihapus.
+- Navigasi bertingkat: **Platform** (Pengguna, Hak Akses, Aplikasi/Beranda, Brand, Email, Telegram, WhatsApp, Log notifikasi, SSL & Domain, Keamanan, Log audit) · **Work Order** (MSRadius, Formulir Berlangganan, Dokumen PR, BA & Garansi Order Jasa, Info aset, Event ke Billing) · **Data** (Data & Backup, tab per aplikasi) · satu kelompok per aplikasi lain yang terdaftar (kini CRM).
+- Aturan: satu repo satu penulis. Halaman admin aplikasi lain dimiliki aplikasi itu; Pusat Admin hanya menautkan (`APP_ADMIN_LINKS` di `admin/page.tsx`; CRM: `/crm/admin/settings`, `/crm/admin/data`). Menambah aplikasi baru dengan halaman admin = tambahkan entri di `APP_ADMIN_LINKS`.
+- Data & Backup/purge/demo WO hanya menyentuh database WO; CRM punya yang setara di database-nya sendiri.

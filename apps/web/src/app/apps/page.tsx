@@ -54,7 +54,7 @@ export default function AppsHome() {
             );
             const cls = 'card flex flex-col items-start p-4 transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500';
             // aplikasi lain = aplikasi terpisah di jalur yang sama → navigasi penuh (bukan router Next milik WO)
-            return a.path === '/' ? <Link key={a.id} href="/" className={cls}>{inner}</Link> : <a key={a.id} href={`${a.path}/`} className={cls}>{inner}</a>;
+            return a.path === '/' || a.id === 'admin' ? <Link key={a.id} href={a.path} className={cls}>{inner}</Link> : <a key={a.id} href={`${a.path}/`} className={cls}>{inner}</a>;
           })}
         </div>
       </main>

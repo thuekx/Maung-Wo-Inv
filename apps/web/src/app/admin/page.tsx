@@ -950,70 +950,91 @@ function AssetInfoCard({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
-const SETTING_SECTIONS = [
-  { key: 'brand', label: 'Tampilan & brand' },
-  { key: 'email', label: 'Email (SMTP)' },
-  { key: 'telegram', label: 'Telegram' },
-  { key: 'whatsapp', label: 'WhatsApp' },
-  { key: 'radius', label: 'MSRadius' },
-  { key: 'subform', label: 'Formulir Berlangganan' },
-  { key: 'docs', label: 'Dokumen PR' },
-  { key: 'serviceorder', label: 'BA & Garansi Order Jasa' },
-  { key: 'assetinfo', label: 'Info aset (QR)' },
-  { key: 'ssl', label: 'SSL & Domain' },
-  { key: 'security', label: 'Keamanan' },
-  { key: 'apps', label: 'Aplikasi (Beranda)' },
-  { key: 'access', label: 'Hak Akses' },
-  { key: 'data', label: 'Data & Backup' },
-] as const;
+/* ───────── Pusat Admin: navigasi bertingkat (Platform / Work Order / aplikasi lain / Data) ───────── */
+const NAV: { group: string; items: { key: string; label: string }[] }[] = [
+  { group: 'Platform', items: [
+    { key: 'users', label: 'Pengguna' }, { key: 'access', label: 'Hak Akses' }, { key: 'apps', label: 'Aplikasi (Beranda)' }, { key: 'brand', label: 'Tampilan & brand' },
+    { key: 'email', label: 'Email (SMTP)' }, { key: 'telegram', label: 'Telegram' }, { key: 'whatsapp', label: 'WhatsApp' }, { key: 'notif', label: 'Log notifikasi' },
+    { key: 'ssl', label: 'SSL & Domain' }, { key: 'security', label: 'Keamanan' }, { key: 'audit', label: 'Log audit' },
+  ] },
+  { group: 'Work Order', items: [
+    { key: 'radius', label: 'MSRadius' }, { key: 'subform', label: 'Formulir Berlangganan' }, { key: 'docs', label: 'Dokumen PR' },
+    { key: 'serviceorder', label: 'BA & Garansi Order Jasa' }, { key: 'assetinfo', label: 'Info aset (QR)' }, { key: 'out', label: 'Event ke Billing' },
+  ] },
+  { group: 'Data', items: [{ key: 'data', label: 'Data & Backup' }] },
+];
+/** Halaman admin milik aplikasi lain (dibuat & dipelihara aplikasi itu sendiri; WO hanya menautkan). */
+const APP_ADMIN_LINKS: Record<string, { label: string; sub: string }[]> = {
+  crm: [{ label: 'Pengaturan CRM', sub: '/admin/settings' }, { label: 'Data & Backup CRM', sub: '/admin/data' }],
+};
 
-function Settings() {
-  const { data, error, reload } = useFetch<any>('/admin/settings');
-  const [sec, setSecRaw] = useState<string>('brand');
-  useEffect(() => { try { const x = localStorage.getItem('maung_admin_sec'); if (x && SETTING_SECTIONS.some((s) => s.key === x)) setSecRaw(x); } catch { /* abaikan */ } }, []);
-  const setSec = (k: string) => { setSecRaw(k); try { localStorage.setItem('maung_admin_sec', k); } catch { /* abaikan */ } };
-  if (error) return <ErrorMsg>{error}</ErrorMsg>;
-  if (!data) return <p className="text-slate-500">Memuat…</p>;
+function DataSection({ crm }: { crm?: { name: string; path: string } }) {
+  const [app, setApp] = useState('wo');
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <nav className="flex gap-1 overflow-x-auto lg:sticky lg:top-20 lg:flex-col lg:overflow-visible" aria-label="Bagian pengaturan">
-        {SETTING_SECTIONS.map((s) => (
-          <button key={s.key} onClick={() => setSec(s.key)} className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${sec === s.key ? 'bg-accent-100 font-semibold text-brand-900 dark:bg-slate-700 dark:text-white' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>{s.label}</button>
-        ))}
-      </nav>
-      <div className="min-w-0 max-w-4xl space-y-4">
-        {sec === 'brand' && <BrandingCard d={data} reload={reload} />}
-        {sec === 'email' && <SmtpCard d={data} reload={reload} />}
-        {sec === 'telegram' && <TelegramCard d={data} reload={reload} />}
-        {sec === 'whatsapp' && <WhatsappCard d={data} reload={reload} />}
-        {sec === 'radius' && <RadiusCard />}
-        {sec === 'subform' && <SubFormCard />}
-        {sec === 'docs' && <DocsCard />}
-        {sec === 'serviceorder' && <ServiceOrderCard />}
-        {sec === 'assetinfo' && <AssetInfoCard d={data} reload={reload} />}
-        {sec === 'ssl' && <SslCard />}
-        {sec === 'security' && <SecurityCard d={data} reload={reload} />}
-        {sec === 'apps' && <AppsCard />}
-        {sec === 'access' && <AccessCard />}
-        {sec === 'data' && <DataCard />}
-      </div>
-    </div>
+    <>
+      <Tabs value={app} onChange={setApp} tabs={[{ key: 'wo', label: 'Work Order' }, ...(crm ? [{ key: 'crm', label: crm.name }] : [])]} />
+      {app === 'wo' && <DataCard />}
+      {app === 'crm' && crm && (
+        <div className="card space-y-3">
+          <h2 className="font-semibold">Data & Backup {crm.name}</h2>
+          <p className="text-sm text-slate-500">Data {crm.name} disimpan di database aplikasi itu sendiri, jadi backup, purge, dan data demo-nya dikelola di halamannya sendiri (tampilan dan cara kerjanya sama dengan Work Order).</p>
+          <a className="btn inline-block" href={`${crm.path}/admin/data`}>Buka Data & Backup {crm.name}</a>
+        </div>
+      )}
+    </>
   );
 }
 
 export default function Admin() {
   const { user } = useAuth();
-  const [tab, setTab] = useState('users');
-  if (user?.role !== 'ADMIN') return <ErrorMsg>Khusus Admin</ErrorMsg>;
+  const [sec, setSecRaw] = useState('users');
+  useEffect(() => { try { const x = localStorage.getItem('maung_admin_sec2'); if (x) setSecRaw(x); } catch { /* abaikan */ } }, []);
+  const setSec = (k: string) => { setSecRaw(k); try { localStorage.setItem('maung_admin_sec2', k); } catch { /* abaikan */ } };
+  const isAdmin = user?.role === 'ADMIN';
+  const { data: settings, error, reload } = useFetch<any>(isAdmin ? '/admin/settings' : null);
+  const { data: launcher } = useFetch<{ apps: { id: string; name: string; path: string }[] }>(isAdmin ? '/launcher' : null);
+  if (user && !isAdmin) return <ErrorMsg>Khusus Admin</ErrorMsg>;
+  if (error) return <ErrorMsg>{error}</ErrorMsg>;
+  if (!settings) return <p className="text-slate-500">Memuat…</p>;
+  const others = (launcher?.apps ?? []).filter((a) => a.id !== 'wo' && a.id !== 'admin' && APP_ADMIN_LINKS[a.id]);
+  const crm = (launcher?.apps ?? []).find((a) => a.id === 'crm');
+  const known = NAV.flatMap((g) => g.items.map((i) => ({ ...i, group: g.group })));
+  const cur = known.find((i) => i.key === sec) ?? known[0];
   return (
-    <>
-      <PageHeader pretitle="Sistem" title="Admin" sub="User, pengaturan (logo PT, SMTP, Telegram), dan log notifikasi" />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'users', label: 'User' }, { key: 'settings', label: 'Pengaturan' }, { key: 'notif', label: 'Log notifikasi' }, { key: 'audit', label: 'Log audit' }, { key: 'out', label: 'Event ke Billing' }]} />
-      {tab === 'users' && <Users />}
-      {tab === 'settings' && <Settings />}
-      {tab === 'notif' && <Notifs />}
-      {tab === 'audit' && <AuditLog />}
-      {tab === 'out' && <Outbound />}
-    </>
+    <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <nav className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-20 lg:flex-col lg:gap-0.5 lg:overflow-visible" aria-label="Pusat Admin">
+        {[...NAV, ...others.map((a) => ({ group: a.name, items: [] as { key: string; label: string }[], app: a }))].map((g: any) => (
+          <Fragment key={g.group}>
+            <div className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 first:pt-0 lg:block">{g.group}</div>
+            {g.app
+              ? APP_ADMIN_LINKS[g.app.id].map((l) => <a key={l.sub} href={`${g.app.path}${l.sub}`} className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-100">{l.label} <span aria-hidden>↗</span></a>)
+              : g.items.map((s: { key: string; label: string }) => (
+                <button key={s.key} onClick={() => setSec(s.key)} className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${cur.key === s.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>{s.label}</button>
+              ))}
+          </Fragment>
+        ))}
+      </nav>
+      <div className="min-w-0 max-w-5xl space-y-4">
+        <div><div className="subheader text-accent-600">{cur.group}</div><h1 className="font-display text-xl font-bold text-brand-900">{cur.label}</h1></div>
+        {cur.key === 'users' && <Users />}
+        {cur.key === 'access' && <AccessCard />}
+        {cur.key === 'apps' && <AppsCard />}
+        {cur.key === 'brand' && <BrandingCard d={settings} reload={reload} />}
+        {cur.key === 'email' && <SmtpCard d={settings} reload={reload} />}
+        {cur.key === 'telegram' && <TelegramCard d={settings} reload={reload} />}
+        {cur.key === 'whatsapp' && <WhatsappCard d={settings} reload={reload} />}
+        {cur.key === 'notif' && <Notifs />}
+        {cur.key === 'ssl' && <SslCard />}
+        {cur.key === 'security' && <SecurityCard d={settings} reload={reload} />}
+        {cur.key === 'audit' && <AuditLog />}
+        {cur.key === 'radius' && <RadiusCard />}
+        {cur.key === 'subform' && <SubFormCard />}
+        {cur.key === 'docs' && <DocsCard />}
+        {cur.key === 'serviceorder' && <ServiceOrderCard />}
+        {cur.key === 'assetinfo' && <AssetInfoCard d={settings} reload={reload} />}
+        {cur.key === 'out' && <Outbound />}
+        {cur.key === 'data' && <DataSection crm={crm && APP_ADMIN_LINKS.crm ? { name: crm.name, path: crm.path } : undefined} />}
+      </div>
+    </div>
   );
 }
