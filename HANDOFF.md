@@ -5,22 +5,31 @@
 ## Kalimat pembuka untuk sesi baru (salin-tempel)
 ```
 Lanjutkan proyek Maung-Wo-Inv (repo thuekx/Maung-Wo-Inv, branch main, sudah ter-clone di sesi ini).
-Baca dulu HANDOFF.md (bagian "STATUS TERKINI" dan "Panduan sesi berikutnya"), lalu docs/INSTALL.md,
-docs/RADIUS-API.md (bagian "Pembaruan: status & area") dan docs/SUPER-APPS.md.
-Aplikasi sudah LIVE di https://maung.liv.net.id (VM maung-apps, repo ~/Maung-Wo-Inv). Semua temuan UAT Live v1.0 dan
-integrasi MSRadius status/area sudah ter-push (commit terakhir 3c74e19 + handoff). Tugas sekarang: bantu saya
-memvalidasi hasil update di VM (Tarik data MSRadius -> kolom Status layanan, area, Form Berlangganan otomatis;
-Kanca asli; kamera HP), perbaiki temuan saya. Proyek CRM/sales ada di repo terpisah thuekx/maung-crm (sesi lain).
-Jangan menambah fitur di luar yang saya minta; Bahasa Indonesia; identitas git thuekx <thuekx@kolu.web.id> tanpa
-trailer/atribusi Claude; hanya branch main; uji sungguhan (API + browser) sebelum push; jangan minta saya menempel
-token/secret; beri perintah update satu baris (user biasa, tanpa sudo); perbarui HANDOFF.md di akhir.
+Baca dulu HANDOFF.md (bagian "STATUS TERKINI" dan "Panduan sesi berikutnya"), lalu docs/SUPER-APPS.md,
+docs/maung-crm/INTEGRASI-WO.md, docs/INSTALL.md, dan platform/garage/README.md.
+Maung WO sudah LIVE di https://maung.liv.net.id (VM maung-apps, repo ~/Maung-Wo-Inv). Ini "super app satu pintu":
+satu domain, satu login (WO), beranda /apps berisi ikon aplikasi; CRM (repo thuekx/maung-crm, SESI TERPISAH) berjalan di
+jalur /crm dan sudah ter-update (update.sh CRM PASS). Garage (S3) kini stack bersama `maung-garage` (adopsi dari CRM sudah
+berhasil). Tugas sekarang: lanjutkan dari bagian "STATUS TERKINI -> Langkah berikutnya" (finalize Garage, uji backup,
+go-live CRM di Admin WO), dan bantu saya mereview commit sesi CRM bila saya minta (lampirkan repo CRM baca-saja dengan
+add_repo lalu git fetch + merge --ff-only; jangan menulis ke repo CRM).
+Aturan kerja: Bahasa Indonesia; identitas git thuekx <thuekx@kolu.web.id> tanpa trailer/atribusi AI; hanya branch main;
+uji sungguhan (API + browser) sebelum push; jangan menambah fitur di luar yang saya minta; JANGAN minta saya menempel
+token/secret; perintah server = skrip .sh di repo + SATU perintah salin-tempel (tanpa sudo, `</dev/null`), berfase dengan
+banner ====, [n/N], baris ✓/!/✗, blok RESULT kunci=nilai, guard host maung-apps & bukan root, backup + rollback, tidak
+menyentuh .env; perbarui HANDOFF.md di akhir.
 ```
 
-## STATUS TERKINI (2026-10-11)
-- **Kode**: `origin/main` = commit "Handoff" di atas `3c74e19`. **Produksi**: `https://maung.liv.net.id` (VM `maung-apps` 192.168.48.99, repo `~/Maung-Wo-Inv`, Caddy + Let's Encrypt). **Update VM**: `cd ~/Maung-Wo-Inv && git pull origin main && bash scripts/deploy.sh` (user biasa grup docker; 502/500 singkat saat container diganti itu normal; `bash scripts/diagnose.sh` bila ragu).
-- **Format MSRadius terkonfirmasi** (contoh baris asli): `status:"ONLINE"` (string) dan `area:"Panundaan"` (string nama area). Parser menangani teks/id/objek; area terisi bila namanya ada di Master Area (hasil sinkron `masterdata/area/list`) — bila kosong, cek kecocokan nama/kode Area.
-- **Belum teruji di perangkat/VM nyata**: kamera HP & fokus barcode 1D, redirect HTTP→HTTPS + `:80` berdampingan & penerbitan sertifikat, webhook/akun Kanca asli, cetak PDF nyata, Safari iOS, redaksi password oleh worker setelah email terkirim.
-- Keputusan terbuka: panel hak akses (matriks divisi/sub-role) di Admin — usulan menunggu keputusan pemilik. Pemilik perlu menghapus branch remote lama (penghapusan dari sandbox gagal).
+## STATUS TERKINI (2026-10-12)
+- **Kode & produksi**: `origin/main` terbaru (lihat `git log`); VM `maung-apps` (192.168.48.99): WO di `~/Maung-Wo-Inv`, CRM di `~/maung-crm`; Caddy milik stack WO (HTTPS Let's Encrypt, domain `maung.liv.net.id`). Aplikasi WO deploy terakhir = commit ikon/beranda (`7709e94`); commit sesudahnya hanya skrip/dokumen.
+- **Sudah ada (ringkas)**: panel Hak Akses (Admin, fitur × divisi × sub-role, `requireFeature`, fitur dinamis `app.<id>`); Lupa password (tautan 30 mnt); status pelanggan MSRadius (`Customer.radiusStatus`; Offline→`NEED_CHECK`, Waiting→`PROSPECT`); nomor Reg. formulir editable/otomatis (setelan Admin `regEditable`); stock opname hanya GA/FIN Manager; export API `subscriptions` + `areaName`; launcher `/apps` (judul/kalimat/nama tombol kembali dapat diedit, ubin WO & ikon dapat diubah, 51 ikon Lucide + unggah ikon sendiri PNG/JPEG/WebP→PNG 192px, SVG ditolak); Caddy `proxy/sites/*.caddy` (domain lain) & `proxy/apps/*.caddy` (jalur di domain WO, di dalam blok situs); jaringan `maung_edge`; Garage bersama.
+- **Skrip operasi (semua berfase + RESULT + rollback)**: `scripts/update-safe.sh` (update WO), `scripts/app-route.sh add|remove|status` (pasang jalur aplikasi; otomatis menambah blok `handle /<nama>` tepat), `scripts/diagnose-login.sh`, `scripts/garage-platform.sh status|up|adopt-crm|finalize`, `scripts/garage-app.sh <app>`, `scripts/garage-backup.sh`. Tes: `apps/api` `npm test` (24), `bash scripts/tests/app-route.test.sh` (76), `bash scripts/tests/garage.test.sh` (79).
+- **Garage bersama**: adopsi volume CRM SELESAI (node `92ee80fbbc61b82c`, bucket `crm-photos`, kunci `crm-key`; backup `~/maung-garage-backups/garage-adopt-*.tgz`); CRM sudah di-update (`update.sh` PASS: crm-api di maung_edge+maung_storage, crm-web edge saja, `maung-garage` tidak di edge). **Langkah berikutnya (pemilik)**: (4) `cd ~/Maung-Wo-Inv && bash scripts/garage-platform.sh finalize </dev/null` (lepas alias sementara `garage` di jaringan CRM; menolak bila crm-api belum di endpoint baru); (5) `bash scripts/garage-backup.sh </dev/null` sekali (UJI PERTAMA perintah `garage meta snapshot` di Garage asli) lalu jadwalkan harian (cron) dan SALIN arsip keluar VM; hapus `GARAGE_RPC_SECRET` lama di `.env` CRM (opsional).
+- **Go-live CRM**: jalur `/crm` aktif (app-route sudah dipasang; `route_exact_http_status=200`). Tersisa di Admin WO: Pengaturan → Aplikasi (Beranda): daftarkan `crm` (jalur `/crm`, ikon, "Tampil di beranda" mati dulu) → Hak Akses (kelompok "Aplikasi") → uji sebagai Admin di `/crm` → nyalakan ikon → uji non-Admin; uji sesi 35 mnt aktif / diam 30 mnt. Penerimaan akhir manual oleh pemilik.
+- **Belum teruji di sistem asli**: perintah Garage `meta snapshot`, `bucket set-quotas`, `key info --show-secret`, skrip `garage-app.sh` & `garage-backup.sh` (tes hanya dengan docker tiruan); kamera HP/fokus barcode 1D; cetak PDF nyata; email SMTP (sakelar email Admin mati → status NOT_SENT, bukan bug).
+- **Koordinasi dua sesi**: sesi WO (repo ini) dan sesi CRM (`thuekx/maung-crm`) terpisah; satu repo satu penulis; saling membaca lewat `add_repo` baca-saja. Kontrak: `docs/maung-crm/INTEGRASI-WO.md` (sisi WO) dan `docs/RENCANA-INTEGRASI-WO.md` di repo CRM. Konsep: WO = penerbit identitas (`/api/auth/me` mengembalikan `features`; fitur `app.crm`), Export API baca-saja (`x-api-key`, kunci hanya di `.env` CRM), `since` memakai `createdAt` (perubahan status lama perlu tarik penuh berkala).
+- **Pelajaran penting (jangan diulang)**: `cmd | grep -q` di bawah `set -o pipefail` gagal karena SIGPIPE → pakai `out_has*`; mawk tidak mendukung interval regex `{n,m}`; Next.js basePath mengalihkan `/crm/`→`/crm` (308) sehingga status 308 TIDAK membuktikan route aktif — uji path tepat; jangan `router.use(guard)` tanpa path; `docker compose down -v` jangan dipakai di stack yang volumenya diadopsi; jangan jalankan dua Garage pada volume yang sama; docker run sebagai root membuat berkas milik root (chown di dalam container).
+- **Keputusan terbuka/di luar lingkup sekarang**: memindah `uploads` WO ke Garage; Caddy dipisah ke stack/repo `maung-platform`; nonce-CSP di CRM; filter `updatedAt` Export API; modul CRM berikutnya (Lead/Opportunity).
 - **Password**: semua akun demo memakai satu `SEED_PASSWORD` di `.env` VM (`grep ^SEED_PASSWORD .env`; jangan ditempel ke chat). Akun: `admin` (Admin), `mkt` (Marketing·Supervisor), `noc` (NOC·Supervisor), `citra` (FOC·Manager), `budi` (FOC·Supervisor), `andi` (FOC·Staff), `ga` (GA·Manager), `fin` (Finance·Manager) — semua `@l1v.local`.
 - **Belum teruji (hanya bisa di staging)**: Docker penuh di sandbox, token MSRadius asli (hanya server tiruan 2.320 pelanggan), hasil cetak PDF nyata (PR, BA, Formulir Berlangganan; aktifkan "Grafik latar belakang"), GPS foto (butuh HTTPS), Telegram/SMTP (belum diisi → status NOT_SENT).
 - **Langkah pertama pemilik di staging**: ganti password admin → Admin → Pengaturan: isi MSRadius (token, Uji koneksi, Tarik data), hubungkan tiap Area ke gudang (Master Data → Area), isi SMTP/Telegram, cek logo/kop/formulir (Branding) → uji per peran sesuai `docs/DEMO.md`.
