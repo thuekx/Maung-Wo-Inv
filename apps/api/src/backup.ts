@@ -186,7 +186,7 @@ async function firstLine(file: string) {
 
 /* ───────── Purge ───────── */
 export type PurgeScope = 1 | 2 | 3;
-const S1 = ['PrQuote', 'PrLine', 'PurchaseRequest', 'PoLine', 'PurchaseOrder', 'WoEvent', 'Attachment', 'WorkOrder', 'Subscription', 'StockMovement', 'Notification', 'Inbox', 'AuditLog', 'OutboundEvent', 'KancaEvent', 'Counter'];
+const S1 = ['PrQuote', 'PrLine', 'PurchaseRequest', 'PoLine', 'PurchaseOrder', 'WoEvent', 'Attachment', 'WorkOrder', 'CrmQuotation', 'Subscription', 'StockMovement', 'Notification', 'Inbox', 'AuditLog', 'OutboundEvent', 'KancaEvent', 'Counter'];
 const S2 = ['CustomerChange', 'Asset', 'StockLevel', 'Customer'];
 const S3 = ['Vendor', 'Item', 'AssetModel', 'AssetBrand', 'Area', 'Package', 'Warehouse', 'SyncRun'];
 
