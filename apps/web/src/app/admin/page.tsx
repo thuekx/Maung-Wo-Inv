@@ -11,6 +11,7 @@ import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 import { Select } from '@/components/Select';
+import { EmbedFrame } from '@/components/EmbedFrame';
 import { ApiMsradius } from '@/components/admin/ApiMsradius';
 import { ApiSistem } from '@/components/admin/ApiSistem';
 import { ApiKanca } from '@/components/admin/ApiKanca';
@@ -967,9 +968,9 @@ const NAV: { group: string; items: { key: string; label: string }[] }[] = [
   ] },
   { group: 'Data', items: [{ key: 'data', label: 'Data & Backup' }] },
 ];
-/** Halaman admin milik aplikasi lain (dibuat & dipelihara aplikasi itu sendiri; WO hanya menautkan). */
+/** Halaman admin milik aplikasi lain (dibuat & dipelihara aplikasi itu sendiri; WO hanya MENANAM-nya lewat iframe se-origin, ?embed=1). Data & Backup-nya muncul sebagai tab di bagian Data. */
 const APP_ADMIN_LINKS: Record<string, { label: string; sub: string }[]> = {
-  crm: [{ label: 'Pengaturan CRM', sub: '/admin/settings' }, { label: 'Data & Backup CRM', sub: '/admin/data' }],
+  crm: [{ label: 'Pengaturan', sub: '/admin/settings' }],
 };
 
 function DataSection({ crm }: { crm?: { name: string; path: string } }) {
@@ -978,13 +979,7 @@ function DataSection({ crm }: { crm?: { name: string; path: string } }) {
     <>
       <Tabs value={app} onChange={setApp} tabs={[{ key: 'wo', label: 'Work Order' }, ...(crm ? [{ key: 'crm', label: crm.name }] : [])]} />
       {app === 'wo' && <DataCard />}
-      {app === 'crm' && crm && (
-        <div className="card space-y-3">
-          <h2 className="font-semibold">Data & Backup {crm.name}</h2>
-          <p className="text-sm text-slate-500">Data {crm.name} disimpan di database aplikasi itu sendiri, jadi backup, purge, dan data demo-nya dikelola di halamannya sendiri (tampilan dan cara kerjanya sama dengan Work Order).</p>
-          <a className="btn inline-block" href={`${crm.path}/admin/data`}>Buka Data & Backup {crm.name}</a>
-        </div>
-      )}
+      {app === 'crm' && crm && <EmbedFrame src={`${crm.path}/admin/data`} title={`Data & Backup ${crm.name}`} />}
     </>
   );
 }
@@ -1002,19 +997,17 @@ export default function Admin() {
   if (!settings) return <p className="text-slate-500">Memuat…</p>;
   const others = (launcher?.apps ?? []).filter((a) => a.id !== 'wo' && a.id !== 'admin' && APP_ADMIN_LINKS[a.id]);
   const crm = (launcher?.apps ?? []).find((a) => a.id === 'crm');
-  const known = NAV.flatMap((g) => g.items.map((i) => ({ ...i, group: g.group })));
+  const known = [...NAV, ...others.map((a) => ({ group: a.name, items: APP_ADMIN_LINKS[a.id].map((l) => ({ key: `app:${a.id}:${l.sub}`, label: l.label })) }))].flatMap((g) => g.items.map((i) => ({ ...i, group: g.group })));
   const cur = known.find((i) => i.key === sec) ?? known[0];
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
       <nav className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-20 lg:flex-col lg:gap-0.5 lg:overflow-visible" aria-label="Pusat Admin">
-        {[...NAV, ...others.map((a) => ({ group: a.name, items: [] as { key: string; label: string }[], app: a }))].map((g: any) => (
+        {[...NAV, ...others.map((a) => ({ group: a.name, items: APP_ADMIN_LINKS[a.id].map((l) => ({ key: `app:${a.id}:${l.sub}`, label: l.label })) }))].map((g: any) => (
           <Fragment key={g.group}>
             <div className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 first:pt-0 lg:block">{g.group}</div>
-            {g.app
-              ? APP_ADMIN_LINKS[g.app.id].map((l) => <a key={l.sub} href={`${g.app.path}${l.sub}`} className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-100">{l.label} <span aria-hidden>↗</span></a>)
-              : g.items.map((s: { key: string; label: string }) => (
-                <button key={s.key} onClick={() => setSec(s.key)} className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${cur.key === s.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>{s.label}</button>
-              ))}
+            {g.items.map((s: { key: string; label: string }) => (
+              <button key={s.key} onClick={() => setSec(s.key)} className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${cur.key === s.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>{s.label}</button>
+            ))}
           </Fragment>
         ))}
       </nav>
@@ -1040,6 +1033,7 @@ export default function Admin() {
         {cur.key === 'serviceorder' && <ServiceOrderCard />}
         {cur.key === 'assetinfo' && <AssetInfoCard d={settings} reload={reload} />}
         {cur.key === 'out' && <Outbound />}
+        {others.map((a) => APP_ADMIN_LINKS[a.id].map((l) => cur.key === `app:${a.id}:${l.sub}` && <EmbedFrame key={cur.key} src={`${a.path}${l.sub}`} title={`${l.label} ${a.name}`} />))}
         {cur.key === 'data' && <DataSection crm={crm && APP_ADMIN_LINKS.crm ? { name: crm.name, path: crm.path } : undefined} />}
       </div>
     </div>
