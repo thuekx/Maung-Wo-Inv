@@ -17,6 +17,11 @@ ok()     { printf '  ✓ %s\n' "$*"; }
 warn()   { printf '  ! %s\n' "$*"; }
 bad()    { printf '  ✗ %s\n' "$*"; }
 G() { docker exec "$GC" /garage "$@"; }
+# Jalankan perintah, tampung keluarannya PENUH, lalu cari pola — tanpa pipa. (Pipa `cmd | grep -q` di bawah `set -o pipefail`
+# gagal bila grep berhenti lebih awal dan `cmd` menerima SIGPIPE, walau polanya ketemu.)
+out_has()  { local p="$1" o; shift; o="$("$@" 2>/dev/null)"; grep -q  -- "$p" <<<"$o"; }
+out_hasw() { local p="$1" o; shift; o="$("$@" 2>/dev/null)"; grep -qw -- "$p" <<<"$o"; }
+out_hasi() { local p="$1" o; shift; o="$("$@" 2>/dev/null)"; grep -qi -- "$p" <<<"$o"; }
 result() { banner "RESULT"; cat <<EOF
 status=$STATUS
 reason=$REASON
@@ -56,11 +61,11 @@ if [ -n "$ENVF" ]; then [ -f "$ENVF" ] && [ -w "$ENVF" ] || abort "--env-file ti
 ok "aplikasi $APP → bucket $BUCKET, kunci $KEYNAME${QUOTA:+, kuota $QUOTA}"
 
 phase 2 "Bucket"
-if G bucket list 2>/dev/null | grep -qw "$BUCKET"; then V_BUCKET="sudah-ada"; ok "bucket $BUCKET sudah ada"; else G bucket create "$BUCKET" >/dev/null 2>&1 && { V_BUCKET="dibuat"; ok "bucket $BUCKET dibuat"; } || die "gagal membuat bucket $BUCKET"; fi
+if out_hasw "$BUCKET" G bucket list; then V_BUCKET="sudah-ada"; ok "bucket $BUCKET sudah ada"; else G bucket create "$BUCKET" >/dev/null 2>&1 && { V_BUCKET="dibuat"; ok "bucket $BUCKET dibuat"; } || die "gagal membuat bucket $BUCKET"; fi
 
 phase 3 "Kunci (rahasia tidak dicetak)"
 AK=""; SK=""
-if G key list 2>/dev/null | grep -qw "$KEYNAME"; then
+if out_hasw "$KEYNAME" G key list; then
   V_KEY="sudah-ada"; ok "kunci $KEYNAME sudah ada"
   if [ -n "$ENVF" ] && [ -z "$(getv S3_SECRET_KEY)" ]; then OUT="$(G key info "$KEYNAME" --show-secret 2>/dev/null)"; fi
 else
@@ -69,7 +74,7 @@ fi
 if [ -n "${OUT:-}" ]; then AK="$(printf '%s\n' "$OUT" | awk -F': *' '/Key ID/{print $2; exit}')"; SK="$(printf '%s\n' "$OUT" | awk -F': *' '/Secret key/{print $2; exit}')"; fi
 OUT=""
 G bucket allow --read --write --owner "$BUCKET" --key "$KEYNAME" >/dev/null 2>&1 && { V_ALLOW=ya; ok "kunci $KEYNAME diberi izin baca/tulis pada bucket $BUCKET"; } || die "gagal memberi izin pada bucket"
-G key info "$KEYNAME" 2>/dev/null | grep -qi 'create.*buckets: *false' && ok "kunci tidak boleh membuat bucket lain" || warn "periksa: kunci mungkin boleh membuat bucket (jangan dibagikan)"
+out_hasi 'create.*buckets: *false' G key info "$KEYNAME" && ok "kunci tidak boleh membuat bucket lain" || warn "periksa: kunci mungkin boleh membuat bucket (jangan dibagikan)"
 
 phase 4 "Kuota bucket"
 if [ -n "$QUOTA" ]; then G bucket set-quotas "$BUCKET" --max-size "$QUOTA" >/dev/null 2>&1 && { V_QUOTA="$QUOTA"; ok "kuota $QUOTA dipasang"; } || die "gagal memasang kuota"; else warn "tanpa kuota (disarankan: --quota 10GiB agar satu aplikasi tidak menghabiskan disk)"; V_QUOTA="tidak ada"; fi

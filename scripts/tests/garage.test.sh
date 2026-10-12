@@ -73,7 +73,7 @@ case "$1" in
     echo "garage $sub" >> "$L"
     case "$sub" in
       "status") echo "0123456789abcdef  maung-apps  127.0.0.1:3901  [dc1]";;
-      "layout show") [ "${NO_LAYOUT:-0}" = 1 ] && echo "(kosong)" || echo "0123456789abcdef  dc1  10 GB";;
+      "layout show") if [ "${NO_LAYOUT:-0}" = 1 ]; then echo "(kosong)"; else echo "0123456789abcdef  dc1  10 GB"; [ "${SLOW_OUT:-0}" = 1 ] && { sleep 0.3; i=0; while [ $i -lt 5000 ]; do echo "baris-tambahan-setelah-kecocokan-$i"; i=$((i+1)); done; }; fi;;
       "bucket list") [ "${NO_BUCKET:-0}" = 1 ] || echo "crm-photos"; [ -f "$S/buckets" ] && cat "$S/buckets";;
       "key list") echo "crm-key"; [ -f "$S/keys" ] && cat "$S/keys";;
       "meta snapshot") [ "${SNAP_FAIL:-0}" = 1 ] && exit 1;;
@@ -132,6 +132,10 @@ t "rolled_back" "$(res "$O" rolled_back)" ya
 t "Garage CRM dinyalakan kembali" "$([ -f "$S/crm_running" ] && echo jalan)" jalan
 t "Garage bersama dihentikan" "$([ -f "$S/platform_running" ] && echo jalan || echo berhenti)" berhenti
 t "alias dilepas" "$([ -f "$S/alias" ] && echo ada || echo tidak)" tidak
+
+echo "== A1b. regresi SIGPIPE: keluaran layout panjang & lambat setelah kecocokan (grep -q berhenti awal) tetap lolos"
+reset; O="$(SLOW_OUT=1 run garage-platform.sh adopt-crm)"
+t "status OK walau keluaran panjang" "$(res "$O" status)" OK
 
 echo "== A2b. ID node berbeda dari Garage CRM lama = rollback + pesan jelas"
 reset; O="$(OLD_NODE_ID=fedcba9876543210 run garage-platform.sh adopt-crm)"

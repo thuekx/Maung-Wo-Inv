@@ -50,6 +50,11 @@ EOF
 
 dc() { docker compose -p maung-garage -f "$PDIR/docker-compose.yml" --env-file "$PDIR/.env" "$@"; }
 G() { docker exec "$GC" /garage "$@"; }
+# Jalankan perintah, tampung keluarannya PENUH, lalu cari pola — tanpa pipa. (Pipa `cmd | grep -q` di bawah `set -o pipefail`
+# gagal bila grep berhenti lebih awal dan `cmd` menerima SIGPIPE, walau polanya ketemu.)
+out_has()  { local p="$1" o; shift; o="$("$@" 2>/dev/null)"; grep -q  -- "$p" <<<"$o"; }
+out_hasw() { local p="$1" o; shift; o="$("$@" 2>/dev/null)"; grep -qw -- "$p" <<<"$o"; }
+out_hasi() { local p="$1" o; shift; o="$("$@" 2>/dev/null)"; grep -qi -- "$p" <<<"$o"; }
 wo_ids() { docker ps -a --filter "label=com.docker.compose.project=maung-wo-inv" --format '{{.Names}} {{.ID}} {{.State}}' 2>/dev/null | sort; }
 crm_garage_name() { docker ps -a --filter "label=com.docker.compose.project=$CRM_PROJECT" --filter "label=com.docker.compose.service=garage" --format '{{.Names}}' 2>/dev/null | head -1; }
 running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
@@ -123,8 +128,8 @@ case "$MODE" in
     running "$GC" || abort "Garage bersama tidak berjalan"
     CRMAPI="$(docker ps --filter "label=com.docker.compose.project=$CRM_PROJECT" --filter "label=com.docker.compose.service=crm-api" --format '{{.Names}}' | head -1)"
     [ -n "$CRMAPI" ] || abort "container crm-api tidak berjalan"
-    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CRMAPI" | grep -q '^S3_ENDPOINT=http://maung-garage:3900' || abort "crm-api belum memakai S3_ENDPOINT=http://maung-garage:3900 — update CRM dulu (lihat ringkasan cutover)"
-    docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CRMAPI" | grep -qw maung_storage || abort "crm-api belum tergabung ke maung_storage"
+    out_has '^S3_ENDPOINT=http://maung-garage:3900' docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CRMAPI" || abort "crm-api belum memakai S3_ENDPOINT=http://maung-garage:3900 — update CRM dulu (lihat ringkasan cutover)"
+    out_hasw maung_storage docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CRMAPI" || abort "crm-api belum tergabung ke maung_storage"
     ok "crm-api memakai maung-garage dan tergabung ke maung_storage"
     CRM_GC_NOW="$(crm_garage_name)"; if [ -n "$CRM_GC_NOW" ] && running "$CRM_GC_NOW"; then abort "Garage CRM lama ($CRM_GC_NOW) MASIH berjalan — dua Garage pada volume yang sama berbahaya; hentikan dulu"; fi
     ok "tidak ada Garage CRM lama yang berjalan"
@@ -133,7 +138,7 @@ esac
 
 if [ "$MODE" = finalize ]; then
   phase 4 "Lepas alias sementara dari jaringan CRM"
-  if docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$GC" | grep -qw "$CRM_NET"; then docker network disconnect "$CRM_NET" "$GC" >/dev/null 2>&1 && ok "$GC dilepas dari $CRM_NET" || die "gagal melepas $GC dari $CRM_NET"; else ok "alias sementara sudah tidak ada"; fi
+  if out_hasw "$CRM_NET" docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$GC"; then docker network disconnect "$CRM_NET" "$GC" >/dev/null 2>&1 && ok "$GC dilepas dari $CRM_NET" || die "gagal melepas $GC dari $CRM_NET"; else ok "alias sementara sudah tidak ada"; fi
   phase 5 "Bukti"
   R="$(docker exec "$CRMAPI" node -e "fetch('http://maung-garage:3900/').then(r=>{console.log('HTTP '+r.status);process.exit(0)}).catch(e=>{console.log('ERR');process.exit(1)})" 2>/dev/null | tr -d '\r\n')"; V_REACH="${R:-ERR}"
   case "$V_REACH" in HTTP*) ok "crm-api → http://maung-garage:3900 menjawab ($V_REACH)" ;; *) die "crm-api tidak menjangkau maung-garage ($V_REACH)" ;; esac
@@ -181,14 +186,14 @@ wait_healthy && ok "Garage bersama sehat" || { dc logs --no-color --tail 20 2>&1
 phase 7 "Verifikasi data & akses"
 V_NODE="$(G status 2>/dev/null | awk '/^[0-9a-f]{16}/{print $1; exit}')"; [ -n "$V_NODE" ] && ok "node Garage: $V_NODE" || die "ID node tidak terbaca"
 if [ "$MODE" = up ]; then
-  G layout show 2>/dev/null | grep -q "$V_NODE" || { G layout assign -z dc1 -c 10G "$V_NODE" >/dev/null 2>&1 && G layout apply --version 1 >/dev/null 2>&1 && ok "layout awal diterapkan" || die "layout awal gagal"; }
+  out_has "$V_NODE" G layout show || { G layout assign -z dc1 -c 10G "$V_NODE" >/dev/null 2>&1 && G layout apply --version 1 >/dev/null 2>&1 && ok "layout awal diterapkan" || die "layout awal gagal"; }
 else
   if [ -n "${OLD_NODE:-}" ] && [ "$OLD_NODE" != "$V_NODE" ]; then
     bad "ID node BERBEDA: lama=$OLD_NODE baru=$V_NODE (node_key tidak teradopsi — volume meta yang terpasang bukan milik Garage CRM?)"
     echo "  isi volume meta yang terpasang di Garage bersama:"; docker run --rm -v "$META_VOL":/m:ro alpine sh -c 'ls -la /m; ls -la /m/*/ 2>/dev/null | head -20' 2>&1 | sed 's/^/      /'
     die "ID node berubah setelah adopsi"
   fi
-  LAY_OK=0; for i in $(seq 1 "${LAYOUT_TRIES:-10}"); do G layout show 2>/dev/null | grep -q "$V_NODE" && { LAY_OK=1; break; }; sleep "${POLL:-3}"; done
+  LAY_OK=0; for i in $(seq 1 "${LAYOUT_TRIES:-10}"); do out_has "$V_NODE" G layout show && { LAY_OK=1; break; }; sleep "${POLL:-3}"; done
   if [ "$LAY_OK" = 1 ]; then ok "layout lama terbaca (node punya peran)"
   else
     bad "layout tidak memuat node $V_NODE — keluaran untuk diagnosis:"
