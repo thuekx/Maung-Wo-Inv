@@ -116,6 +116,10 @@ const view = (q: any) => ({ quotationId: q.id, crmId: q.crmId, number: q.number,
 
 crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   const crmId = idParam(req);
+  // aturan jejak (pemilik): id + nama marketing wajib di SETIAP permintaan agar tidak ada penawaran tanpa pembuat yang dapat ditelusuri
+  const mk = req.body ?? {};
+  if (!String(mk.marketingUserId ?? '').trim() || !String(mk.marketingName ?? '').trim())
+    throw new AppError(422, 'marketingUserId dan marketingName wajib ada di setiap permintaan penawaran (jejak marketing permanen)');
   const b = quotationBody.parse(req.body);
   const cur = await prisma.crmQuotation.findUnique({ where: { crmId } });
 
@@ -156,7 +160,7 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   const data = {
     number: b.number, rev: b.rev, status: b.status, validUntil: b.validUntil ?? null, sentAt: b.sentAt ?? null, decidedAt: b.decidedAt ?? null,
     lostReason: b.lostReason ?? null, customerCode: code ?? null, customer: cust as any,
-    marketingUserId: b.marketingUserId ?? null, marketingName: b.marketingName ?? mkt?.name ?? null,
+    marketingUserId: b.marketingUserId ?? null, marketingName: b.marketingName ?? null,
     lines: lines as any, total: b.total, taxNote: b.taxNote ?? null, terms: b.terms ?? null,
   };
   const row = await prisma.$transaction(async (tx) => {

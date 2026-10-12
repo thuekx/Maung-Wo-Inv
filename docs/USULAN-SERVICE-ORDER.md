@@ -82,3 +82,6 @@ Respons idempoten `quotations/:crmId` sudah memuat `woNumber`. Untuk status lanj
 - Katalog CRM→WO membawa `sku` (opsional) untuk produk; `CrmQuotation.lines` menyimpan `itemId` hasil pemetaan; Marketing/Admin dapat mengubahnya di `SO_NEW`.
 - `AssetStatus` perlu nilai baru untuk perangkat terjual ke pelanggan (migrasi enum); laporan/Export API aset ikut membawa nilainya.
 - Pengaturan Admin baru: template teks garansi + syarat BA jasa (disimpan di tabel `Setting`, dapat diedit, ada nilai bawaan).
+
+### Jejak marketing (aturan pemilik, berlaku di 2b)
+`marketingUserId` + `marketingName` dari penawaran disalin **apa adanya** ke: pelanggan CRM baru (`salesName` = snapshot nama; id di `data`/riwayat), WO `SERVICE_ORDER` (`data.crmQuotation.marketing = {id, name}`), dan PR proyek turunan (kolom/ catatan khusus, bukan `createdBy` — yang tetap pengguna sistem). Tidak pernah ditimpa nama pengguna WO saat ini; marketing nonaktif hanya mengubah pemegang WO (antrean MKT), bukan jejaknya.

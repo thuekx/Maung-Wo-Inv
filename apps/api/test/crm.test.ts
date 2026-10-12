@@ -161,10 +161,21 @@ test('integrasi CRM 2a', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, 
     assert.equal(j.warnings.marketingMatched, false);
     const a = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q6` } });
     assert.equal(a.marketingUserId, mktUser.id); assert.equal(a.marketingName, 'Budi');
-    const j2: any = await (await put(`/integrations/crm/quotations/${tag}-q7`, quote({ number: `QT7-${tag}`, marketingUserId: 'user-lama-sudah-dihapus', marketingName: undefined }))).json();
+    const j2: any = await (await put(`/integrations/crm/quotations/${tag}-q7`, quote({ number: `QT7-${tag}`, marketingUserId: 'user-lama-sudah-dihapus', marketingName: 'Mantan Marketing' }))).json();
     assert.equal(j2.warnings.marketingMatched, false);
     const b = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q7` } });
-    assert.equal(b.marketingUserId, 'user-lama-sudah-dihapus');
+    assert.equal(b.marketingUserId, 'user-lama-sudah-dihapus'); assert.equal(b.marketingName, 'Mantan Marketing');
     await prisma.user.update({ where: { id: mktUser.id }, data: { active: true } });
+  });
+
+  await t.test('penawaran: tanpa marketingUserId atau marketingName → 422 dan tidak tersimpan', async () => {
+    for (const miss of [{ marketingUserId: undefined }, { marketingName: undefined }, { marketingName: '  ' }, { marketingUserId: '' }]) {
+      assert.equal((await put(`/integrations/crm/quotations/${tag}-q8`, quote(miss))).status, 422, JSON.stringify(miss));
+    }
+    assert.equal(await prisma.crmQuotation.count({ where: { crmId: `${tag}-q8` } }), 0);
+    // snapshot apa adanya: revisi berikutnya dengan nama berbeda dicatat sebagaimana dikirim CRM, tidak ditimpa nama pengguna WO saat ini
+    await put(`/integrations/crm/quotations/${tag}-q9`, quote({ number: `QT9-${tag}` }));
+    const r = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q9` } });
+    assert.equal(r.marketingName, 'Budi'); assert.notEqual(r.marketingName, mktUser.name);
   });
 });
