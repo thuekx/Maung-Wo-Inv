@@ -35,7 +35,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Satu panggilan GET ke MSRadius. Galat dicek dari `code` di body (bukan hanya status HTTP). */
 export async function radiusGet<T = any>(cfg: RadiusCfg, path: string, params?: Record<string, string>): Promise<{ count?: number; data: T }> {
-  if (!cfg.token) throw new Error('Token MSRadius belum diisi (Admin → Pengaturan → MSRadius)');
+  if (!cfg.token) throw new Error('Token MSRadius belum diisi (Pusat Admin → MSRadius)');
   const url = new URL(`${cfg.baseUrl}/${path}`);
   for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v);
   let res: Response;
@@ -230,7 +230,7 @@ export async function applyCustomers(rows: any[], pretty: boolean, opts: { onlyC
 /**
  * Pelanggan baru berstatus **Waiting** di MSRadius → Formulir Berlangganan dibuat otomatis (sumber RADIUS) agar Marketing dapat
  * melanjutkannya menjadi WO Pasang Baru. Idempoten: satu formulir per pelanggan; tidak dibuat bila pelanggan sudah punya
- * formulir atau pernah punya WO Pasang Baru. Dapat dimatikan di Admin → Pengaturan → MSRadius.
+ * formulir atau pernah punya WO Pasang Baru. Dapat dimatikan di Pusat Admin → MSRadius.
  */
 export async function createWaitingForms(): Promise<number> {
   const cfg = await getRadius();

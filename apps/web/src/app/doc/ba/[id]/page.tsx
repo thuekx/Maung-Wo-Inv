@@ -19,7 +19,7 @@ function SoBa({ wo, id, user, brand }: { wo: any; id: string; user: any; brand: 
   const rep = d.report ?? {};
   return (
     <DocShell title={`BA ${number}`} fileName={String(number)} back={`/work-orders/${id}`}>
-      {!ba && <p className="mx-auto mb-3 max-w-[210mm] rounded bg-amber-100 px-3 py-2 text-sm text-amber-900 print:hidden">Ini pratinjau — BA belum dikirim. Isi garansi diatur Admin (Pengaturan → Order Jasa).</p>}
+      {!ba && <p className="mx-auto mb-3 max-w-[210mm] rounded bg-amber-100 px-3 py-2 text-sm text-amber-900 print:hidden">Ini pratinjau — BA belum dikirim. Isi garansi diatur Admin (Pusat Admin → Work Order → BA & Garansi Order Jasa).</p>}
       <DocPage>
         <h1 className="text-center text-[14pt] font-bold underline uppercase">{soBa.title}</h1>
         <div className="mb-5 text-center font-semibold">No. {number}</div>

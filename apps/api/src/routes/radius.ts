@@ -41,7 +41,7 @@ radiusRoutes.post('/admin/radius/test', requireRole('ADMIN'), async (_req, res) 
 /** Mulai sinkron manual (dikerjakan worker; UI memantau lewat /radius/status). */
 radiusRoutes.post('/radius/sync', requireFeature('customers.manage'), async (req, res) => {
   const cfg = await getRadius();
-  if (!cfg.token) throw new AppError(400, 'Token MSRadius belum diisi — minta Admin mengisinya di Pengaturan → MSRadius');
+  if (!cfg.token) throw new AppError(400, 'Token MSRadius belum diisi — minta Admin mengisinya di Pusat Admin → Work Order → MSRadius');
   if (await syncRunning()) throw new AppError(409, 'Sinkron sedang berjalan');
   await cronQueue.add('radius-sync-now', { userId: req.user!.id }, { removeOnComplete: 20, removeOnFail: 20 });
   res.status(202).json({ queued: true });
@@ -58,7 +58,7 @@ radiusRoutes.post('/customers/:id/radius-pull', requireFeature('customers.manage
   const c = await prisma.customer.findUnique({ where: { id: String(req.params.id) } });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
   const cfg = await getRadius();
-  if (!cfg.token) throw new AppError(400, 'Token MSRadius belum diisi — minta Admin mengisinya di Pengaturan → MSRadius');
+  if (!cfg.token) throw new AppError(400, 'Token MSRadius belum diisi — minta Admin mengisinya di Pusat Admin → Work Order → MSRadius');
   let stats;
   try { stats = await pullOne(c.code); } catch (e) { throw new AppError(502, (e as Error).message); }
   if (!stats) throw fieldError('code', `Kode ${c.code} belum ada di MSRadius — pastikan akun sudah dibuat di MSRadius dengan kode yang sama`, 404);

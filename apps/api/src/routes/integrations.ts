@@ -79,7 +79,7 @@ integrationRoutes.post('/telegram/webhook/:secret', async (req, res) => {
       await sendTelegram(chatId, '❌ Kode tidak valid / kedaluwarsa. Buat kode baru di halaman Profil.').catch(() => {});
     }
   } else if (chatId && text.startsWith('/id')) {
-    // berguna untuk grup divisi: kirim /id di grup, salin angkanya ke Admin → Pengaturan → Telegram
+    // berguna untuk grup divisi: kirim /id di grup, salin angkanya ke Pusat Admin → Telegram
     await sendTelegram(chatId, `Chat ID: ${chatId}`).catch(() => {});
   } else if (chatId && text.startsWith('/start')) {
     await sendTelegram(chatId, `Selamat datang di ${await getAppName()} Bot${botUsername ? ` (@${botUsername})` : ''}.\nHubungkan akun: buka halaman Profil di aplikasi, buat kode, lalu kirim: /link KODE\nPerintah lain: /id (tampilkan chat id)\n(chat id ini: ${chatId})`).catch(() => {});

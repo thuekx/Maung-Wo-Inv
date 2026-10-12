@@ -24,12 +24,12 @@ new Worker(
       let ref: string | undefined;
       const r = n.channel === 'EMAIL' ? await sendEmail(n.target, n.subject, n.body) : n.channel === 'WHATSAPP' ? await sendWhatsApp(n.target, `${n.subject}\n\n${n.body}`, undefined, false, { subject: n.subject, body: n.body, onRef: (id) => { ref = id; } }) : await sendTelegram(n.target, text);
       if (r === 'disabled') {
-        const why = n.channel === 'WHATSAPP' ? 'Pengiriman WhatsApp dinonaktifkan (Admin → Pengaturan → WhatsApp → sakelar)' : 'Pengiriman email dinonaktifkan (Admin → Pengaturan → SMTP → sakelar Email aktif)';
+        const why = n.channel === 'WHATSAPP' ? 'Pengiriman WhatsApp dinonaktifkan (Pusat Admin → WhatsApp → sakelar)' : 'Pengiriman email dinonaktifkan (Pusat Admin → SMTP → sakelar Email aktif)';
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
         return;
       }
       if (r === 'dry-run') {
-        const why = n.channel === 'EMAIL' ? 'SMTP belum dikonfigurasi (Admin → Integrasi)' : n.channel === 'WHATSAPP' ? 'Gateway WhatsApp belum dikonfigurasi (Admin → Pengaturan → WhatsApp)' : 'Token bot Telegram belum dikonfigurasi (Admin → Integrasi)';
+        const why = n.channel === 'EMAIL' ? 'SMTP belum dikonfigurasi (Pusat Admin → Email (SMTP))' : n.channel === 'WHATSAPP' ? 'Gateway WhatsApp belum dikonfigurasi (Pusat Admin → WhatsApp)' : 'Token bot Telegram belum dikonfigurasi (Admin → Integrasi)';
         await prisma.notification.update({ where: { id: n.id }, data: { status: 'NOT_SENT', error: why } });
         return;
       }

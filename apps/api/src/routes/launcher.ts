@@ -17,7 +17,7 @@ import { APP_ICON_KEYS } from '../appIcons';
 /**
  * Beranda "satu pintu" (launcher): daftar aplikasi Maung yang boleh dibuka pengguna. Aplikasi lain berjalan di jalur satu domain
  * (mis. /crm) lewat Caddy (proxy/apps/*.caddy) dan memakai token login yang sama (docs/SUPER-APPS.md).
- * Teks beranda, tampilan ubin WO, dan ikon (bawaan atau unggahan sendiri) diatur Admin → Pengaturan → Aplikasi (Beranda).
+ * Teks beranda, tampilan ubin WO, dan ikon (bawaan atau unggahan sendiri) diatur Pusat Admin → Aplikasi (Beranda).
  */
 export const launcherRoutes = Router();
 

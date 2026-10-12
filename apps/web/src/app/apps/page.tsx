@@ -8,7 +8,7 @@ import { useBranding } from '@/lib/brand';
 import { ThemeToggle } from '@/lib/theme';
 import { Icon, MarkM } from '@/components/icons';
 import { AppTileIcon } from '@/components/AppTileIcon';
-import { Avatar } from '@/components/ui';
+import { UserMenu } from '@/components/UserMenu';
 
 interface LauncherApp { id: string; name: string; description: string; icon: string; iconUrl?: string | null; path: string }
 interface HomeCfg { title: string; subtitle: string; backLabel: string; alwaysShow: boolean }
@@ -16,7 +16,7 @@ const fill = (t: string, name: string) => t.replace(/\{nama_depan\}/g, name.spli
 
 /** Beranda "satu pintu" MAUNG: satu login, pilih aplikasi lewat ikon. Aplikasi lain berjalan di jalur domain yang sama (mis. /crm) dan memakai token yang sama. */
 export default function AppsHome() {
-  const { user, ready, logout } = useAuth();
+  const { user, ready } = useAuth();
   const router = useRouter();
   const brand = useBranding();
   const { data, error } = useFetch<{ apps: LauncherApp[]; home: HomeCfg }>(user ? '/launcher' : null);
@@ -36,8 +36,7 @@ export default function AppsHome() {
         <span className="font-display text-lg font-bold tracking-wide">{brand.companyName}</span>
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <span className="hidden items-center gap-2 sm:flex"><Avatar name={user.name} size={32} url={user.avatarUrl} /><span className="leading-tight"><span className="block text-sm font-medium">{user.name}</span><span className="block text-[11px] text-slate-300">{roleText(user)}</span></span></span>
-          <button className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm text-slate-200 hover:bg-white/10" onClick={logout}><Icon name="logout" size={16} /> <span className="hidden sm:inline">Keluar</span></button>
+          <UserMenu />
         </div>
       </header>
       <main className="mx-auto max-w-4xl px-4 py-10">

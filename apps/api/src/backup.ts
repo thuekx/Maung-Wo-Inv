@@ -7,7 +7,7 @@ import { Client } from 'pg';
 import { config } from './config';
 
 /**
- * Backup / restore / purge data aplikasi (Admin → Pengaturan → Data & Backup).
+ * Backup / restore / purge data aplikasi (Pusat Admin → Data & Backup).
  * Format backup: NDJSON ter-gzip (`*.json.gz`): baris 1 = header (versi, migrasi skema, kolom per tabel), baris berikutnya = {"t": tabel, "rows": [...]}.
  * Tabel ditulis berurutan menurut ketergantungan FK. Foto/berkas ada di folder uploads dan dicadangkan terpisah (tar.gz).
  */

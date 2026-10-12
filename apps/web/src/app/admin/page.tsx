@@ -11,6 +11,9 @@ import { DynamicForm, Field as FormField } from '@/components/DynamicForm';
 import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 import { Select } from '@/components/Select';
+import { ApiMsradius } from '@/components/admin/ApiMsradius';
+import { ApiSistem } from '@/components/admin/ApiSistem';
+import { ApiKanca } from '@/components/admin/ApiKanca';
 import { PasswordInput } from '@/components/PasswordInput';
 
 function PwResult({ list, onClose }: { list: { name: string; email: string; password?: string; sentTo?: string[] }[]; onClose: () => void }) {
@@ -956,9 +959,10 @@ const NAV: { group: string; items: { key: string; label: string }[] }[] = [
     { key: 'users', label: 'Pengguna' }, { key: 'access', label: 'Hak Akses' }, { key: 'apps', label: 'Aplikasi (Beranda)' }, { key: 'brand', label: 'Tampilan & brand' },
     { key: 'email', label: 'Email (SMTP)' }, { key: 'telegram', label: 'Telegram' }, { key: 'whatsapp', label: 'WhatsApp' }, { key: 'notif', label: 'Log notifikasi' },
     { key: 'ssl', label: 'SSL & Domain' }, { key: 'security', label: 'Keamanan' }, { key: 'audit', label: 'Log audit' },
+    { key: 'apisistem', label: 'API Sistem' }, { key: 'apikanca', label: 'API Kanca (WhatsApp)' },
   ] },
   { group: 'Work Order', items: [
-    { key: 'radius', label: 'MSRadius' }, { key: 'subform', label: 'Formulir Berlangganan' }, { key: 'docs', label: 'Dokumen PR' },
+    { key: 'radius', label: 'MSRadius' }, { key: 'apimsradius', label: 'API MSRadius' }, { key: 'subform', label: 'Formulir Berlangganan' }, { key: 'docs', label: 'Dokumen PR' },
     { key: 'serviceorder', label: 'BA & Garansi Order Jasa' }, { key: 'assetinfo', label: 'Info aset (QR)' }, { key: 'out', label: 'Event ke Billing' },
   ] },
   { group: 'Data', items: [{ key: 'data', label: 'Data & Backup' }] },
@@ -1028,6 +1032,9 @@ export default function Admin() {
         {cur.key === 'security' && <SecurityCard d={settings} reload={reload} />}
         {cur.key === 'audit' && <AuditLog />}
         {cur.key === 'radius' && <RadiusCard />}
+        {cur.key === 'apimsradius' && <ApiMsradius />}
+        {cur.key === 'apisistem' && <ApiSistem />}
+        {cur.key === 'apikanca' && <ApiKanca />}
         {cur.key === 'subform' && <SubFormCard />}
         {cur.key === 'docs' && <DocsCard />}
         {cur.key === 'serviceorder' && <ServiceOrderCard />}

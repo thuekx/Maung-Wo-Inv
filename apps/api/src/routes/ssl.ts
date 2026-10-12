@@ -4,7 +4,7 @@ import { AppError } from '../db';
 import { authenticate, requireRole } from '../auth';
 import { applySsl, certStatus, dnsCheck, getSsl, sslAvailable, validDomain, buildCaddyfile } from '../ssl';
 
-/** Admin → Pengaturan → SSL & Domain: status sertifikat Let's Encrypt, sakelar HTTPS & paksa-redirect. */
+/** Pusat Admin → SSL & Domain: status sertifikat Let's Encrypt, sakelar HTTPS & paksa-redirect. */
 export const sslRoutes = Router();
 sslRoutes.use('/admin/ssl', authenticate, requireRole('ADMIN'));
 
