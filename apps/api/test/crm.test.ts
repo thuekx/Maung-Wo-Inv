@@ -135,7 +135,7 @@ test('integrasi CRM 2a', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, 
     assert.equal((await put(`/integrations/crm/quotations/${tag}-q3`, quote({ number: `QT3-${tag}`, status: 'QUOTED', rev: 2 }))).status, 200);
   });
 
-  await t.test('penawaran: pelanggan existing harus ada (404); marketing tak cocok/bukan MKT → tidak ditautkan', async () => {
+  await t.test('penawaran: pelanggan existing harus ada (404); marketing bukan MKT → jejak tetap tersimpan', async () => {
     const bad = await put(`/integrations/crm/quotations/${tag}-q4`, quote({ customer: { ...quote().customer, code: 'TIDAK-ADA-999' } }));
     assert.equal(bad.status, 404);
     assert.equal(await prisma.crmQuotation.count({ where: { crmId: `${tag}-q4` } }), 0);
@@ -144,7 +144,7 @@ test('integrasi CRM 2a', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, 
     const j: any = await ok.json();
     assert.equal(j.warnings.marketingMatched, false);
     const row = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q4` } });
-    assert.equal(row.marketingUserId, null); assert.equal(row.marketingName, 'Budi'); assert.equal(row.customerCode, cust.code);
+    assert.equal(row.marketingUserId, focUser.id); assert.equal(row.marketingName, 'Budi'); // jejak tetap menempel walau tak bisa memegang WO assert.equal(row.customerCode, cust.code);
     // tidak ada penulisan ke tabel pelanggan/WO pada Tahap 2a
     assert.equal((await prisma.customer.findUniqueOrThrow({ where: { id: cust.id } })).name, 'Existing');
   });
@@ -153,5 +153,18 @@ test('integrasi CRM 2a', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, 
     assert.equal((await put(`/integrations/crm/quotations/${tag}-q5`, quote({ lines: [] }))).status, 400);
     assert.equal((await put(`/integrations/crm/quotations/${tag}-q5`, quote({ status: 'DRAFT' }))).status, 400);
     assert.equal((await put(`/integrations/crm/quotations/bad id!`, quote())).status, 400);
+  });
+
+  await t.test('penawaran: marketing nonaktif / akun hilang → id & nama TETAP tersimpan (traceable)', async () => {
+    await prisma.user.update({ where: { id: mktUser.id }, data: { active: false } });
+    const j: any = await (await put(`/integrations/crm/quotations/${tag}-q6`, quote({ number: `QT6-${tag}` }))).json();
+    assert.equal(j.warnings.marketingMatched, false);
+    const a = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q6` } });
+    assert.equal(a.marketingUserId, mktUser.id); assert.equal(a.marketingName, 'Budi');
+    const j2: any = await (await put(`/integrations/crm/quotations/${tag}-q7`, quote({ number: `QT7-${tag}`, marketingUserId: 'user-lama-sudah-dihapus', marketingName: undefined }))).json();
+    assert.equal(j2.warnings.marketingMatched, false);
+    const b = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q7` } });
+    assert.equal(b.marketingUserId, 'user-lama-sudah-dihapus');
+    await prisma.user.update({ where: { id: mktUser.id }, data: { active: true } });
   });
 });

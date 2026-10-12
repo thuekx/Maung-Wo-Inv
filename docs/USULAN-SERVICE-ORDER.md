@@ -70,7 +70,7 @@ Respons idempoten `quotations/:crmId` sudah memuat `woNumber`. Untuk status lanj
 - **2b** — workflow `SERVICE_ORDER` lengkap + UI. Dikerjakan setelah alur di bawah disetujui.
 
 ## Keputusan pemilik (2026-10-12)
-1. **Pemegang `SO_NEW`**: DIPILIH opsi A — marketing yang membuat quotation. Karena CRM memakai login WO, CRM mengirim `marketingUserId` (id pengguna WO dari `/auth/me`), jadi pencocokan pasti. Antrean seluruh MKT (supervisor/manager menugaskan) hanya cadangan bila akun itu nonaktif atau sudah bukan MKT (`warnings.marketingMatched=false`).
+1. **Pemegang `SO_NEW`**: DIPILIH opsi A — marketing yang membuat quotation. Karena CRM memakai login WO, CRM mengirim `marketingUserId` (id pengguna WO dari `/auth/me`), jadi pencocokan pasti. Id + nama marketing SELALU tersimpan permanen (traceable) walau akunnya nonaktif/pindah peran; antrean seluruh MKT (supervisor/manager menugaskan) hanya menentukan siapa yang memegang WO bila akun itu nonaktif atau bukan MKT (`warnings.marketingMatched=false`).
 2. **Pemetaan produk → Master Barang**: DIBAWA OTOMATIS dari katalog CRM (kolom `sku` barang WO), dengan **kemampuan edit oleh Marketing dan Admin (reviewer)** sebelum konfirmasi.
 3. **PR proyek**: satu quotation = satu PR berisi semua baris barang; persetujuan lewat alur PR yang ada. DISETUJUI.
 4. **Campuran STOK + PROYEK** dalam satu order diizinkan; lanjut ke jadwal setelah semua baris siap. DISETUJUI.

@@ -131,8 +131,9 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   if (b.customer.code && !(await prisma.customer.findUnique({ where: { code: b.customer.code }, select: { id: true } })))
     throw new AppError(404, `Pelanggan ${b.customer.code} tidak ditemukan di WO`);
 
-  // pemasaran: pencocokan pasti lewat id pengguna WO; tak cocok/ nonaktif/ bukan MKT → antrean MKT (diputuskan di Tahap 2b)
-  const mkt = b.marketingUserId ? await prisma.user.findUnique({ where: { id: b.marketingUserId }, select: { id: true, role: true, active: true } }) : null;
+  // pemasaran: pencocokan pasti lewat id pengguna WO. Id dan nama SELALU disimpan apa adanya (jejak lead/penawaran tidak boleh hilang
+  // walau akunnya nonaktif / pindah peran / dihapus); `marketingMatched` hanya menentukan apakah ia bisa memegang WO (kalau tidak → antrean MKT, Tahap 2b)
+  const mkt = b.marketingUserId ? await prisma.user.findUnique({ where: { id: b.marketingUserId }, select: { id: true, name: true, role: true, active: true } }) : null;
   const marketingMatched = !!mkt && mkt.active && mkt.role === 'MKT';
 
   // katalog & SKU → pemetaan barang otomatis (dapat diubah Marketing/Admin di Tahap 2b)
@@ -155,7 +156,7 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   const data = {
     number: b.number, rev: b.rev, status: b.status, validUntil: b.validUntil ?? null, sentAt: b.sentAt ?? null, decidedAt: b.decidedAt ?? null,
     lostReason: b.lostReason ?? null, customerCode: code ?? null, customer: cust as any,
-    marketingUserId: marketingMatched ? mkt!.id : null, marketingName: b.marketingName ?? null,
+    marketingUserId: b.marketingUserId ?? null, marketingName: b.marketingName ?? mkt?.name ?? null,
     lines: lines as any, total: b.total, taxNote: b.taxNote ?? null, terms: b.terms ?? null,
   };
   const row = await prisma.$transaction(async (tx) => {
