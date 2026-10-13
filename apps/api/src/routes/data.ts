@@ -9,6 +9,7 @@ import { config } from '../config';
 import { whoOf, writeAudit } from '../audit';
 import { transact } from '../effects';
 import { BACKUP_DIR, createBackup, listBackups, pruneAuto, purgeData, readMeta, restoreBackup, runSeed, safeName, tarUploads, untarUploads } from '../backup';
+import { crmDemoCounts, crmReconSummary, purgeCrmDemo } from '../demo-purge';
 
 /** Admin → Data & Backup: backup, restore, purge, data demo. Hanya Admin ASLI (bukan yang sedang "bertindak sebagai"). */
 export const dataRoutes = Router();
@@ -30,7 +31,7 @@ dataRoutes.get('/admin/data/overview', async (_req, res) => {
   let disk: { freeBytes: number; totalBytes: number } | null = null;
   try { const s = fs.statfsSync(fs.existsSync(BACKUP_DIR) ? BACKUP_DIR : '.'); disk = { freeBytes: Number(s.bavail) * Number(s.bsize), totalBytes: Number(s.blocks) * Number(s.bsize) }; } catch { /* tidak didukung */ }
   const auto = ((await prisma.setting.findUnique({ where: { key: 'backup' } }))?.value as { autoDaily?: boolean } | null)?.autoDaily !== false;
-  res.json({ counts: { users, customers, workOrders: wos, assets, items, warehouses, purchaseRequests: prs, subscriptions: subs }, uploads: dirStats(config.uploadDir), backups: await listBackups(), backupDir: BACKUP_DIR, disk, autoDaily: auto });
+  res.json({ counts: { users, customers, workOrders: wos, assets, items, warehouses, purchaseRequests: prs, subscriptions: subs }, crmDemo: await crmDemoCounts(), crmRecon: await crmReconSummary(), uploads: dirStats(config.uploadDir), backups: await listBackups(), backupDir: BACKUP_DIR, disk, autoDaily: auto });
 });
 
 dataRoutes.put('/admin/data/auto', async (req, res) => {
@@ -95,6 +96,19 @@ dataRoutes.post('/admin/data/purge', async (req, res) => {
     await audit(req, `Purge data cakupan ${b.scope}${b.deleteUsers ? ' + akun non-admin' : ''}${pre ? ` (backup: ${pre})` : ''}`);
     res.json({ ...r, backup: pre, seeded });
   } catch (e) { throw new AppError(400, `Purge gagal (data tidak diubah): ${(e as Error).message}`); }
+});
+
+/** Hapus TERARAH data uji sambung CRM (order/pelanggan/PR/penawaran bertanda demo); data sungguhan tidak disentuh. */
+dataRoutes.post('/admin/data/purge-crm-demo', async (req, res) => {
+  const b = z.object({ backupFirst: z.boolean().default(true), confirm: z.string() }).parse(req.body);
+  if (b.confirm !== 'HAPUS UJI SAMBUNG') throw new AppError(400, 'Ketik HAPUS UJI SAMBUNG untuk konfirmasi');
+  let pre: string | null = null;
+  if (b.backupFirst) pre = (await createBackup({ kind: 'pre-purge', note: 'sebelum hapus data uji sambung CRM', by: req.user!.name })).name;
+  try {
+    const r = await purgeCrmDemo();
+    await audit(req, `Hapus data uji sambung CRM: ${r.quotations} penawaran, ${r.orders} order, ${r.customers} pelanggan, ${r.purchaseRequests} PR${pre ? ` (backup: ${pre})` : ''}`);
+    res.json({ ...r, backup: pre });
+  } catch (e) { throw new AppError(400, `Gagal (data tidak diubah): ${(e as Error).message}`); }
 });
 
 /** Muat data demo (akun & data uji). Akun yang sudah ada — termasuk Admin Anda — tidak diubah. */

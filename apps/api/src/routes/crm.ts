@@ -112,10 +112,11 @@ const quotationBody = z.object({
   total: z.coerce.number().min(0).max(1e13),
   taxNote: optStr(200),
   terms: optStr(2000),
+  demo: z.boolean().optional(), // uji sambung dari demo CRM: ditandai di WO, pengiriman keluar ditahan, dapat dipurge terarah
 });
 
 const view = async (q: any) => ({
-  quotationId: q.id, crmId: q.crmId, number: q.number, rev: q.rev, status: q.status,
+  quotationId: q.id, crmId: q.crmId, number: q.number, rev: q.rev, status: q.status, demo: !!q.isDemo,
   woNumber: q.woId ? (await prisma.workOrder.findUnique({ where: { id: q.woId }, select: { number: true } }))?.number ?? null : null,
 });
 
@@ -130,6 +131,7 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
 
   // idempoten / urutan revisi
   if (cur) {
+    if (!!b.demo !== cur.isDemo) throw new AppError(409, `Penanda demo penawaran ${cur.number} tidak dapat diubah (${cur.isDemo ? 'uji sambung' : 'sungguhan'}) — buat penawaran baru`);
     if (b.rev < cur.rev) return void res.json({ ok: true, stale: true, ...(await view(cur)) });
     if (cur.status === 'WON' && (b.rev > cur.rev || b.status !== 'WON')) throw new AppError(409, `Penawaran ${cur.number} sudah WON dan terkunci — perubahan lingkup dibuat sebagai penawaran baru`);
     // WON yang belum punya order (diterima sebelum Tahap 2b aktif) diproses ulang agar order terbentuk
@@ -164,6 +166,7 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
 
   const { code, ...cust } = b.customer;
   const data = {
+    isDemo: !!b.demo,
     number: b.number, rev: b.rev, status: b.status, validUntil: b.validUntil ?? null, sentAt: b.sentAt ?? null, decidedAt: b.decidedAt ?? null,
     lostReason: b.lostReason ?? null, customerCode: code ?? null, customer: cust as any,
     marketingUserId: b.marketingUserId ?? null, marketingName: b.marketingName ?? null,
@@ -172,12 +175,12 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   const row = await transact(async (fx) => {
     const tx = fx.tx;
     let r = cur ? await tx.crmQuotation.update({ where: { id: cur.id }, data }) : await tx.crmQuotation.create({ data: { ...data, crmId } });
-    await audit(tx, { action: cur ? 'UPDATE' : 'CREATE', entity: 'penawaran CRM', entityId: r.id, summary: `CRM ${cur ? 'memperbarui' : 'mengirim'} penawaran ${r.number} rev ${r.rev} (${r.status})`, before: cur ? { rev: cur.rev, status: cur.status } : undefined, after: { rev: r.rev, status: r.status, total: b.total } });
+    await audit(tx, { action: cur ? 'UPDATE' : 'CREATE', entity: 'penawaran CRM', entityId: r.id, summary: `${b.demo ? '[UJI SAMBUNG] ' : ''}CRM ${cur ? 'memperbarui' : 'mengirim'} penawaran ${r.number} rev ${r.rev} (${r.status})`, before: cur ? { rev: cur.rev, status: cur.status } : undefined, after: { rev: r.rev, status: r.status, total: b.total } });
     if (r.status === 'WON' && !r.woId) {
       // WON → Pelanggan (baru / existing) + WO Order Jasa/Produk dibuat sistem; jejak marketing disalin apa adanya ke order
-      const wo = await createWorkOrder(fx, { type: 'SERVICE_ORDER', actor: await systemActor(tx), system: true, source: 'CRM', input: { quotationId: r.id } });
+      const wo = await createWorkOrder(fx, { type: 'SERVICE_ORDER', actor: await systemActor(tx), system: true, source: r.isDemo ? 'CRM_DEMO' : 'CRM', input: { quotationId: r.id } });
       r = await tx.crmQuotation.update({ where: { id: r.id }, data: { woId: wo.id } });
-      await audit(tx, { action: 'CREATE', entity: 'WO', entityId: wo.id, summary: `Penawaran CRM ${r.number} WON → order ${wo.number}` });
+      await audit(tx, { action: 'CREATE', entity: 'WO', entityId: wo.id, summary: `${r.isDemo ? '[UJI SAMBUNG] ' : ''}Penawaran CRM ${r.number} WON → order ${wo.number}` });
       await fx.notify({
         ...(marketingMatched ? { userIds: [mkt!.id] } : { roles: ['MKT'] as any }),
         woId: wo.id,
@@ -194,4 +197,30 @@ crmRoutes.get('/integrations/crm/quotations/:crmId', async (req, res) => {
   const q = await prisma.crmQuotation.findUnique({ where: { crmId: idParam(req) } });
   if (!q) throw new AppError(404, 'Penawaran tidak ditemukan');
   res.json(await view(q));
+});
+
+/**
+ * Daftar penawaran yang diterima WO untuk rekonsiliasi silang (baca-saja): status, total, nomor/status order, penanda uji sambung.
+ * Query: since (ISO, updatedAt >=), limit (1..500, bawaan 200), demo = include (bawaan) | only | exclude, cursor (crmId terakhir).
+ */
+crmRoutes.get('/integrations/crm/quotations', async (req, res) => {
+  const q = z.object({ since: z.coerce.date().optional(), limit: z.coerce.number().int().min(1).max(500).default(200), demo: z.enum(['include', 'only', 'exclude']).default('include'), cursor: z.string().max(64).optional() }).parse(req.query);
+  const rows = await prisma.crmQuotation.findMany({
+    where: { ...(q.since ? { updatedAt: { gte: q.since } } : {}), ...(q.demo === 'only' ? { isDemo: true } : q.demo === 'exclude' ? { isDemo: false } : {}) },
+    orderBy: { crmId: 'asc' }, take: q.limit + 1, ...(q.cursor ? { cursor: { crmId: q.cursor }, skip: 1 } : {}),
+  });
+  const more = rows.length > q.limit;
+  const page = more ? rows.slice(0, q.limit) : rows;
+  const wos = await prisma.workOrder.findMany({ where: { id: { in: page.map((r) => r.woId).filter((x): x is string => !!x) } }, select: { id: true, number: true, status: true, customer: { select: { code: true } } } });
+  const byId = new Map(wos.map((w) => [w.id, w]));
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    count: page.length,
+    nextCursor: more ? page[page.length - 1].crmId : null,
+    generatedAt: new Date().toISOString(),
+    data: page.map((r) => {
+      const w = r.woId ? byId.get(r.woId) : undefined;
+      return { crmId: r.crmId, number: r.number, rev: r.rev, status: r.status, total: Number(r.total), demo: r.isDemo, marketingUserId: r.marketingUserId, marketingName: r.marketingName, customerCode: r.customerCode, lineCount: (r.lines as unknown[]).length, woNumber: w?.number ?? null, woStatus: w?.status ?? null, woCustomerCode: w?.customer?.code ?? null, updatedAt: r.updatedAt };
+    }),
+  });
 });

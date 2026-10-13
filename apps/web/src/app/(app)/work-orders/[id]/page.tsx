@@ -39,6 +39,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
     <div className="space-y-4">
       <PageHeader title={`${wo.number} · ${wo.title}`} sub={`${TYPE_LABEL[wo.type]} · dibuat ${fmtDate(wo.createdAt)} oleh ${createdBy.name}${wo.source === 'BILLING' ? ' (otomatis dari Billing)' : ''}`}>
         <Badge tone={statusTone(wo.final, wo.status)}>{wo.statusLabel}</Badge>
+        {wo.source === 'CRM_DEMO' && <Badge tone="amber">UJI SAMBUNG (demo) — tidak ada pengiriman keluar</Badge>}
         {wo.type === 'NEW_INSTALL' && data?.activation && ['MKT', 'ADMIN'].includes(user?.role ?? '') && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
         {wo.type === 'SERVICE_ORDER' && wo.docs?.soBa && <Link href={`/doc/ba/${wo.id}`} className="btn-ghost">📄 {data?.ba ? 'Cetak BA' : 'Pratinjau BA'}</Link>}
         {wo.docs?.reportNumber && <Link href={`/doc/report/${wo.id}`} className="btn-ghost">📄 {wo.docs.reportKind === 'INS' ? 'Laporan Instalasi (PDF)' : 'Laporan Troubleshooting (PDF)'}</Link>}

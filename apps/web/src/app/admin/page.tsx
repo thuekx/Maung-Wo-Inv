@@ -659,6 +659,7 @@ function DataCard() {
   const [restore, setRestore] = useState<any>(null);
   const [purge, setPurge] = useState({ scope: 1, deleteUsers: false, deleteFiles: true, reseed: false, backupFirst: true, confirm: '' });
   const [demoConfirm, setDemoConfirm] = useState('');
+  const [crmDemoConfirm, setCrmDemoConfirm] = useState('');
   const [out, setOut] = useState<{ ok: boolean; text: string } | null>(null);
   if (user?.realAdmin) return <ErrorMsg>Berhenti &quot;bertindak sebagai&quot; peran lain dulu untuk memakai menu ini.</ErrorMsg>;
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
@@ -713,6 +714,22 @@ function DataCard() {
         <div className="flex flex-wrap gap-2">
           <button className="btn-ghost" disabled={!!busy} onClick={() => run('dl', async () => { await download('/admin/data/uploads.tar.gz', `maung-foto-${new Date().toISOString().slice(0, 10)}.tar.gz`); return 'Unduhan foto dimulai'; })}>Unduh backup foto (.tar.gz)</button>
           <label className="btn-ghost cursor-pointer">Pulihkan foto (.tar.gz)<input type="file" accept=".gz,.tgz" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) run('upf', async () => { const r = await upload('/admin/data/uploads/restore', f); return `${r.files} berkas foto dipulihkan`; }); }} /></label>
+        </div>
+      </div>
+
+      <div className="card space-y-3">
+        <h2 className="font-semibold">Penawaran dari CRM &amp; uji sambung</h2>
+        <p className="text-sm text-slate-500">Rekonsiliasi sisi WO: penawaran yang diterima dari CRM per status, pemeriksaan integritas, dan data <b>uji sambung</b> (penawaran demo yang sengaja dikirim CRM; semua pengiriman keluarnya ditahan). Pencocokan silang lengkap dengan CRM memakai daftar <code>GET /api/integrations/crm/quotations</code>.</p>
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
+          {['QUOTED', 'WON', 'LOST'].map((st) => <div key={st} className="rounded-lg border px-3 py-2"><div className="text-xs text-slate-500">{st}</div><div className="font-semibold">{data.crmRecon?.byStatus?.[st]?.real ?? 0} sungguhan{(data.crmRecon?.byStatus?.[st]?.demo ?? 0) > 0 && <span className="font-normal text-amber-700"> · {data.crmRecon.byStatus[st].demo} uji sambung</span>}</div></div>)}
+        </div>
+        <p className={`rounded-lg px-3 py-2 text-sm ${(data.crmRecon?.wonWithoutOrder ?? 0) + (data.crmRecon?.ordersWithoutQuotation ?? 0) === 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+          {(data.crmRecon?.wonWithoutOrder ?? 0) + (data.crmRecon?.ordersWithoutQuotation ?? 0) === 0 ? '✓ Konsisten: setiap penawaran WON punya order dan setiap order CRM punya penawaran.' : `✗ Tidak konsisten: ${data.crmRecon.wonWithoutOrder} penawaran WON tanpa order, ${data.crmRecon.ordersWithoutQuotation} order tanpa penawaran.`}
+        </p>
+        <div className="border-t pt-3">
+          <div className="text-sm font-medium">Data uji sambung saat ini: {data.crmDemo?.quotations ?? 0} penawaran · {data.crmDemo?.orders ?? 0} order · {data.crmDemo?.customers ?? 0} pelanggan · {data.crmDemo?.purchaseRequests ?? 0} PR</div>
+          <p className="mt-1 text-xs text-slate-500">Hanya yang bertanda uji sambung yang dihapus (data sungguhan tidak tersentuh). Mutasi stok yang dibuat order uji sambung dibalikkan; backup otomatis dibuat dulu. Ditolak bila ada PO atau aset ber-SN yang terhubung.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2"><input className="input w-64" placeholder="ketik: HAPUS UJI SAMBUNG" value={crmDemoConfirm} onChange={(e) => setCrmDemoConfirm(e.target.value)} /><button className="btn !bg-red-600 !text-white" disabled={!!busy || crmDemoConfirm !== 'HAPUS UJI SAMBUNG' || !(data.crmDemo?.quotations || data.crmDemo?.orders)} onClick={() => run('crmdemo', async () => { const r = await api<any>('/admin/data/purge-crm-demo', { body: { confirm: crmDemoConfirm, backupFirst: true } }); setCrmDemoConfirm(''); return `Uji sambung dihapus: ${r.quotations} penawaran, ${r.orders} order, ${r.customers} pelanggan, ${r.purchaseRequests} PR${r.backup ? ` (backup: ${r.backup})` : ''}`; })}>Hapus data uji sambung</button></div>
         </div>
       </div>
 
@@ -982,6 +999,7 @@ export default function Admin() {
   const { user } = useAuth();
   const [sec, setSecRaw] = useState('users');
   const [open, setOpen] = useState<string[] | null>(null); // null = belum dimuat
+  const [drawer, setDrawer] = useState(false); // HP: menu laci (burger)
   useEffect(() => {
     try { const x = localStorage.getItem('maung_admin_sec2'); if (x) setSecRaw(x); } catch { /* abaikan */ }
     try { const o = JSON.parse(localStorage.getItem(OPEN_KEY) ?? 'null'); if (Array.isArray(o)) setOpen(o); } catch { /* abaikan */ }
@@ -1002,25 +1020,32 @@ export default function Admin() {
     const next = base.includes(g.id) ? base.filter((x) => x !== g.id) : [...base, g.id];
     setOpen(next); try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* abaikan */ }
   };
-  const setSec = (k: string) => { setSecRaw(k); try { localStorage.setItem('maung_admin_sec2', k); } catch { /* abaikan */ } };
+  const setSec = (k: string) => { setSecRaw(k); setDrawer(false); try { localStorage.setItem('maung_admin_sec2', k); } catch { /* abaikan */ } };
   if (user && !isAdmin) return <ErrorMsg>Khusus Admin</ErrorMsg>;
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!settings) return <p className="text-slate-500">Memuat…</p>;
   const crmApp = (id: string) => others.find((a) => a.id === id);
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
-      <nav className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:gap-1 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1" aria-label="Pusat Admin">
+      {/* HP: bar menu (burger) — daftar menu muncul sebagai laci dari kiri, seperti menu Work Order */}
+      <div className="sticky top-16 z-20 -mx-4 flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 lg:hidden">
+        <button className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700" onClick={() => setDrawer(true)} aria-label="Buka menu admin" aria-expanded={drawer}><Icon name="menu" size={20} /></button>
+        <div className="min-w-0"><div className="truncate text-[11px] font-semibold uppercase tracking-wider text-accent-600">{cur.group.title}</div><div className="truncate font-semibold text-brand-900">{cur.label}</div></div>
+      </div>
+      {drawer && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setDrawer(false)} />}
+      <nav aria-label="Pusat Admin" className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col gap-1 overflow-y-auto bg-white px-3 pb-6 pt-4 shadow-2xl transition-transform duration-200 ${drawer ? 'translate-x-0' : '-translate-x-full'} lg:sticky lg:top-20 lg:z-auto lg:max-h-[calc(100vh-6rem)] lg:w-auto lg:max-w-none lg:translate-x-0 lg:bg-transparent lg:p-0 lg:pr-1 lg:shadow-none`}>
+        <div className="mb-1 flex items-center justify-between px-1 lg:hidden"><span className="font-display text-lg font-bold text-brand-900">Pusat Admin</span><button className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => setDrawer(false)} aria-label="Tutup menu"><Icon name="x" size={18} /></button></div>
         {groups.map((g) => {
           const o = isOpen(g);
           return (
             <Fragment key={g.id}>
-              <button onClick={() => toggle(g)} aria-expanded={o} className="hidden w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-100 lg:flex">
+              <button onClick={() => toggle(g)} aria-expanded={o} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-100">
                 <AdminIcon name={g.icon} size={16} /><span className="flex-1 truncate">{g.title}</span>
                 <Icon name="chevronDown" size={14} className={`transition-transform ${o ? '' : '-rotate-90'}`} />
               </button>
-              {g.items.map((it) => (
+              {o && g.items.map((it) => (
                 <button key={it.key} onClick={() => setSec(it.key)} aria-current={cur.key === it.key ? 'page' : undefined}
-                  className={`shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition lg:ml-2 lg:w-[calc(100%-0.5rem)] ${o ? 'flex' : 'flex lg:hidden'} ${cur.key === it.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  className={`ml-2 flex w-[calc(100%-0.5rem)] items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${cur.key === it.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>
                   <AdminIcon name={it.icon} size={17} className={cur.key === it.key ? 'text-accent-600' : 'text-slate-400'} />{it.label}
                 </button>
               ))}
@@ -1029,7 +1054,7 @@ export default function Admin() {
         })}
       </nav>
       <div className="min-w-0 max-w-5xl space-y-4">
-        <div><div className="subheader text-accent-600">{cur.group.title}</div><h1 className="font-display text-xl font-bold text-brand-900">{cur.label}</h1></div>
+        <div className="hidden lg:block"><div className="subheader text-accent-600">{cur.group.title}</div><h1 className="font-display text-xl font-bold text-brand-900">{cur.label}</h1></div>
         {cur.key === 'users' && <Users />}
         {cur.key === 'access' && <AccessCard />}
         {cur.key === 'apps' && <AppsCard />}

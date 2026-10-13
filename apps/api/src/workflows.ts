@@ -1186,6 +1186,7 @@ async function soCreatePr(ctx: Ctx, lines: SoLine[]) {
       crmMarketingUserId: mk.id ?? null,
       crmMarketingName: mk.name ?? null,
       crmQuotationNo: q.number,
+      isDemo: ctx.wo.source === 'CRM_DEMO',
       lines: { create: lines.map((l, k) => ({ sort: k, description: l.name, qty: Math.max(1, Math.ceil(l.qty)), unit: l.unit || 'Unit', itemId: l.itemId ?? null, note: l.note ?? null })) },
     },
   });
@@ -1233,7 +1234,7 @@ const serviceOrder: Workflow = {
     } else {
       const area = cu.areaCode ? await tx.area.findFirst({ where: { code: cu.areaCode, active: true } }) : null;
       const made = await tx.customer.create({
-        data: { code: await nextNumber(tx, 'CUST'), name: cu.name, phone: cu.phone, email: cu.email ?? null, address: cu.address, lat: cu.lat ?? null, lng: cu.lng ?? null, packageName: rawLines[0]?.name ?? 'Order jasa', source: 'CRM', salesName: q.marketingName, areaId: area?.id ?? null, warehouseId: area?.warehouseId ?? null },
+        data: { code: await nextNumber(tx, 'CUST'), name: cu.name, phone: cu.phone, email: cu.email ?? null, address: cu.address, lat: cu.lat ?? null, lng: cu.lng ?? null, packageName: rawLines[0]?.name ?? 'Order jasa', source: q.isDemo ? 'CRM_DEMO' : 'CRM', salesName: q.marketingName, areaId: area?.id ?? null, warehouseId: area?.warehouseId ?? null },
       });
       customerId = made.id;
       newCustomer = true;
@@ -1481,7 +1482,7 @@ const serviceOrder: Workflow = {
             const subject = `${baTitle} ${baNo}`;
             await ctx.fx.notify({ emails: i.sendEmail ? [email!] : [], whatsapps: i.sendWhatsapp ? [phone!] : [], telegrams: i.sendTelegram ? [i.recipientTelegram!] : [], woId: ctx.wo.id, subject, body });
             const channels = [i.sendEmail && 'Email', i.sendWhatsapp && 'WhatsApp', i.sendTelegram && 'Telegram'].filter(Boolean) as string[];
-            ctx.data.ba = { number: baNo, title: baTitle, channels, sentTo: [i.sendEmail && email, i.sendWhatsapp && phone, i.sendTelegram && i.recipientTelegram].filter(Boolean).join(', '), body, at: new Date() };
+            ctx.data.ba = { ...(ctx.wo.source === 'CRM_DEMO' ? { demo: true, note: 'Uji sambung: BA TIDAK dikirim ke penerima sungguhan' } : {}), number: baNo, title: baTitle, channels, sentTo: [i.sendEmail && email, i.sendWhatsapp && phone, i.sendTelegram && i.recipientTelegram].filter(Boolean).join(', '), body, at: new Date() };
             if (d.newCustomer) await setCustomer(ctx, { status: 'ACTIVE', activatedAt: new Date() });
             await ctx.fx.notify({
               roles: ['FIN'],

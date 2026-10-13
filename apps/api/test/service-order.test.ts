@@ -68,7 +68,7 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     await prisma.workOrder.deleteMany({ where: { id: { in: wids } } });
     await prisma.customer.deleteMany({ where: { OR: [{ id: { in: all.map((w) => w.customerId).filter(Boolean) as string[] } }, { id: existing.id }] } });
     await prisma.area.delete({ where: { id: area.id } }).catch(() => {});
-    await prisma.stockLevel.deleteMany({ where: { warehouseId: wh.id } });
+    await prisma.stockLevel.deleteMany({ where: { OR: [{ warehouseId: wh.id }, { warehouse: { ownerId: tech.id } }] } });
     await prisma.warehouse.deleteMany({ where: { OR: [{ id: wh.id }, { ownerId: { in: [tech.id] } }] } });
     await prisma.package.deleteMany({ where: { crmId: { startsWith: tag } } });
     await prisma.stockLevel.deleteMany({ where: { warehouseId: wh.id } });
@@ -181,5 +181,53 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     assert.equal(d.mktOwner, null); assert.deepEqual(d.marketing, { id: mkt2.id, name: 'Cici' });
     await run(q.woId!, 'claim', mkt, {}); // antrean: MKT mana pun dapat mengambil
     assert.equal(((await wo(q.woId!)).data as any).mktOwner.id, mkt.id);
+  });
+
+  await t.test('uji sambung (demo:true): ditandai, pengiriman keluar ditahan, stok balik, purge terarah, daftar rekonsiliasi', async () => {
+    const { purgeCrmDemo, crmDemoCounts } = await import('../src/demo-purge');
+    const stockQty = async () => (await prisma.stockLevel.findUnique({ where: { warehouseId_itemId: { warehouseId: wh.id, itemId: itemStock.id } } }))?.qty ?? 0;
+    const q0 = await stockQty();
+    const dq = (over: any = {}) => quote({ number: `QTD-${tag}`, demo: true, customer: { ...quote().customer, name: 'PT Demo Sambung' }, lines: [{ catalogCrmId: `${tag}-cam`, name: 'Kamera', kind: 'PRODUCT', qty: 2, unit: 'unit', unitPrice: 1 }, { name: 'Switch', kind: 'PRODUCT', qty: 1, unit: 'unit', unitPrice: 1 }], ...over });
+    const r: any = await (await put(`${tag}-qd`, dq())).json();
+    assert.equal(r.demo, true); assert.match(r.woNumber, /^WO-SO-/);
+    assert.equal((await put(`${tag}-qd`, dq({ demo: false }))).status, 409); // penanda demo tidak boleh berubah
+    const q = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-qd` } });
+    const w = await wo(q.woId!);
+    assert.equal(q.isDemo, true); assert.equal(w.source, 'CRM_DEMO'); assert.equal(w.customer!.source, 'CRM_DEMO');
+    await run(w.id, 'confirm', mkt, { lines: [{ idx: 1, source: 'PROJECT' }] });
+    const pr = await prisma.purchaseRequest.findFirstOrThrow({ where: { woId: w.id } });
+    assert.equal(pr.isDemo, true);
+    await run(w.id, 'pr_received', ga, {});
+    await run(w.id, 'schedule', focLead, { technicianIds: [tech.id], scheduledAt: new Date().toISOString() });
+    await run(w.id, 'start', tech, { sourceWarehouseId: wh.id, materials: [{ itemId: itemStock.id, qty: 2 }] });
+    assert.equal(await stockQty(), q0 - 2);
+    await prisma.attachment.create({ data: { url: `/uploads/${tag}-demo.jpg`, mime: 'image/jpeg', uploadedBy: tech.id, lat: -6.9, lng: 107.6 } });
+    await run(w.id, 'submit_report', tech, { photos: [`/uploads/${tag}-demo.jpg`], workDone: 'Demo', materials: [{ itemId: itemStock.id, qty: 1 }] });
+    await run(w.id, 'send_ba', mkt, { sendTelegram: true, recipientTelegram: '999', sendEmail: true, recipientEmail: 'pelanggan@demo.test' });
+    const d: any = (await wo(w.id)).data;
+    assert.equal(d.ba.demo, true);
+    // pengiriman keluar ditahan: tidak ada Notification (email/Telegram/WA) untuk WO ini; kotak masuk dalam aplikasi diberi label [DEMO]
+    assert.equal(await prisma.notification.count({ where: { woId: w.id } }), 0);
+    const inbox = await prisma.inbox.findMany({ where: { woId: w.id } });
+    assert.ok(inbox.length > 0 && inbox.every((i) => i.subject.startsWith('[DEMO]')));
+    // WO sungguhan (non-demo) tidak ikut terpengaruh oleh purge terarah
+    const real = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q1` } });
+    // daftar rekonsiliasi
+    const list: any = await (await fetch(`${base}/integrations/crm/quotations?demo=only&limit=500`, { headers: { 'x-api-key': KEY } })).json();
+    const row = list.data.find((x: any) => x.crmId === `${tag}-qd`);
+    assert.ok(row); assert.equal(row.demo, true); assert.equal(row.woNumber, w.number); assert.equal(row.woStatus, 'SO_DONE'); assert.equal(row.total, 1500000);
+    const noDemo: any = await (await fetch(`${base}/integrations/crm/quotations?demo=exclude&limit=500`, { headers: { 'x-api-key': KEY } })).json();
+    assert.ok(!noDemo.data.some((x: any) => x.crmId === `${tag}-qd`) && noDemo.data.some((x: any) => x.crmId === `${tag}-q1`));
+    assert.equal((await fetch(`${base}/integrations/crm/quotations`)).status, 401);
+    const c0 = await crmDemoCounts();
+    assert.ok(c0.quotations >= 1 && c0.orders >= 1 && c0.customers >= 1 && c0.purchaseRequests >= 1);
+    // purge terarah: bertanda demo hilang, stok kembali seperti semula, data sungguhan utuh
+    const res = await purgeCrmDemo();
+    assert.ok(res.quotations >= 1 && res.orders >= 1);
+    assert.deepEqual(await crmDemoCounts(), { quotations: 0, orders: 0, customers: 0, purchaseRequests: 0 });
+    assert.equal(await stockQty(), q0, 'stok sungguhan kembali seperti sebelum uji sambung');
+    assert.equal(await prisma.workOrder.count({ where: { id: w.id } }), 0);
+    assert.ok(await prisma.crmQuotation.findUnique({ where: { id: real.id } }), 'penawaran sungguhan utuh');
+    assert.ok(await prisma.workOrder.findUnique({ where: { id: real.woId! } }), 'order sungguhan utuh');
   });
 });

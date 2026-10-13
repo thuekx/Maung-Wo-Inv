@@ -484,6 +484,7 @@ model CrmQuotation {
   taxNote         String?
   terms           String?
   woId            String? // WO SERVICE_ORDER yang dibuat saat WON (Tahap 2b)
+  isDemo          Boolean   @default(false) // uji sambung dari demo CRM: WO/pelanggan/PR hasilnya ditandai, pengiriman keluar ditahan, dapat dipurge terarah
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -574,6 +575,7 @@ model PurchaseRequest {
   crmMarketingUserId String? // jejak marketing dari penawaran CRM (snapshot apa adanya; PR proyek turunan SERVICE_ORDER)
   crmMarketingName   String?
   crmQuotationNo     String?
+  isDemo             Boolean   @default(false) // PR dari uji sambung CRM (dapat dipurge terarah)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

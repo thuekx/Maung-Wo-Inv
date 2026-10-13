@@ -23,9 +23,20 @@ export interface NotifyOpts {
  */
 export class Effects {
   jobs: QueuedJob[] = [];
+  private demoWo = new Map<string, boolean>();
   constructor(public tx: Tx) {}
 
-  async notify(o: NotifyOpts) {
+  /** WO uji sambung CRM (source CRM_DEMO)? */
+  private async isDemo(woId?: string) {
+    if (!woId) return false;
+    if (!this.demoWo.has(woId)) this.demoWo.set(woId, (await this.tx.workOrder.findUnique({ where: { id: woId }, select: { source: true } }))?.source === 'CRM_DEMO');
+    return this.demoWo.get(woId)!;
+  }
+
+  async notify(o0: NotifyOpts) {
+    // uji sambung: hanya kotak masuk dalam aplikasi (diberi label [DEMO]); tidak ada email/Telegram/WhatsApp ke siapa pun (pelanggan demo maupun tim)
+    const demo = await this.isDemo(o0.woId);
+    const o: NotifyOpts = demo ? { ...o0, subject: `[DEMO] ${o0.subject}`, emails: [], whatsapps: [], telegrams: [] } : o0;
     const ids = (o.userIds ?? []).filter((x): x is string => !!x);
     const roles = o.roles ?? [];
     const users =
@@ -43,12 +54,12 @@ export class Effects {
       rows.push({ channel, target, userId, subject: o.subject, body: o.body, woId: o.woId });
     };
 
-    for (const u of users) {
+    if (!demo) for (const u of users) {
       add('EMAIL', u.email, u.id);
       add('TELEGRAM', u.telegramChatId, u.id);
     }
     const roleChats = (await getTelegram()).roleChats;
-    for (const r of roles) add('TELEGRAM', roleChats[r]);
+    if (!demo) for (const r of roles) add('TELEGRAM', roleChats[r]);
     for (const e of o.emails ?? []) add('EMAIL', e);
     for (const w of o.whatsapps ?? []) add('WHATSAPP', w);
     for (const t of o.telegrams ?? []) add('TELEGRAM', t);
