@@ -287,8 +287,8 @@ export function SoLinesInput({ value, onChange, woId }: { value: { idx: number; 
               {l.sku && <span className="text-xs text-slate-500">SKU {l.sku}</span>}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Select className="input w-56" value={row.source} disabled={svc} onChange={(e) => set(idx, { source: e.target.value })} aria-label={`Sumber barang ${l.name}`}>
-                {svc ? <option value="NONE">Tanpa barang (jasa)</option> : <><option value="STOCK">Pakai stok</option><option value="PROJECT">PR proyek (beli baru)</option><option value="NONE">Tanpa barang</option></>}
+              <Select className="input w-56" value={row.source} onChange={(e) => set(idx, { source: e.target.value })} aria-label={`Sumber barang ${l.name}`}>
+                {svc ? <><option value="NONE">Tanpa barang (jasa murni)</option><option value="STOCK">Jasa + perangkat dari stok</option><option value="PROJECT">Jasa + perangkat PR proyek</option></> : <><option value="STOCK">Pakai stok</option><option value="PROJECT">PR proyek (beli baru)</option><option value="NONE">Tanpa barang</option></>}
               </Select>
               {row.source !== 'NONE' && (
                 <Select className="input min-w-[14rem] flex-1" value={row.itemId ?? ''} onChange={(e) => set(idx, { itemId: e.target.value })} aria-label={`Barang ${l.name}`}>
@@ -300,7 +300,7 @@ export function SoLinesInput({ value, onChange, woId }: { value: { idx: number; 
           </div>
         );
       })}
-      <p className="text-xs text-slate-500">Pemetaan barang diambil otomatis dari SKU katalog CRM; Marketing/Admin boleh mengubahnya di sini sebelum konfirmasi.</p>
+      <p className="text-xs text-slate-500">Pemetaan barang diambil otomatis dari SKU katalog CRM; GA/Procurement boleh mengubahnya di sini sebelum konfirmasi. Jasa yang menyerahkan perangkat (mis. sewa WiFi): pilih “Jasa + perangkat”; kepemilikan (sewa/dibeli) dipilih teknisi saat laporan.</p>
     </div>
   );
 }

@@ -93,20 +93,35 @@ function stockOwner(ctx: Ctx) {
 
 const teamNames = async (ctx: Ctx, ids: string[]) => (await ctx.tx.user.findMany({ where: { id: { in: ids } }, select: { name: true } })).map((u) => u.name);
 
-/** Teknisi mengambil material dari gudang → Stok Berjalan miliknya. */
+/**
+ * Teknisi mengambil barang untuk WO ini → Stok Berjalan miliknya.
+ * Barang yang MASIH ada di Stok Berjalan teknisi (belum dikembalikan ke gudang) boleh dipakai lagi tanpa memilih gudang:
+ * SN yang sudah di Stok Berjalan cukup dicatat; material tanpa gudang dipilih = diambil dari Stok Berjalan sendiri.
+ */
 async function pickup(ctx: Ctx, input: unknown) {
-  const i = z.object({ sourceWarehouseId: z.string().min(1), serials: sn.default([]), materials }).parse(input);
+  const i = z.object({ sourceWarehouseId: z.preprocess(blankToUndef, z.string().optional()), serials: sn.default([]), materials }).parse(input ?? {});
   const techId = inTeam(ctx.wo, ctx.actor.id) ? ctx.actor.id : ctx.wo.assigneeId ?? ctx.actor.id;
   const mob = await mobileWarehouse(ctx.tx, techId);
   for (const s of i.serials) {
     const a = await mustAsset(ctx.tx, s);
+    if (a.warehouseId === mob.id && AVAILABLE.includes(a.status)) continue; // sudah di Stok Berjalan teknisi
+    if (!i.sourceWarehouseId) throw fieldError('sourceWarehouseId', `SN ${a.serialNumber} tidak ada di Stok Berjalan Anda — pilih gudang asal barang`);
     if (a.warehouseId !== i.sourceWarehouseId || !AVAILABLE.includes(a.status))
-      throw new AppError(409, `SN ${a.serialNumber} tidak tersedia di gudang sumber`);
+      throw new AppError(409, `SN ${a.serialNumber} tidak tersedia di gudang sumber maupun di Stok Berjalan Anda`);
     await moveAsset(ctx.tx, a, { status: 'IN_STOCK', toWarehouseId: mob.id, reason: 'Ambil material ke stok berjalan', woId: ctx.wo.id, actorId: ctx.actor.id });
   }
-  for (const m of i.materials)
-    await moveStock(ctx.tx, { itemId: m.itemId, qty: m.qty, from: i.sourceWarehouseId, to: mob.id, reason: 'Ambil material ke stok berjalan', woId: ctx.wo.id, actorId: ctx.actor.id });
-  ctx.data.pickup = { serials: i.serials, materials: i.materials, techId, at: new Date() };
+  for (const m of i.materials) {
+    if (i.sourceWarehouseId) {
+      await moveStock(ctx.tx, { itemId: m.itemId, qty: m.qty, from: i.sourceWarehouseId, to: mob.id, reason: 'Ambil material ke stok berjalan', woId: ctx.wo.id, actorId: ctx.actor.id });
+      continue;
+    }
+    const have = (await ctx.tx.stockLevel.findUnique({ where: { warehouseId_itemId: { warehouseId: mob.id, itemId: m.itemId } } }))?.qty ?? 0;
+    if (have < m.qty) {
+      const it = await ctx.tx.item.findUnique({ where: { id: m.itemId } });
+      throw fieldError('materials', `${it?.name ?? m.itemId}: di Stok Berjalan Anda hanya ${have} ${it?.unit ?? ''} — pilih gudang asal untuk mengambil dari gudang`, 409);
+    }
+  }
+  ctx.data.pickup = { serials: i.serials, materials: i.materials, techId, fromWarehouseId: i.sourceWarehouseId ?? null, at: new Date() };
 }
 
 /**
@@ -230,7 +245,7 @@ const startAction = (to: string, withPickup: boolean): ActionDef => ({
   to,
   fields: withPickup
     ? [
-        { name: 'sourceWarehouseId', label: 'Ambil dari gudang', type: 'warehouse', required: true },
+        { name: 'sourceWarehouseId', label: 'Ambil dari gudang', type: 'warehouse', help: 'Kosongkan bila barang diambil dari Stok Berjalan Anda sendiri (belum dikembalikan ke gudang)' },
         { name: 'serials', label: 'SN perangkat yang diambil (ONT/Router)', type: 'serials' },
         { name: 'materials', label: 'Material habis pakai yang diambil', type: 'materials', itemCategory: 'CONSUMABLE' },
       ]
@@ -1213,7 +1228,7 @@ const serviceOrder: Workflow = {
   type: 'SERVICE_ORDER',
   prefix: 'WO-SO',
   label: 'Order Jasa/Produk',
-  description: 'Dari penawaran CRM yang diterima (WON): Marketing memastikan sumber barang → GA menyiapkan (stok / PR proyek) → FOC menjadwalkan & mengerjakan → BA jasa dikirim Marketing.',
+  description: 'Dari penawaran CRM yang diterima (WON): GA/Procurement memastikan sumber barang & menyiapkan (stok / PR proyek) → FOC menjadwalkan & mengerjakan → BA jasa dikirim Marketing.',
   createRoles: [], // dibuat sistem saat penawaran CRM berstatus WON
   createFields: [],
   initial: 'SO_NEW',
@@ -1258,8 +1273,8 @@ const serviceOrder: Workflow = {
   },
   statuses: {
     SO_NEW: {
-      label: 'Order Baru – Konfirmasi Sumber Barang (MKT)',
-      owner: 'MKT',
+      label: 'Order Baru – Konfirmasi Sumber Barang (GA/Procurement)',
+      owner: 'GA',
       actions: [
         {
           key: 'claim',
@@ -1276,11 +1291,10 @@ const serviceOrder: Workflow = {
         {
           key: 'confirm',
           label: 'Konfirmasi sumber barang → lanjut',
-          roles: ['MKT'],
+          roles: ['GA'], // pemegang aset (GA/Procurement), bukan Marketing
           to: 'SO_SOURCE_CHECK',
-          fields: [{ name: 'lines', label: 'Baris penawaran: sumber barang & pemetaan barang', type: 'soLines', required: true, help: 'Jasa murni = Tanpa barang. Produk: Pakai stok (pilih barang di Master Barang) atau PR proyek.' }, note()],
+          fields: [{ name: 'lines', label: 'Baris penawaran: sumber barang & pemetaan barang', type: 'soLines', required: true, help: 'Jasa murni = Tanpa barang. Produk atau jasa + perangkat: Pakai stok (pilih barang di Master Barang) atau PR proyek.' }, note()],
           run: async (ctx, input) => {
-            soAssertOwner(ctx);
             const i = z
               .object({
                 lines: z.array(z.object({ idx: z.coerce.number().int().min(0), source: z.enum(['STOCK', 'PROJECT', 'NONE']), itemId: z.preprocess(blankToUndef, z.string().optional()) })).min(1),
@@ -1292,7 +1306,6 @@ const serviceOrder: Workflow = {
             for (const [k, l] of cur.entries()) {
               const ch = i.lines.find((x) => x.idx === k);
               const source = ch?.source ?? l.source;
-              if (l.kind === 'SERVICE' && source !== 'NONE') throw fieldError('lines', `Baris "${l.name}" adalah jasa — sumber barang harus "Tanpa barang"`);
               const itemId = source === 'STOCK' ? ch?.itemId ?? l.itemId ?? null : source === 'PROJECT' ? ch?.itemId ?? l.itemId ?? null : null;
               if (source === 'STOCK') {
                 if (!itemId) throw fieldError('lines', `Baris "${l.name}": pilih barang di Master Barang untuk "Pakai stok"`);
@@ -1300,7 +1313,6 @@ const serviceOrder: Workflow = {
               }
               next.push({ ...l, source, itemId });
             }
-            if (!ctx.wo.assigneeId && !(ctx.wo.data as any)?.mktOwner) ctx.data.mktOwner = { id: ctx.actor.id, name: ctx.actor.name };
             ctx.data.lines = next;
             ctx.data.confirmedBy = { name: ctx.actor.name, at: new Date() };
             const proj = next.filter((l) => l.source === 'PROJECT');
@@ -1382,15 +1394,14 @@ const serviceOrder: Workflow = {
           assigneeOnly: true,
           to: 'SO_IN_PROGRESS',
           fields: [
-            { name: 'sourceWarehouseId', label: 'Ambil dari gudang (bila ada barang)', type: 'warehouse' },
-            { name: 'serials', label: 'SN perangkat yang diambil', type: 'serials' },
-            { name: 'materials', label: 'Material habis pakai yang diambil', type: 'materials', itemCategory: 'CONSUMABLE' },
+            { name: 'sourceWarehouseId', label: 'Ambil dari gudang (bila ada barang)', type: 'warehouse', help: 'Kosongkan bila barang diambil dari Stok Berjalan Anda sendiri (belum dikembalikan ke gudang)' },
+            { name: 'serials', label: 'SN perangkat yang diambil (opsional)', type: 'serials', help: 'Kosongkan bila tidak membawa perangkat ber-SN (mis. hanya kabel LAN, RJ45)' },
+            { name: 'materials', label: 'Material habis pakai yang diambil (opsional)', type: 'materials', itemCategory: 'CONSUMABLE' },
             note(),
           ],
           run: async (ctx, input) => {
             const i = z.object({ sourceWarehouseId: z.preprocess(blankToUndef, z.string().optional()), serials: sn.default([]), materials }).passthrough().parse(input ?? {});
-            if (i.sourceWarehouseId) await pickup(ctx, i);
-            else if (i.serials.length || i.materials.length) throw fieldError('sourceWarehouseId', 'Pilih gudang asal barang yang diambil');
+            if (i.sourceWarehouseId || i.serials.length || i.materials.length) await pickup(ctx, i);
           },
         },
         soCancel,
@@ -1410,7 +1421,7 @@ const serviceOrder: Workflow = {
           fields: [
             { name: 'serials', label: 'SN perangkat yang diserahkan / dipasang', type: 'serials' },
             { name: 'ownership', label: 'Status kepemilikan perangkat', type: 'select', options: ['Dibeli pelanggan', 'Milik perusahaan (sewa/pinjam)'], help: 'Wajib diisi bila ada SN. "Dibeli pelanggan" = aset berstatus Terjual ke pelanggan' },
-            { name: 'materials', label: 'Material habis pakai terpakai', type: 'materials' },
+            { name: 'materials', label: 'Material habis pakai terpakai', type: 'materials', pickedOnly: true, help: 'Hanya material yang diambil saat "Mulai pekerjaan". Sisa otomatis tetap di Stok Berjalan Anda.' },
             photosF,
             { name: 'workDone', label: 'Uraian pekerjaan', type: 'textarea', required: true },
             note(),
@@ -1427,7 +1438,7 @@ const serviceOrder: Workflow = {
               })
               .parse(input);
             if (i.serials.length && !i.ownership) throw fieldError('ownership', 'Pilih status kepemilikan perangkat');
-            if (i.materials.length) await consume(ctx, 0, i.materials);
+            if (i.materials.length) await consume(ctx, 0, i.materials, { pickedOnly: true });
             if (i.serials.length) {
               const mob = await mobileWarehouse(ctx.tx, stockOwner(ctx));
               const status = i.ownership === 'Dibeli pelanggan' ? 'SOLD_TO_CUSTOMER' : 'INSTALLED';

@@ -49,11 +49,14 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     ],
     ...over,
   });
+  const extraItems: string[] = [];
   const run = (woId: string, key: string, who: any, input: any = {}) => transact((fx) => applyAction(fx, woId, key, act(who), input));
   const wo = (id: string) => prisma.workOrder.findUniqueOrThrow({ where: { id }, include: { customer: true } });
 
   t.after(async () => {
     server.close();
+    await prisma.stockMovement.deleteMany({ where: { itemId: { in: extraItems } } });
+    await prisma.asset.deleteMany({ where: { itemId: { in: extraItems } } });
     const qs = await prisma.crmQuotation.findMany({ where: { crmId: { startsWith: tag } } });
     const wids = qs.map((q) => q.woId).filter(Boolean) as string[];
     const all = await prisma.workOrder.findMany({ where: { OR: [{ id: { in: wids } }, { parentId: { in: wids } }] }, select: { id: true, customerId: true } });
@@ -72,7 +75,7 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     await prisma.warehouse.deleteMany({ where: { OR: [{ id: wh.id }, { ownerId: { in: [tech.id] } }] } });
     await prisma.package.deleteMany({ where: { crmId: { startsWith: tag } } });
     await prisma.stockLevel.deleteMany({ where: { warehouseId: wh.id } });
-    await prisma.item.deleteMany({ where: { id: { in: [itemStock.id, itemProj.id] } } });
+    await prisma.item.deleteMany({ where: { id: { in: [itemStock.id, itemProj.id, ...extraItems] } } });
     await prisma.auditLog.deleteMany({ where: { role: 'CRM', OR: [{ summary: { contains: tag } }, { summary: { contains: `QT-${tag}` } }] } });
     await prisma.user.deleteMany({ where: { id: { in: [mkt.id, mkt2.id, mktLead.id, ga.id, focLead.id, tech.id] } } });
     await prisma.$disconnect();
@@ -99,16 +102,18 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     assert.equal(r2.duplicate, true); assert.equal(r2.woNumber, r.woNumber);
   });
 
-  await t.test('pemegang order: marketing lain ditolak, supervisor/manager MKT boleh; bukan MKT ditolak', async () => {
-    await assert.rejects(run(woId, 'confirm', mkt2, { lines: [{ idx: 2, source: 'PROJECT' }] }), /dipegang Budi/);
-    await assert.rejects(run(woId, 'confirm', ga, { lines: [{ idx: 2, source: 'PROJECT' }] }), /khusus divisi/);
-    // jasa tidak boleh punya sumber barang; STOK tanpa barang ditolak
-    await assert.rejects(run(woId, 'confirm', mkt, { lines: [{ idx: 0, source: 'STOCK' }] }), /jasa/);
-    assert.deepEqual(allowedActions(await wo(woId), act(mkt2)).sort(), ['cancel_order', 'claim', 'confirm'].sort().filter((k) => k !== 'cancel'));
+  await t.test('konfirmasi sumber barang oleh GA/Procurement (pemegang aset), bukan Marketing', async () => {
+    assert.equal((await wo(woId)).status, 'SO_NEW');
+    await assert.rejects(run(woId, 'confirm', mkt, { lines: [{ idx: 2, source: 'PROJECT' }] }), /khusus divisi/);
+    await assert.rejects(run(woId, 'confirm', mktLead, { lines: [{ idx: 2, source: 'PROJECT' }] }), /khusus divisi/);
+    // jasa + perangkat dari stok wajib memilih barang
+    await assert.rejects(run(woId, 'confirm', ga, { lines: [{ idx: 0, source: 'STOCK' }] }), /pilih barang/);
+    assert.deepEqual(allowedActions(await wo(woId), act(mkt2)).sort(), ['cancel_order', 'claim'].sort());
+    assert.ok(allowedActions(await wo(woId), act(ga)).includes('confirm'));
   });
 
   await t.test('konfirmasi: baris Switch → PR proyek (jejak marketing), Kamera → stok aman; menunggu barang proyek', async () => {
-    await run(woId, 'confirm', mktLead, { lines: [{ idx: 2, source: 'PROJECT' }] }); // manager MKT boleh mengambil alih
+    await run(woId, 'confirm', ga, { lines: [{ idx: 2, source: 'PROJECT' }] });
     const w = await wo(woId);
     assert.equal(w.status, 'SO_SOURCING');
     const d: any = w.data;
@@ -116,7 +121,7 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     const pr = await prisma.purchaseRequest.findUniqueOrThrow({ where: { id: d.pr }, include: { lines: true } });
     assert.equal(pr.woId, woId); assert.equal(pr.crmMarketingUserId, mkt.id); assert.equal(pr.crmMarketingName, 'Budi'); assert.equal(pr.crmQuotationNo, `QT-${tag}`);
     assert.equal(pr.lines.length, 1); assert.equal(pr.lines[0].description, 'Switch PoE'); assert.equal(pr.lines[0].itemId, itemProj.id);
-    assert.equal(d.marketing.name, 'Budi'); // tidak ditimpa nama manager yang mengonfirmasi
+    assert.equal(d.marketing.name, 'Budi'); assert.equal(d.mktOwner.id, mkt.id); // tidak ditimpa GA yang mengonfirmasi
     await assert.rejects(run(woId, 'recheck', tech), /khusus divisi/);
     await run(woId, 'recheck', ga);
     assert.equal((await wo(woId)).status, 'SO_SOURCING');
@@ -150,7 +155,7 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
   await t.test('stok kurang → WO Permintaan Barang anak dibuat, menunggu', async () => {
     await put(`${tag}-q2`, quote({ number: `QT2-${tag}`, customer: { ...quote().customer, name: 'PT Kurang' }, lines: [{ catalogCrmId: `${tag}-cam`, name: 'Kamera', kind: 'PRODUCT', qty: 50, unit: 'unit', unitPrice: 1 }] }));
     const q = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q2` } });
-    await run(q.woId!, 'confirm', mkt, { lines: [{ idx: 0, source: 'STOCK' }] });
+    await run(q.woId!, 'confirm', ga, { lines: [{ idx: 0, source: 'STOCK' }] });
     const w = await wo(q.woId!);
     assert.equal(w.status, 'SO_SOURCING');
     const child = await prisma.workOrder.findFirst({ where: { parentId: w.id } });
@@ -163,14 +168,46 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
   });
 
   await t.test('pelanggan existing: ditautkan tanpa mengubah data internet/MSRadius', async () => {
-    await put(`${tag}-q3`, quote({ number: `QT3-${tag}`, customer: { ...quote().customer, code: existing.code }, lines: [{ name: 'Sewa WiFi', kind: 'SERVICE', qty: 1, unit: 'bulan', unitPrice: 1 }] }));
+    await put(`${tag}-q3`, quote({ number: `QT3-${tag}`, customer: { ...quote().customer, code: existing.code }, lines: [{ name: 'Survey lokasi', kind: 'SERVICE', qty: 1, unit: 'kali', unitPrice: 1 }] }));
     const q = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q3` } });
     const w = await wo(q.woId!);
     assert.equal(w.customerId, existing.id); assert.equal((w.data as any).newCustomer, false);
-    await run(w.id, 'confirm', mkt, { lines: [{ idx: 0, source: 'NONE' }] });
+    await run(w.id, 'confirm', ga, { lines: [{ idx: 0, source: 'NONE' }] });
     assert.equal((await wo(w.id)).status, 'SO_SCHEDULING'); // jasa murni: langsung jadwal
     const c = await prisma.customer.findUniqueOrThrow({ where: { id: existing.id } });
     assert.equal(c.source, 'RADIUS'); assert.equal(c.status, 'ACTIVE'); assert.equal(c.packageName, 'Home 20 Mbps'); assert.equal(c.name, 'Pelanggan Lama');
+  });
+
+  await t.test('sewa WiFi = jasa + perangkat; barang di Stok Berjalan teknisi dipakai tanpa gudang; laporan hanya material yang diambil', async () => {
+    const { mobileWarehouse } = await import('../src/inventory');
+    const router = await prisma.item.create({ data: { sku: `RTR-${tag}`, name: `Router ${tag}`, category: 'NETWORK', tracked: true, unit: 'unit' } });
+    extraItems.push(router.id);
+    await prisma.asset.create({ data: { itemId: router.id, serialNumber: `RTR-${tag}-1`, warehouseId: wh.id } });
+    const mob = await mobileWarehouse(prisma as any, tech.id);
+    await prisma.asset.create({ data: { itemId: router.id, serialNumber: `RTR-${tag}-MOB`, warehouseId: mob.id } }); // sisa pekerjaan lain, belum dikembalikan
+    await prisma.stockLevel.upsert({ where: { warehouseId_itemId: { warehouseId: mob.id, itemId: itemStock.id } }, create: { warehouseId: mob.id, itemId: itemStock.id, qty: 3 }, update: { qty: 3 } });
+    await put(`${tag}-q5`, quote({ number: `QT5-${tag}`, customer: { ...quote().customer, code: existing.code }, lines: [{ name: 'Sewa WiFi', kind: 'SERVICE', qty: 1, unit: 'bulan', unitPrice: 75000 }] }));
+    const q = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q5` } });
+    await run(q.woId!, 'confirm', ga, { lines: [{ idx: 0, source: 'STOCK', itemId: router.id }] });
+    const w = await wo(q.woId!);
+    assert.equal(w.status, 'SO_SCHEDULING'); assert.equal((w.data as any).lines[0].source, 'STOCK');
+    await run(w.id, 'schedule', focLead, { technicianIds: [tech.id], scheduledAt: new Date().toISOString() });
+    // SN di gudang tanpa memilih gudang → diminta pilih gudang; material melebihi Stok Berjalan → ditolak
+    await assert.rejects(run(w.id, 'start', tech, { serials: [`RTR-${tag}-1`] }), /pilih gudang/);
+    await assert.rejects(run(w.id, 'start', tech, { materials: [{ itemId: itemStock.id, qty: 5 }] }), /Stok Berjalan Anda hanya 3/);
+    // SN & material yang masih di Stok Berjalan teknisi: boleh tanpa gudang, tidak berpindah
+    await run(w.id, 'start', tech, { serials: [`RTR-${tag}-MOB`], materials: [{ itemId: itemStock.id, qty: 2 }] });
+    const d: any = (await wo(w.id)).data;
+    assert.deepEqual(d.pickup.serials, [`RTR-${tag}-MOB`]); assert.equal(d.pickup.fromWarehouseId, null);
+    assert.equal((await prisma.stockLevel.findUniqueOrThrow({ where: { warehouseId_itemId: { warehouseId: mob.id, itemId: itemStock.id } } })).qty, 3);
+    await prisma.attachment.create({ data: { url: `/uploads/${tag}-sewa.jpg`, mime: 'image/jpeg', uploadedBy: tech.id, lat: -6.9, lng: 107.6 } });
+    const rep = { photos: [`/uploads/${tag}-sewa.jpg`], workDone: 'Router sewa terpasang', serials: [`RTR-${tag}-MOB`], ownership: 'Milik perusahaan (sewa/pinjam)' };
+    await assert.rejects(run(w.id, 'submit_report', tech, { ...rep, materials: [{ itemId: itemProj.id, qty: 1 }] }), /tidak diambil/);
+    await assert.rejects(run(w.id, 'submit_report', tech, { ...rep, materials: [{ itemId: itemStock.id, qty: 3 }] }), /yang diambil hanya 2/);
+    await run(w.id, 'submit_report', tech, { ...rep, materials: [{ itemId: itemStock.id, qty: 1 }] });
+    const a = await prisma.asset.findUniqueOrThrow({ where: { serialNumber: `RTR-${tag}-MOB` } });
+    assert.equal(a.status, 'INSTALLED'); assert.equal(a.customerId, existing.id); // sewa: tetap milik perusahaan, terpasang di pelanggan
+    assert.equal((await prisma.stockLevel.findUniqueOrThrow({ where: { warehouseId_itemId: { warehouseId: mob.id, itemId: itemStock.id } } })).qty, 2);
   });
 
   await t.test('marketing nonaktif: order masuk antrean MKT, jejak id+nama tetap menempel', async () => {
@@ -194,7 +231,7 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     const q = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-qd` } });
     const w = await wo(q.woId!);
     assert.equal(q.isDemo, true); assert.equal(w.source, 'CRM_DEMO'); assert.equal(w.customer!.source, 'CRM_DEMO');
-    await run(w.id, 'confirm', mkt, { lines: [{ idx: 1, source: 'PROJECT' }] });
+    await run(w.id, 'confirm', ga, { lines: [{ idx: 1, source: 'PROJECT' }] });
     const pr = await prisma.purchaseRequest.findFirstOrThrow({ where: { woId: w.id } });
     assert.equal(pr.isDemo, true);
     await run(w.id, 'pr_received', ga, {});

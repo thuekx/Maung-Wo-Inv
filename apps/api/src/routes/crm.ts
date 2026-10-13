@@ -187,10 +187,16 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
       r = await tx.crmQuotation.update({ where: { id: r.id }, data: { woId: wo.id } });
       await audit(tx, { action: 'CREATE', entity: 'WO', entityId: wo.id, summary: `${r.isDemo ? '[UJI SAMBUNG] ' : ''}Penawaran CRM ${r.number} WON → order ${wo.number}` });
       await fx.notify({
+        roles: ['GA'],
+        woId: wo.id,
+        subject: `[${wo.number}] Order baru dari penawaran ${r.number} – konfirmasi sumber barang`,
+        body: `Penawaran ${r.number} (${(r.customer as any).name}) diterima pelanggan.\nKonfirmasi sumber barang (stok / PR proyek) di WO ${wo.number}.`,
+      });
+      await fx.notify({
         ...(marketingMatched ? { userIds: [mkt!.id] } : { roles: ['MKT'] as any }),
         woId: wo.id,
         subject: `[${wo.number}] Order baru dari penawaran ${r.number}`,
-        body: `Penawaran ${r.number} (${(r.customer as any).name}) diterima pelanggan.\nKonfirmasi sumber barang (stok / PR proyek) di WO ${wo.number}.${marketingMatched ? '' : '\nPemasaran pembuat tidak aktif/ bukan MKT: order masuk antrean MKT.'}`,
+        body: `Penawaran ${r.number} (${(r.customer as any).name}) diterima pelanggan dan menjadi order ${wo.number}. GA/Procurement mengonfirmasi sumber barang; Anda mengirim BA setelah pekerjaan selesai.${marketingMatched ? '' : '\nPemasaran pembuat tidak aktif/ bukan MKT: order masuk antrean MKT.'}`,
       });
     }
     return r;

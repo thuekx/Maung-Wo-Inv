@@ -93,3 +93,9 @@ Respons idempoten `quotations/:crmId` sudah memuat `woNumber`. Untuk status lanj
 - PR proyek: satu penawaran = satu PR draf (dibuat oleh pengguna yang mengonfirmasi; jejak marketing di kolom `crmMarketing*`).
 - Template BA/garansi: Admin → Pengaturan → "BA & Garansi Order Jasa" (`serviceorder` di tabel Setting). Cetak: `/doc/ba/:id` (varian jasa).
 - Tes: `test/service-order.test.ts` (alur penuh, stok kurang, existing, antrean, batal) + uji browser (form sumber barang, PR, BA, Admin).
+
+## Perubahan UAT 2026-10-13 (keputusan pemilik)
+- **Konfirmasi sumber barang pindah ke GA/Procurement** (pemegang aset), bukan Marketing: `SO_NEW` kini milik GA, aksi `confirm` hanya GA. Marketing tetap pemegang order (`mktOwner`) untuk kirim BA dan pembatalan; notifikasi WON dikirim ke GA (konfirmasi) dan ke marketing (informasi).
+- **Jasa + perangkat** (mis. sewa WiFi): baris berjenis JASA boleh diberi sumber Pakai stok / PR proyek. Kepemilikan perangkat dipilih teknisi saat laporan ("Milik perusahaan (sewa/pinjam)" → aset `INSTALLED` di pelanggan; "Dibeli pelanggan" → `SOLD_TO_CUSTOMER`).
+- **Mulai pekerjaan**: gudang tidak wajib. SN/material yang masih ada di Stok Berjalan teknisi (belum dikembalikan ke gudang) boleh dipakai tanpa memilih gudang; SN boleh dikosongkan (hanya barang habis pakai). Berlaku juga untuk Pasang Baru.
+- **Kirim laporan**: material terpakai hanya dari yang diambil saat "Mulai pekerjaan" (`pickedOnly`, sama dengan aturan Pasang Baru); sisa tetap di Stok Berjalan.
