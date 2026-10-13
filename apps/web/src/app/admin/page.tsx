@@ -12,6 +12,7 @@ import { Column, DataTable } from '@/components/DataTable';
 import { Badge, ErrorMsg, LinkBtn, Modal, PageHeader, Table, Tabs } from '@/components/ui';
 import { Select } from '@/components/Select';
 import { EmbedFrame } from '@/components/EmbedFrame';
+import { AdminIcon } from '@/components/adminIcons';
 import { ApiMsradius } from '@/components/admin/ApiMsradius';
 import { ApiSistem } from '@/components/admin/ApiSistem';
 import { ApiKanca } from '@/components/admin/ApiKanca';
@@ -954,65 +955,81 @@ function AssetInfoCard({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
-/* ───────── Pusat Admin: navigasi bertingkat (Platform / Work Order / aplikasi lain / Data) ───────── */
-const NAV: { group: string; items: { key: string; label: string }[] }[] = [
-  { group: 'Platform', items: [
-    { key: 'users', label: 'Pengguna' }, { key: 'access', label: 'Hak Akses' }, { key: 'apps', label: 'Aplikasi (Beranda)' }, { key: 'brand', label: 'Tampilan & brand' },
-    { key: 'email', label: 'Email (SMTP)' }, { key: 'telegram', label: 'Telegram' }, { key: 'whatsapp', label: 'WhatsApp' }, { key: 'notif', label: 'Log notifikasi' },
-    { key: 'ssl', label: 'SSL & Domain' }, { key: 'security', label: 'Keamanan' }, { key: 'audit', label: 'Log audit' },
-    { key: 'apisistem', label: 'API Sistem' }, { key: 'apikanca', label: 'API Kanca (WhatsApp)' },
+/* ───────── Pusat Admin: navigasi bertingkat (grup dapat dibuka/ditutup, semua menu di sidebar) ───────── */
+interface NavItem { key: string; label: string; icon: string }
+interface NavGroup { id: string; title: string; icon: string; items: NavItem[] }
+const NAV: NavGroup[] = [
+  { id: 'platform', title: 'Platform', icon: 'settings', items: [
+    { key: 'users', label: 'Pengguna', icon: 'users' }, { key: 'access', label: 'Hak Akses', icon: 'shield-check' }, { key: 'apps', label: 'Aplikasi (Beranda)', icon: 'layout-grid' },
+    { key: 'brand', label: 'Tampilan & brand', icon: 'palette' }, { key: 'email', label: 'Email (SMTP)', icon: 'mail' }, { key: 'telegram', label: 'Telegram', icon: 'send' },
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'message-circle' }, { key: 'notif', label: 'Log notifikasi', icon: 'bell' }, { key: 'ssl', label: 'SSL & Domain', icon: 'globe' },
+    { key: 'security', label: 'Keamanan', icon: 'lock-keyhole' }, { key: 'audit', label: 'Log audit', icon: 'scroll-text' },
+    { key: 'apisistem', label: 'API Sistem', icon: 'webhook' }, { key: 'apikanca', label: 'API Kanca (WhatsApp)', icon: 'plug' },
   ] },
-  { group: 'Work Order', items: [
-    { key: 'radius', label: 'MSRadius' }, { key: 'apimsradius', label: 'API MSRadius' }, { key: 'subform', label: 'Formulir Berlangganan' }, { key: 'docs', label: 'Dokumen PR' },
-    { key: 'serviceorder', label: 'BA & Garansi Order Jasa' }, { key: 'assetinfo', label: 'Info aset (QR)' }, { key: 'out', label: 'Event ke Billing' },
+  { id: 'wo', title: 'Work Order', icon: 'clipboard-check', items: [
+    { key: 'radius', label: 'MSRadius', icon: 'radio-tower' }, { key: 'apimsradius', label: 'API MSRadius', icon: 'plug' }, { key: 'subform', label: 'Formulir Berlangganan', icon: 'file-text' },
+    { key: 'docs', label: 'Dokumen PR', icon: 'clipboard-list' }, { key: 'serviceorder', label: 'BA & Garansi Order Jasa', icon: 'file-check' },
+    { key: 'assetinfo', label: 'Info aset (QR)', icon: 'qr-code' }, { key: 'out', label: 'Event ke Billing', icon: 'activity' }, { key: 'data', label: 'Data & Backup', icon: 'database' },
   ] },
-  { group: 'Data', items: [{ key: 'data', label: 'Data & Backup' }] },
 ];
-/** Halaman admin milik aplikasi lain (dibuat & dipelihara aplikasi itu sendiri; WO hanya MENANAM-nya lewat iframe se-origin, ?embed=1). Data & Backup-nya muncul sebagai tab di bagian Data. */
-const APP_ADMIN_LINKS: Record<string, { label: string; sub: string }[]> = {
-  crm: [{ label: 'Pengaturan', sub: '/admin/settings' }],
+/** Halaman admin milik aplikasi lain (dibuat & dipelihara aplikasi itu sendiri; WO hanya MENANAM-nya lewat iframe se-origin, ?embed=1). Semua menunya tampil di sidebar. */
+const APP_ADMIN_LINKS: Record<string, { label: string; sub: string; icon: string }[]> = {
+  crm: [{ label: 'Pengaturan', sub: '/admin/settings', icon: 'settings' }, { label: 'Data & Backup', sub: '/admin/data', icon: 'database' }],
 };
-
-function DataSection({ crm }: { crm?: { name: string; path: string } }) {
-  const [app, setApp] = useState('wo');
-  return (
-    <>
-      <Tabs value={app} onChange={setApp} tabs={[{ key: 'wo', label: 'Work Order' }, ...(crm ? [{ key: 'crm', label: crm.name }] : [])]} />
-      {app === 'wo' && <DataCard />}
-      {app === 'crm' && crm && <EmbedFrame src={`${crm.path}/admin/data`} title={`Data & Backup ${crm.name}`} />}
-    </>
-  );
-}
+const OPEN_KEY = 'maung_admin_open';
 
 export default function Admin() {
   const { user } = useAuth();
   const [sec, setSecRaw] = useState('users');
-  useEffect(() => { try { const x = localStorage.getItem('maung_admin_sec2'); if (x) setSecRaw(x); } catch { /* abaikan */ } }, []);
-  const setSec = (k: string) => { setSecRaw(k); try { localStorage.setItem('maung_admin_sec2', k); } catch { /* abaikan */ } };
+  const [open, setOpen] = useState<string[] | null>(null); // null = belum dimuat
+  useEffect(() => {
+    try { const x = localStorage.getItem('maung_admin_sec2'); if (x) setSecRaw(x); } catch { /* abaikan */ }
+    try { const o = JSON.parse(localStorage.getItem(OPEN_KEY) ?? 'null'); if (Array.isArray(o)) setOpen(o); } catch { /* abaikan */ }
+  }, []);
   const isAdmin = user?.role === 'ADMIN';
   const { data: settings, error, reload } = useFetch<any>(isAdmin ? '/admin/settings' : null);
   const { data: launcher } = useFetch<{ apps: { id: string; name: string; path: string }[] }>(isAdmin ? '/launcher' : null);
+  const others = (launcher?.apps ?? []).filter((a) => a.id !== 'wo' && a.id !== 'admin' && APP_ADMIN_LINKS[a.id]);
+  const groups: NavGroup[] = [...NAV, ...others.map((a) => ({ id: `app:${a.id}`, title: a.name, icon: a.id === 'crm' ? 'users' : 'layout-grid', items: APP_ADMIN_LINKS[a.id].map((l) => ({ key: `app:${a.id}:${l.sub}`, label: l.label, icon: l.icon })) }))];
+  const known = groups.flatMap((g) => g.items.map((i) => ({ ...i, group: g })));
+  const cur = known.find((i) => i.key === sec) ?? known[0];
+  // grup berisi menu aktif otomatis terbuka; yang lain mengikuti pilihan pengguna (tersimpan)
+  const isOpen = (g: NavGroup) => (open ?? [cur.group.id]).includes(g.id);
+  // pindah ke menu di grup yang tertutup (mis. pulih dari penyimpanan) → grupnya dibuka; menutup grup aktif secara manual tetap dihormati
+  useEffect(() => { setOpen((o) => (o && !o.includes(cur.group.id) ? [...o, cur.group.id] : o)); }, [sec, cur.group.id]);
+  const toggle = (g: NavGroup) => {
+    const base = open ?? [cur.group.id];
+    const next = base.includes(g.id) ? base.filter((x) => x !== g.id) : [...base, g.id];
+    setOpen(next); try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* abaikan */ }
+  };
+  const setSec = (k: string) => { setSecRaw(k); try { localStorage.setItem('maung_admin_sec2', k); } catch { /* abaikan */ } };
   if (user && !isAdmin) return <ErrorMsg>Khusus Admin</ErrorMsg>;
   if (error) return <ErrorMsg>{error}</ErrorMsg>;
   if (!settings) return <p className="text-slate-500">Memuat…</p>;
-  const others = (launcher?.apps ?? []).filter((a) => a.id !== 'wo' && a.id !== 'admin' && APP_ADMIN_LINKS[a.id]);
-  const crm = (launcher?.apps ?? []).find((a) => a.id === 'crm');
-  const known = [...NAV, ...others.map((a) => ({ group: a.name, items: APP_ADMIN_LINKS[a.id].map((l) => ({ key: `app:${a.id}:${l.sub}`, label: l.label })) }))].flatMap((g) => g.items.map((i) => ({ ...i, group: g.group })));
-  const cur = known.find((i) => i.key === sec) ?? known[0];
+  const crmApp = (id: string) => others.find((a) => a.id === id);
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
-      <nav className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-20 lg:flex-col lg:gap-0.5 lg:overflow-visible" aria-label="Pusat Admin">
-        {[...NAV, ...others.map((a) => ({ group: a.name, items: APP_ADMIN_LINKS[a.id].map((l) => ({ key: `app:${a.id}:${l.sub}`, label: l.label })) }))].map((g: any) => (
-          <Fragment key={g.group}>
-            <div className="hidden px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 first:pt-0 lg:block">{g.group}</div>
-            {g.items.map((s: { key: string; label: string }) => (
-              <button key={s.key} onClick={() => setSec(s.key)} className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition ${cur.key === s.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>{s.label}</button>
-            ))}
-          </Fragment>
-        ))}
+    <div className="grid items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <nav className="flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:flex-col lg:gap-1 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-1" aria-label="Pusat Admin">
+        {groups.map((g) => {
+          const o = isOpen(g);
+          return (
+            <Fragment key={g.id}>
+              <button onClick={() => toggle(g)} aria-expanded={o} className="hidden w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-slate-500 hover:bg-slate-100 lg:flex">
+                <AdminIcon name={g.icon} size={16} /><span className="flex-1 truncate">{g.title}</span>
+                <Icon name="chevronDown" size={14} className={`transition-transform ${o ? '' : '-rotate-90'}`} />
+              </button>
+              {g.items.map((it) => (
+                <button key={it.key} onClick={() => setSec(it.key)} aria-current={cur.key === it.key ? 'page' : undefined}
+                  className={`shrink-0 items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition lg:ml-2 lg:w-[calc(100%-0.5rem)] ${o ? 'flex' : 'flex lg:hidden'} ${cur.key === it.key ? 'bg-accent-100 font-semibold text-brand-900' : 'text-slate-600 hover:bg-slate-100'}`}>
+                  <AdminIcon name={it.icon} size={17} className={cur.key === it.key ? 'text-accent-600' : 'text-slate-400'} />{it.label}
+                </button>
+              ))}
+            </Fragment>
+          );
+        })}
       </nav>
       <div className="min-w-0 max-w-5xl space-y-4">
-        <div><div className="subheader text-accent-600">{cur.group}</div><h1 className="font-display text-xl font-bold text-brand-900">{cur.label}</h1></div>
+        <div><div className="subheader text-accent-600">{cur.group.title}</div><h1 className="font-display text-xl font-bold text-brand-900">{cur.label}</h1></div>
         {cur.key === 'users' && <Users />}
         {cur.key === 'access' && <AccessCard />}
         {cur.key === 'apps' && <AppsCard />}
@@ -1024,17 +1041,21 @@ export default function Admin() {
         {cur.key === 'ssl' && <SslCard />}
         {cur.key === 'security' && <SecurityCard d={settings} reload={reload} />}
         {cur.key === 'audit' && <AuditLog />}
-        {cur.key === 'radius' && <RadiusCard />}
-        {cur.key === 'apimsradius' && <ApiMsradius />}
         {cur.key === 'apisistem' && <ApiSistem />}
         {cur.key === 'apikanca' && <ApiKanca />}
+        {cur.key === 'radius' && <RadiusCard />}
+        {cur.key === 'apimsradius' && <ApiMsradius />}
         {cur.key === 'subform' && <SubFormCard />}
         {cur.key === 'docs' && <DocsCard />}
         {cur.key === 'serviceorder' && <ServiceOrderCard />}
         {cur.key === 'assetinfo' && <AssetInfoCard d={settings} reload={reload} />}
         {cur.key === 'out' && <Outbound />}
-        {others.map((a) => APP_ADMIN_LINKS[a.id].map((l) => cur.key === `app:${a.id}:${l.sub}` && <EmbedFrame key={cur.key} src={`${a.path}${l.sub}`} title={`${l.label} ${a.name}`} />))}
-        {cur.key === 'data' && <DataSection crm={crm && APP_ADMIN_LINKS.crm ? { name: crm.name, path: crm.path } : undefined} />}
+        {cur.key === 'data' && <DataCard />}
+        {cur.key.startsWith('app:') && (() => {
+          const [, id, sub] = cur.key.split(':');
+          const a = crmApp(id);
+          return a ? <EmbedFrame key={cur.key} src={`${a.path}${sub}`} title={`${cur.label} ${a.name}`} /> : null;
+        })()}
       </div>
     </div>
   );
