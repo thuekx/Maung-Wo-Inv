@@ -155,6 +155,8 @@ async function enterStatus(fx: Effects, woId: string, actor: Actor, to: string, 
 async function resumeParent(fx: Effects, parentId: string) {
   const parent = await loadWo(fx.tx, parentId);
   if (parent.status === 'STOCK_PENDING') await applyAction(fx, parentId, 'recheck', await systemActor(fx.tx), {}, true);
+  // Order Jasa/Produk: permintaan barang anak selesai → cek ulang kesiapan otomatis (lanjut ke penjadwalan FOC bila semua siap)
+  else if (parent.type === 'SERVICE_ORDER' && parent.status === 'SO_SOURCING') await applyAction(fx, parentId, 'recheck', await systemActor(fx.tx), {}, true);
 }
 
 export async function applyAction(fx: Effects, woId: string, key: string, actor: Actor, input: Record<string, any>, system = false) {

@@ -161,10 +161,28 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     const child = await prisma.workOrder.findFirst({ where: { parentId: w.id } });
     assert.equal(child?.type, 'STOCK_REQUEST');
     assert.ok(String((w.data as any).stockRequest).startsWith('WO-'));
+    // cek ulang selagi permintaan barang belum selesai → tetap menunggu
+    await run(w.id, 'recheck', ga);
+    assert.equal((await wo(w.id)).status, 'SO_SOURCING');
     // dibatalkan oleh pemegang dengan alasan; GA diberi tahu, PR/permintaan tidak dibatalkan otomatis
     await assert.rejects(run(w.id, 'cancel_order', mkt, { note: 'x' }), /alasan/i);
     await run(w.id, 'cancel_order', mkt, { note: 'Pelanggan batal membeli' });
     assert.equal((await wo(w.id)).status, 'SO_CANCELLED');
+  });
+
+  await t.test('permintaan barang anak selesai → order otomatis lanjut ke Siap Dijadwalkan (FOC)', async () => {
+    const have = (await prisma.stockLevel.findUniqueOrThrow({ where: { warehouseId_itemId: { warehouseId: wh.id, itemId: itemStock.id } } })).qty;
+    await put(`${tag}-q6`, quote({ number: `QT6-${tag}`, customer: { ...quote().customer, name: 'PT Tunggu Stok' }, lines: [{ catalogCrmId: `${tag}-cam`, name: 'Kamera', kind: 'PRODUCT', qty: have + 3, unit: 'unit', unitPrice: 1 }] }));
+    const q = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q6` } });
+    await run(q.woId!, 'confirm', ga, { lines: [{ idx: 0, source: 'STOCK' }] });
+    const w = await wo(q.woId!);
+    assert.equal(w.status, 'SO_SOURCING');
+    const child = await prisma.workOrder.findFirstOrThrow({ where: { parentId: w.id, number: (w.data as any).stockRequest } });
+    assert.equal(child.status, 'PROC_REVIEW');
+    await prisma.stockLevel.update({ where: { warehouseId_itemId: { warehouseId: wh.id, itemId: itemStock.id } }, data: { qty: { increment: 3 } } }); // barang masuk (mis. PO diterima)
+    await run(child.id, 'in_stock', ga, {});
+    assert.equal((await wo(child.id)).status, 'CLOSED');
+    assert.equal((await wo(w.id)).status, 'SO_SCHEDULING', 'order lanjut otomatis setelah permintaan barang selesai');
   });
 
   await t.test('pelanggan existing: ditautkan tanpa mengubah data internet/MSRadius', async () => {
