@@ -197,11 +197,11 @@ export async function applyAction(fx: Effects, woId: string, key: string, actor:
 }
 
 /** Aksi yang boleh dilakukan `actor` pada WO ini (untuk UI). */
-export function allowedActions(wo: { type: WoType; status: string; assigneeId: string | null; teamIds?: string[]; createdById: string }, actor: Actor) {
+export function allowedActions(wo: { type: WoType; status: string; assigneeId: string | null; teamIds?: string[]; createdById: string; data?: unknown }, actor: Actor) {
   if (!isOpen(wo.status, wo.type)) return [];
   const st = workflows[wo.type].statuses[wo.status];
   const keys = st.actions
-    .filter((a) => !a.system && (actor.role === 'ADMIN' || a.roles.includes(actor.role)) && (!a.leadOnly || isLead(actor)) && (!a.assigneeOnly || actor.role === 'ADMIN' || actor.acting || inTeam(wo, actor.id)))
+    .filter((a) => !a.system && (actor.role === 'ADMIN' || a.roles.includes(actor.role)) && (!a.leadOnly || isLead(actor)) && (!a.assigneeOnly || actor.role === 'ADMIN' || actor.acting || inTeam(wo, actor.id)) && (!a.visible || a.visible(wo.data ?? {}, actor)))
     .map((a) => a.key);
   if (!st.noCancel && (actor.role === 'ADMIN' || actor.id === wo.createdById)) keys.push('cancel');
   return keys;

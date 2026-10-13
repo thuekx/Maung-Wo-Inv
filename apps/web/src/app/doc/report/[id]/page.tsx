@@ -4,7 +4,7 @@ import { imgUrl, useFetch } from '@/lib/api';
 import { DocPage, DocShell, longDate } from '@/components/DocSheet';
 import { ErrorMsg } from '@/components/ui';
 
-/** Laporan Instalasi (Pasang Baru) / Laporan Troubleshooting (Trouble Ticket & Maintenance mandiri) berkop surat, siap cetak PDF. */
+/** Laporan Instalasi (Pasang Baru & Order Jasa/Produk) / Laporan Troubleshooting (Trouble Ticket & Maintenance mandiri) berkop surat, siap cetak PDF. */
 export default function ReportPrint({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: wo, error } = useFetch<any>(`/work-orders/${id}`);
@@ -16,6 +16,7 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
   const refs: Record<string, string> = wo.refs ?? {};
   const c = wo.customer;
   const install = kind === 'INS';
+  const so = wo.type === 'SERVICE_ORDER'; // Order Jasa/Produk dari penawaran: tanpa data jaringan
   const manager = (foc ?? []).filter((u) => u.subRole === 'MANAGER');
   const photos: any[] = (wo.attachments ?? []).filter((a: any) => a.kind !== 'LOGO');
   const progress = photos.filter((a) => a.kind === 'PROGRESS'), final = photos.filter((a) => a.kind !== 'PROGRESS');
@@ -49,7 +50,21 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
         <h1 className="text-center text-[14pt] font-bold underline">{install ? 'LAPORAN INSTALASI' : 'LAPORAN TROUBLESHOOTING'}</h1>
         <div className="mb-5 text-center font-semibold">No. {number}</div>
 
-        {install ? (
+        {so ? (
+          <>
+            <p className="mb-1 font-semibold">Data Pelanggan</p>
+            <table className="mb-4 w-full"><tbody>
+              {row('ID Pelanggan', c?.code)}{row('Nama Pelanggan', c?.name)}{row('Telepon / WA', c?.phone)}{row('Alamat', c?.address)}
+              {row('Form Penawaran', wo.data?.crmQuotation?.number ? `${wo.data.crmQuotation.number} rev ${wo.data.crmQuotation.rev}` : null)}
+            </tbody></table>
+            <p className="mb-1 font-semibold">Rincian Pekerjaan / Barang</p>
+            <table className="mb-4 w-full border-collapse text-[10pt]"><thead><tr className="border-b"><th className="py-0.5 text-left">Uraian</th><th className="w-24 py-0.5 text-right">Qty</th></tr></thead>
+              <tbody>{(wo.data?.lines ?? []).map((l: any, i: number) => <tr key={i} className="border-b border-gray-300"><td className="py-0.5">{l.name}</td><td className="py-0.5 text-right">{l.qty} {l.unit ?? ''}</td></tr>)}</tbody></table>
+            {r.workDone && <><p className="mb-1 font-semibold">Uraian Pekerjaan</p><p className="mb-4 whitespace-pre-wrap">{r.workDone}</p></>}
+            <p className="mb-1 font-semibold">Perangkat Diserahkan / Dipasang{r.ownership ? ` (${r.ownership})` : ''}</p>
+            {devices.length ? <ul className="mb-4 list-disc pl-6">{devices.map((d, i) => <li key={i}>{d}</li>)}</ul> : <p className="mb-4">-</p>}
+          </>
+        ) : install ? (
           <>
             <p className="mb-1 font-semibold">Data Pelanggan</p>
             <table className="mb-4 w-full"><tbody>
@@ -69,14 +84,16 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
           </>
         )}
 
-        <p className="mb-1 font-semibold">Data Teknis</p>
+        <p className="mb-1 font-semibold">{so ? 'Pelaksanaan' : 'Data Teknis'}</p>
         <table className="mb-4 w-full"><tbody>
+          {so ? <>{row('Tanggal pelaksanaan', longDate(r.at))}{row('Tim Pelaksana', team.length ? team.join(', ') : null)}</> : <>
           {row('POP', r.pop ?? c?.pop)}{row('Main Splitter', r.mainSplitter)}
           {!install && row('ODP', r.odp ?? c?.odp)}
           {row('Koordinat', coord ? <>{coord} <a className="text-blue-700 underline print:no-underline" href={`https://www.google.com/maps?q=${coord.replace(' ', '')}`} target="_blank" rel="noreferrer">peta</a></> : null)}
           {row('Signal', r.signalDbm != null ? `${r.signalDbm} dBm` : null)}{row('Redaman', r.attenuationDb != null ? `${r.attenuationDb} dB` : r.opmDbm != null ? `${Math.abs(r.opmDbm)} dB` : null)}
           {install && row('Tanggal pelaksanaan', longDate(r.at))}
           {row('Tim Pelaksana', team.length ? team.join(', ') : null)}
+          </>}
         </tbody></table>
 
         {!install && (
@@ -97,7 +114,7 @@ export default function ReportPrint({ params }: { params: Promise<{ id: string }
               <tbody>{mats.map((m, i) => <tr key={i} className="border-b border-gray-300"><td className="py-0.5">{refs[m.itemId] ?? m.itemId}</td><td className="py-0.5 text-right">{m.qty}</td></tr>)}</tbody></table>
           </>
         )}
-        {install && r.note && <><p className="mb-1 font-semibold">Catatan</p><p className="mb-4 whitespace-pre-wrap">{r.note}</p></>}
+        {(install || so) && r.note && <><p className="mb-1 font-semibold">Catatan</p><p className="mb-4 whitespace-pre-wrap">{r.note}</p></>}
 
         {!hasPhotos && sigBlock}
       </DocPage>

@@ -108,7 +108,10 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     await assert.rejects(run(woId, 'confirm', mktLead, { lines: [{ idx: 2, source: 'PROJECT' }] }), /khusus divisi/);
     // jasa + perangkat dari stok wajib memilih barang
     await assert.rejects(run(woId, 'confirm', ga, { lines: [{ idx: 0, source: 'STOCK' }] }), /pilih barang/);
-    assert.deepEqual(allowedActions(await wo(woId), act(mkt2)).sort(), ['cancel_order', 'claim'].sort());
+    // "Ambil order" hanya untuk order tanpa pemegang atau supervisor/manager yang mengambil alih
+    assert.deepEqual(allowedActions(await wo(woId), act(mkt2)).sort(), ['cancel_order']);
+    assert.deepEqual(allowedActions(await wo(woId), act(mkt)).sort(), ['cancel_order']);
+    assert.ok(allowedActions(await wo(woId), act(mktLead)).includes('claim'));
     assert.ok(allowedActions(await wo(woId), act(ga)).includes('confirm'));
   });
 
@@ -141,6 +144,14 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     await prisma.attachment.create({ data: { url: `/uploads/${tag}-ok.jpg`, mime: 'image/jpeg', uploadedBy: tech.id, lat: -6.9, lng: 107.6 } });
     await run(woId, 'submit_report', tech, { photos: [`/uploads/${tag}-ok.jpg`], workDone: 'Kamera terpasang & diuji' });
     assert.equal((await wo(woId)).status, 'SO_AWAITING_BA');
+    // laporan sudah masuk: order tidak dapat dibatalkan lagi
+    await assert.rejects(run(woId, 'cancel_order', mkt, { note: 'Pelanggan batal' }), /tidak tersedia/);
+    assert.ok(!allowedActions(await wo(woId), act(mkt)).includes('cancel_order'));
+    // ketentuan garansi per order: hanya Supervisor/Manager MKT; isian awal = bawaan Admin
+    await assert.rejects(run(woId, 'edit_warranty', mkt, { warrantyText: 'Garansi khusus' }), /supervisor|manager/i);
+    assert.ok(allowedActions(await wo(woId), act(mktLead)).includes('edit_warranty'));
+    await run(woId, 'edit_warranty', mktLead, { warrantyText: 'Garansi khusus {nama} 6 bulan' });
+    assert.equal((await wo(woId)).status, 'SO_AWAITING_BA');
     await assert.rejects(run(woId, 'send_ba', mkt2, { sendTelegram: true, recipientTelegram: '123' }), /dipegang/);
     await assert.rejects(run(woId, 'send_ba', mkt, {}), /minimal satu/);
     await run(woId, 'send_ba', mkt, { sendTelegram: true, recipientTelegram: '123456' });
@@ -149,6 +160,7 @@ test('SERVICE_ORDER', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, asy
     const ba: any = (w.data as any).ba;
     assert.match(ba.number, /^BAJ\/TST\//);
     assert.ok(ba.body.includes('Instalasi CCTV') && ba.body.includes('Garansi:') && ba.body.includes('PT Baru'));
+    assert.ok(ba.body.includes('Garansi khusus PT Baru 6 bulan'), 'BA memakai garansi yang disesuaikan untuk order ini');
     assert.equal(w.customer!.status, 'ACTIVE'); // pelanggan CRM baru aktif setelah BA
   });
 

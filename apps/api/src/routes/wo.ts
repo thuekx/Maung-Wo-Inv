@@ -115,10 +115,11 @@ woRoutes.get('/work-orders/:id', async (req, res) => {
   // nomor dokumen (BA / laporan) memakai singkatan area; area maintenance mandiri ada di data WO
   const areaId = c?.areaId ?? ((wo.data as any)?.areaId as string | undefined) ?? null;
   const alias = await aliasForArea(prisma, areaId);
-  const kind = wo.type === 'NEW_INSTALL' ? 'INS' : wo.type === 'TROUBLE' || wo.type === 'MAINTENANCE' ? 'TBS' : null;
+  const kind = wo.type === 'NEW_INSTALL' || wo.type === 'SERVICE_ORDER' ? 'INS' : wo.type === 'TROUBLE' || wo.type === 'MAINTENANCE' ? 'TBS' : null;
   const seeBa = u.role === 'ADMIN' || u.role === 'MKT';
   // BA Order Jasa: nomor + isi (template Admin) untuk pratinjau/cetak; hanya Marketing/Admin yang melihatnya
   const soBa = wo.type === 'SERVICE_ORDER' && seeBa && c && (wo.data as any)?.report ? await soBaContent(prisma, wo as any) : null;
+  if (soBa) (prefill as Record<string, unknown>).edit_warranty = { warrantyText: soBa.warrantyRaw };
   const docs = { areaAlias: alias, baNumber: wo.type === 'NEW_INSTALL' ? baNumber(alias, wo.number) : null, reportNumber: kind && (wo.data as any)?.report ? reportNumber(kind, alias, wo.number) : null, reportKind: kind, soBa };
   // BA Digital hanya untuk Marketing (dan Admin): FOC/NOC dan lainnya tidak melihatnya
   const woData = seeBa ? wo.data : (({ ba: _ba, ...rest }) => rest)((wo.data ?? {}) as Record<string, unknown>);

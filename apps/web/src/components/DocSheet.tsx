@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { fileUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -12,12 +12,32 @@ import { useBranding } from '@/lib/photo';
 export function DocPage({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   const brand = useBranding();
   const kop = brand.kopUrl ? fileUrl(brand.kopUrl) : '/kop-surat-a4.jpg';
+  // Isi yang lebih panjang dari satu halaman: di layar tinggi dibulatkan ke kelipatan A4 (kop tidak terpotong/menumpuk);
+  // saat cetak setiap halaman lanjutan mendapat kop & margin sendiri (box-decoration-break: clone).
+  const ref = useRef<HTMLElement>(null);
+  const [pages, setPages] = useState(1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const mm = el.getBoundingClientRect().width / 210;
+    const measure = () => {
+      const inner = el.firstElementChild as HTMLElement | null;
+      if (!inner || !mm) return;
+      const usable = 297 - 44 - 44; // tinggi ruang isi per halaman (mm)
+      setPages(Math.max(1, Math.ceil(inner.getBoundingClientRect().height / mm / usable - 0.001)));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, []);
   return (
     <section
+      ref={ref}
       className={`doc-page relative mx-auto mb-6 box-border bg-white text-[11pt] leading-snug text-black shadow-lg print:mb-0 print:shadow-none ${className}`}
-      style={{ width: '210mm', minHeight: '297mm', padding: '44mm 22mm 44mm', backgroundImage: `url(${kop})`, backgroundSize: '210mm 297mm', backgroundRepeat: 'repeat-y', pageBreakAfter: 'always', breakAfter: 'page' }}
+      style={{ width: '210mm', minHeight: `${297 * pages}mm`, padding: '44mm 22mm 44mm', backgroundImage: `url(${kop})`, backgroundSize: '210mm 297mm', backgroundRepeat: 'repeat-y', pageBreakAfter: 'always', breakAfter: 'page', WebkitBoxDecorationBreak: 'clone', boxDecorationBreak: 'clone' } as React.CSSProperties}
     >
-      {children}
+      <div>{children}</div>
     </section>
   );
 }

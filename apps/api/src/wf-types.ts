@@ -53,6 +53,8 @@ export interface ActionDef {
   leadOnly?: boolean; // hanya supervisor/manager (atau ADMIN) di divisi yang berhak
   system?: boolean; // hanya dipicu sistem, tidak tampil di UI
   danger?: boolean;
+  /** tombol hanya tampil bila fungsi ini true (validasi tetap di run) */
+  visible?: (data: any, actor: Actor) => boolean;
   /** boleh mengembalikan status tujuan lain untuk menimpa `to` */
   run?: (ctx: Ctx, input: any) => Promise<string | void>;
 }

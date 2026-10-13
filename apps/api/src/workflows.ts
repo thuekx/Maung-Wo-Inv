@@ -1220,8 +1220,9 @@ export async function soBaContent(tx: Tx, wo: WoFull) {
   const sub = (t: string) => t.replace(/\{nama\}/g, c.name).replace(/\{penawaran\}/g, qno).replace(/\{nomor_ba\}/g, number).replace(/\{alamat\}/g, c.address).replace(/\{tanggal\}/g, new Date().toLocaleDateString('id-ID'));
   const daftar = soLinesOf(d).map((l, k) => `${k + 1}. ${l.name} — ${l.qty} ${l.unit ?? ''}`.trimEnd()).join('\n');
   const sns = (d.report?.serials ?? []) as string[];
-  const body = `${sub(cfg.baIntro)}\n\nNo. BA: ${number}\nPenawaran: ${qno}\nAlamat: ${c.address}\n\nRincian:\n${daftar}${sns.length ? `\n\nNo. seri perangkat: ${sns.join(', ')}${d.report?.ownership ? ` (${d.report.ownership})` : ''}` : ''}\n\nGaransi:\n${sub(cfg.warrantyText)}\n\n${sub(cfg.baFooter)}`;
-  return { number, title: cfg.baTitle, body, sections: { intro: sub(cfg.baIntro), warranty: sub(cfg.warrantyText), footer: sub(cfg.baFooter) } };
+  const warranty = (d.warrantyText as string | undefined) ?? cfg.warrantyText; // per order (Supervisor/Manager MKT) atau bawaan Admin
+  const body = `${sub(cfg.baIntro)}\n\nNo. BA: ${number}\nPenawaran: ${qno}\nAlamat: ${c.address}\n\nRincian:\n${daftar}${sns.length ? `\n\nNo. seri perangkat: ${sns.join(', ')}${d.report?.ownership ? ` (${d.report.ownership})` : ''}` : ''}\n\nGaransi:\n${sub(warranty)}\n\n${sub(cfg.baFooter)}`;
+  return { number, title: cfg.baTitle, body, sections: { intro: sub(cfg.baIntro), warranty: sub(warranty), footer: sub(cfg.baFooter) }, warrantyRaw: warranty, warrantyCustom: d.warrantyText != null };
 }
 
 const serviceOrder: Workflow = {
@@ -1282,6 +1283,8 @@ const serviceOrder: Workflow = {
           roles: ['MKT'],
           to: 'SO_NEW',
           fields: [],
+          // hanya perlu bila order belum punya pemegang (marketing pembuat nonaktif/tidak cocok) atau supervisor/manager mengambil alih
+          visible: (d, a) => !d.mktOwner || (d.mktOwner.id !== a.id && isLead(a)),
           run: async (ctx) => {
             soAssertOwner(ctx);
             ctx.data.mktOwner = { id: ctx.actor.id, name: ctx.actor.name };
@@ -1456,7 +1459,21 @@ const serviceOrder: Workflow = {
     SO_AWAITING_BA: {
       label: 'Pekerjaan Selesai – BA Jasa (MKT)',
       owner: 'MKT',
+      noCancel: true, // laporan teknisi sudah masuk: order tidak dapat dibatalkan lagi
       actions: [
+        {
+          key: 'edit_warranty',
+          label: 'Ubah ketentuan garansi',
+          roles: ['MKT'],
+          leadOnly: true,
+          to: 'SO_AWAITING_BA',
+          fields: [{ name: 'warrantyText', label: 'Ketentuan garansi untuk order ini', type: 'textarea', required: true, help: 'Isian awal = bawaan Admin (Pusat Admin → Work Order → BA & Garansi Order Jasa). Perubahan hanya berlaku untuk BA order ini. Boleh memakai {nama}, {penawaran}, {nomor_ba}, {alamat}, {tanggal}.' }],
+          run: async (ctx, input) => {
+            const i = z.object({ warrantyText: z.string().trim().min(3, 'Isi ketentuan garansi').max(4000) }).parse(input);
+            ctx.data.warrantyText = i.warrantyText;
+            ctx.data.warrantyEditedBy = { name: ctx.actor.name, at: new Date() };
+          },
+        },
         {
           key: 'send_ba',
           label: 'Kirim BA ke pelanggan',
@@ -1505,7 +1522,6 @@ const serviceOrder: Workflow = {
             });
           },
         },
-        soCancel,
       ],
     },
     SO_DONE: { label: 'Selesai', owner: 'MKT', final: true, actions: [] },
