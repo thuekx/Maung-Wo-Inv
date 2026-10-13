@@ -23,25 +23,36 @@ export interface Field {
 
 /* ───────── input khusus ───────── */
 
-import { parseScan, ScanButtons } from '@/components/Scanner';
+import { parseScan, ScanButtons, scanFeedback } from '@/components/Scanner';
 import { MapPicker } from '@/components/MapPicker';
 
-export function SerialInput({ value, onChange, onPending }: { value: string[]; onChange: (v: string[]) => void; onPending?: (text: string) => void }) {
+/**
+ * Isian daftar SN: ketik + Enter / Tambah, scanner USB (Enter), kamera (langsung masuk, kamera tetap terbuka) atau foto barcode.
+ * `check` (opsional) memberi pesan bila aset tidak memenuhi syarat (mis. bukan di gudang asal).
+ */
+export function SerialInput({ value, onChange, onPending, check }: { value: string[]; onChange: (v: string[]) => void; onPending?: (text: string) => void; check?: (asset: any) => string | null }) {
   const [text, setTextRaw] = useState('');
   const setText = (t: string) => { setTextRaw(t); onPending?.(t.trim()); };
-  const [info, setInfo] = useState<Record<string, string>>({});
+  const [info, setInfo] = useState<Record<string, { text: string; bad?: boolean }>>({});
+  const [note, setNote] = useState('');
   const valueRef = useRef(value);
   valueRef.current = value;
+  const checkRef = useRef(check);
+  checkRef.current = check;
 
   const add = async (raw: string) => {
     const sn = parseScan(raw);
-    if (!sn || valueRef.current.includes(sn)) return;
-    onChange([...valueRef.current, sn]);
+    if (!sn) return;
+    if (valueRef.current.includes(sn)) { setNote(`SN ${sn} sudah ada di daftar`); scanFeedback(false); return; }
+    valueRef.current = [...valueRef.current, sn];
+    onChange(valueRef.current);
+    setNote(''); scanFeedback(true);
     try {
       const a = await api(`/assets/by-serial/${encodeURIComponent(sn)}`);
-      setInfo((p) => ({ ...p, [sn]: `${a.item.name} · ${a.status}${a.warehouse ? ' · ' + a.warehouse.name : ''}` }));
+      const bad = checkRef.current?.(a) ?? null;
+      setInfo((p) => ({ ...p, [sn]: bad ? { text: `⚠ ${bad}`, bad: true } : { text: `${a.item.name} · ${a.status}${a.warehouse ? ' · ' + a.warehouse.name : ''}` } }));
     } catch {
-      setInfo((p) => ({ ...p, [sn]: '⚠ tidak terdaftar' }));
+      setInfo((p) => ({ ...p, [sn]: { text: '⚠ tidak terdaftar', bad: !!checkRef.current } }));
     }
   };
 
@@ -54,14 +65,16 @@ export function SerialInput({ value, onChange, onPending }: { value: string[]; o
         <ScanButtons onScan={(t) => add(t)} />
       </div>
       {text.trim() && <p className="text-xs font-medium text-amber-700">⚠ SN &quot;{text.trim().toUpperCase()}&quot; belum ditambahkan — tekan <b>Tambah</b> atau Enter, jika tidak SN ini tidak ikut tersimpan.</p>}
+      {note && <p className="text-xs font-medium text-amber-700" role="status">{note}</p>}
       <ul className="space-y-1">
         {value.map((s) => (
-          <li key={s} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-1.5 text-sm">
-            <span><span className="font-mono">{s}</span> <span className="text-xs text-slate-500">{info[s]}</span></span>
+          <li key={s} className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${info[s]?.bad ? 'bg-red-50' : 'bg-slate-50'}`}>
+            <span><span className="font-mono">{s}</span> <span className={`text-xs ${info[s]?.bad ? 'font-medium text-red-700' : 'text-slate-500'}`}>{info[s]?.text}</span></span>
             <button type="button" className="text-red-600" onClick={() => onChange(value.filter((x) => x !== s))}>✕</button>
           </li>
         ))}
       </ul>
+      {value.length > 0 && <p className="text-xs text-slate-500">{value.length} SN di daftar.</p>}
     </div>
   );
 }

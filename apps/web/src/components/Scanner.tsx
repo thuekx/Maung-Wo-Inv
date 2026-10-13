@@ -14,6 +14,19 @@ export function parseScan(raw: string): string {
   return t.toUpperCase();
 }
 
+let audio: AudioContext | null = null;
+/** Umpan balik singkat saat scan: bunyi tinggi + getar = masuk; bunyi rendah = ditolak (mis. SN ganda). */
+export function scanFeedback(ok: boolean) {
+  try {
+    audio ??= new AudioContext();
+    const o = audio.createOscillator(); const g = audio.createGain();
+    o.frequency.value = ok ? 1800 : 400; g.gain.value = 0.15;
+    o.connect(g); g.connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + (ok ? 0.08 : 0.25));
+  } catch { /* browser tanpa audio: abaikan */ }
+  try { navigator.vibrate?.(ok ? 60 : [80, 60, 80]); } catch { /* abaikan */ }
+}
+
 
 async function loadLib() {
   const m = await import('html5-qrcode');
@@ -53,6 +66,14 @@ export function ScanButtons({ onScan }: { onScan: (text: string) => void }) {
   const [torchOn, setTorchOn] = useState(false);
   const scanRef = useRef(onScan);
   scanRef.current = onScan;
+  const last = useRef({ t: '', at: 0 });
+  /** Kamera membaca berkali-kali per detik: kode yang sama dalam 2,5 detik dianggap satu kali scan. */
+  const liveScan = (txt: string) => {
+    const now = Date.now();
+    if (txt === last.current.t && now - last.current.at < 2500) { last.current.at = now; return; }
+    last.current = { t: txt, at: now };
+    scanRef.current(txt);
+  };
   const id = `qr-live-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const fileId = `${id}-file`;
   const [secure, setSecure] = useState(false); // dihitung setelah mount (hindari beda render server/klien)
@@ -76,7 +97,7 @@ export function ScanButtons({ onScan }: { onScan: (text: string) => void }) {
             qrbox: (w: number, h: number) => ({ width: Math.floor(Math.min(w * 0.92, 520)), height: Math.floor(Math.min(h * 0.45, 190)) }),
             videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 }, advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet] } as MediaTrackConstraints,
           },
-          (txt) => scanRef.current(txt),
+          (txt) => liveScan(txt),
           () => {},
         );
         camRef.current = sc;
@@ -130,7 +151,7 @@ export function ScanButtons({ onScan }: { onScan: (text: string) => void }) {
           {torchOk && <button type="button" className="btn-ghost !px-2 !py-1 !text-xs" onClick={toggleTorch}>{torchOn ? '🔦 Matikan' : '🔦 Senter'}</button>}
         </div>
       )}
-      {live && <p className="basis-full text-xs text-slate-500">Barcode kecil: jauhkan ±15–20 cm, luruskan sejajar kotak, naikkan <b>zoom</b>, nyalakan <b>senter</b> bila gelap, ketuk layar untuk fokus ulang. Tak juga terbaca? Pakai <b>🖼 Foto</b> (memakai kamera bawaan ponsel yang autofokus).</p>}
+      {live && <p className="basis-full text-xs text-slate-500">Kamera tetap terbuka: arahkan ke barcode berikutnya, setiap SN langsung masuk ke daftar (bunyi &quot;bip&quot;). Barcode kecil: jauhkan ±15–20 cm, luruskan sejajar kotak, naikkan <b>zoom</b>, nyalakan <b>senter</b> bila gelap, ketuk layar untuk fokus ulang. Tak juga terbaca? Pakai <b>🖼 Foto</b> (memakai kamera bawaan ponsel yang autofokus).</p>}
       {!secure && <p className="basis-full text-xs text-slate-500">Kamera langsung butuh HTTPS; di sini kamera ponsel dibuka lewat <b>Foto barcode</b>. Scanner barcode eksternal (USB/Bluetooth): klik kolom SN lalu scan.</p>}
       {msg && <p className="basis-full text-xs font-medium text-red-600" role="alert">{msg}</p>}
     </>
