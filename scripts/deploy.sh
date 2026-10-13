@@ -108,5 +108,5 @@ echo "SELESAI."
 echo "  Web      : $(grep ^WEB_URL= .env | cut -d= -f2-)"
 if [ -n "$WEB_DOMAIN" ]; then echo "  SSL      : Let's Encrypt diterbitkan otomatis beberapa saat setelah start (cek: docker compose logs -f caddy). Status & sakelar SSL: Admin → Pengaturan → SSL & Domain"; fi
 if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx portainer; then echo "  Portainer: https://${WEB_DOMAIN:-$HOST}:9443 (buat admin dalam 5 menit pertama! batasi port 9443 di firewall)"; fi
-echo "  Login    : admin@l1v.local / $(grep ^SEED_PASSWORD= .env | cut -d= -f2-)   (ganti password setelah login)"
+echo "  Login    : admin@l1v.local (password awal: grep ^SEED_PASSWORD= .env; ganti setelah login)"
 echo "  Secret tersimpan di .env (jangan di-commit)."

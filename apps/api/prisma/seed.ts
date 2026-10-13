@@ -71,7 +71,7 @@ async function main() {
     await set(cabA.id, sleeve.id, 10);
     for (let i = 1; i <= 10; i++) await prisma.asset.create({ data: { itemId: ont.id, serialNumber: `ONT-DEMO-${String(i).padStart(4, '0')}`, warehouseId: i <= 8 ? main.id : cabA.id } });
   }
-  console.log(`Seed selesai. Login contoh: admin@l1v.local / ${PASSWORD}`);
+  console.log('Seed selesai. Login contoh: admin@l1v.local (password awal = SEED_PASSWORD di .env)');
 }
 
 main().finally(() => prisma.$disconnect());

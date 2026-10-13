@@ -54,7 +54,7 @@ Setelah ±1–2 menit, Caddy menerbitkan sertifikat Let's Encrypt otomatis:
 ```bash
 docker compose logs -f caddy          # cari: "certificate obtained successfully"
 ```
-Lalu buka **https://wo.perusahaan.co.id** → login `admin@l1v.local` (password dicetak skrip; juga: `grep ^SEED_PASSWORD= .env`) → **ganti password semua akun**.
+Lalu buka **https://wo.perusahaan.co.id** → login `admin@l1v.local` (password awal: `grep ^SEED_PASSWORD= .env`, tidak dicetak ke layar) → **ganti password semua akun**.
 
 ### Yang terjadi otomatis
 - **Perpanjangan:** Caddy memperbarui sertifikat ±30 hari sebelum kedaluwarsa (tanpa cron/certbot). Data sertifikat disimpan di volume `caddy_data` — jangan dihapus.
