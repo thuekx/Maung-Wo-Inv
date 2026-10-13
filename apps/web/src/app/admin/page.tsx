@@ -289,7 +289,7 @@ function BrandingCard({ d, reload }: { d: any; reload: () => void }) {
         <UploadBox title="Logo untuk foto GPS (logo perusahaan)" hint="Logo PT yang ditempel di banner foto lapangan (bersama koordinat GPS). Terpisah dari logo aplikasi; bila kosong dipakai logo horizontal. PNG/WEBP ≤ 2 MB." url={b.gpsLogoUrl} dark variant="gps" onDone={reload} />
         <UploadBox title="Kop surat A4 (dokumen PR, BA, laporan)" hint="Gambar kop satu halaman penuh (A4 portrait, mis. 2480×3508 px) dengan area isi kosong di tengah. Bila kosong dipakai kop bawaan. JPG/PNG/WEBP ≤ 3 MB." url={b.kopUrl} variant="kop" onDone={reload} />
         <UploadBox title="Logo Formulir Berlangganan" hint="Logo merek di pojok kanan atas formulir (bawaan: Sunmori). PNG/WEBP transparan ≤ 2 MB." url={b.formLogoUrl} variant="formlogo" onDone={reload} />
-        <UploadBox title="Tanda tangan Manager Marketing (opsional)" hint="Gambar tanda tangan (PNG transparan ≤ 1 MB) yang tercetak di formulir. Bila kosong, kolom dibiarkan kosong untuk tanda tangan basah." url={b.mgrSignUrl} variant="mgrsign" onDone={reload} />
+        <UploadBox title="Tanda tangan Manager Marketing (opsional)" hint="Gambar tanda tangan (PNG transparan ≤ 1 MB) yang tercetak di formulir berlangganan dan penawaran CRM. Bila kosong, kolom dibiarkan kosong untuk tanda tangan basah." url={b.mgrSignUrl} variant="mgrsign" onDone={reload} />
         <UploadBox title="Gambar latar login (opsional)" hint="Foto lanskap/pegunungan. Diberi lapisan navy otomatis. JPG/WEBP ≤ 6 MB." url={b.loginBgUrl} dark variant="loginbg" onDone={reload} />
       </div>
 
@@ -476,7 +476,7 @@ function SubFormCard() {
       <p className="text-sm text-slate-500">Reg. No. dibentuk <b>{cur.regPrefix}{cur.year3}</b> + nomor urut otomatis 4 digit (3 digit tahun otomatis: 2027 → 027). Logo formulir & tanda tangan Manager Marketing diunggah di kartu Branding.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {f('regPrefix', 'Awalan Reg. No.', 'Huruf saja, mis. SM')}
-        {f('managerName', 'Manager Marketing (bawaan)')}
+        {f('managerName', 'Nama Manager (penanda tangan formulir & penawaran)', 'Dipakai formulir berlangganan dan penawaran CRM; CRM menyalin nama ini saat penawaran disetujui, jadi cetakan lama tidak berubah bila nama diganti.')}
         <div><label className="mb-1 block text-sm font-medium">Nomor urut pertama tahun ini</label><input className="input" type="number" min={1} value={cur.regSeqStart ?? 1} onChange={(e) => setV({ ...cur, regSeqStart: e.target.value })} /><p className="mt-0.5 text-xs text-slate-500">Reg. No. dibuat otomatis berurutan ({cur.regPrefix}{cur.year3}0001, …). Isi bila perlu melanjutkan nomor lama, mis. 120 → {cur.regPrefix}{cur.year3}0120.</p></div>
         <div className="sm:col-span-2 rounded-lg border p-3"><label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={cur.regEditable !== false} onChange={(e) => setV({ ...cur, regEditable: e.target.checked })} /><span><b>Nomor Reg. dapat diisi/diubah Marketing</b> (masa migrasi) — kosong = otomatis, bila diisi tercatat sesuai isian (tidak boleh sama dengan nomor yang sudah ada) dan urutan otomatis melanjutkan dari nomor tertinggi. <b>Matikan</b> setelah migrasi selesai agar nomor selalu otomatis berurutan.</span></label></div>
         {f('city', 'Kota')}{f('ppnNote', 'Keterangan PPN biaya langganan')}

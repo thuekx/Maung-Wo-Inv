@@ -100,7 +100,7 @@ export default function WoDetail({ params }: { params: Promise<{ id: string }> }
 
           {wo.type === 'SERVICE_ORDER' && Array.isArray(data?.lines) && (
             <div className="card">
-              <h2 className="mb-1 font-semibold">Penawaran CRM {data.crmQuotation?.number && <span className="text-sm font-normal text-slate-500">· {data.crmQuotation.number} rev {data.crmQuotation.rev}</span>}</h2>
+              <h2 className="mb-1 font-semibold">Form Penawaran {data.crmQuotation?.number && <span className="text-sm font-normal text-slate-500">· {data.crmQuotation.number} rev {data.crmQuotation.rev}</span>}</h2>
               <p className="mb-2 text-sm text-slate-500">
                 Marketing: <b>{data.marketing?.name ?? '-'}</b>{data.mktOwner ? <> · pemegang order: <b>{data.mktOwner.name}</b></> : ' · antrean Marketing (belum ada pemegang)'}
                 {data.prNumber && <> · PR proyek: <b>{data.prNumber}</b></>}{data.stockRequest && <> · Permintaan barang: <b>{data.stockRequest}</b></>}
