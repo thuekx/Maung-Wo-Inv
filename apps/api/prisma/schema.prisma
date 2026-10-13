@@ -129,6 +129,8 @@ model Customer {
   activatedAt    DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @default(now()) @updatedAt // dipakai Export API (?since) agar perubahan status terlihat
+  parentCustomerCode String? // kode pelanggan induk akun (layanan/lokasi baru milik pemilik/PIC yang sama); diisi Marketing atau dari penawaran CRM, apa adanya
+  crmLeadRef     String? @unique // nomor Lead CRM (LD-123), 1 Lead = 1 kode pelanggan; diisi Marketing agar CRM menautkan Lead ke kode baru secara pasti
   archivedAt     DateTime? // diarsipkan (dihapus dari daftar tetapi riwayat WO tetap utuh); Admin dapat memulihkan
 
   warehouse  Warehouse?  @relation(fields: [warehouseId], references: [id])
@@ -143,6 +145,7 @@ model Customer {
   @@index([publicIp])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([parentCustomerCode])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_name_trgm")
   @@index([code(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_code_trgm")
   @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "Customer_phone_trgm")
@@ -705,4 +708,16 @@ model Subscription {
   @@index([customerId])
   @@index([createdAt])
   @@index([name])
+}
+
+// Idempotensi notifikasi dari CRM: (userId, dedupeKey) unik — kirim ulang dijawab duplicate tanpa mengirim lagi
+model CrmNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  dedupeKey String
+  type      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dedupeKey])
+  @@index([createdAt])
 }

@@ -178,4 +178,49 @@ test('integrasi CRM 2a', { skip: HAS_DB ? false : 'DATABASE_URL tidak diisi' }, 
     const r = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-q9` } });
     assert.equal(r.marketingName, 'Budi'); assert.notEqual(r.marketingName, mktUser.name);
   });
+
+  await t.test('notifikasi dari CRM: autentikasi, validasi 422, pengguna tak ada 404, idempoten, kotak masuk [CRM] + tautan absolut', async () => {
+    const post = (b: unknown, key: string | null = KEY) => fetch(`${base}/integrations/crm/notifications`, { method: 'POST', headers: { 'content-type': 'application/json', ...(key ? { 'x-api-key': key } : {}) }, body: JSON.stringify(b) });
+    const good = { userId: mktUser.id, type: 'QUOTATION_SUBMITTED', title: `Penawaran QT-${tag} menunggu persetujuan`, body: 'PT Maju · diajukan Nurman', link: '/crm/quotations/7', dedupeKey: `qt-sub:${tag}:1` };
+    assert.equal((await post(good, null)).status, 401);
+    assert.equal((await post(good, 'test-export-key')).status, 401);
+    for (const bad of [{ ...good, link: 'https://evil.example/x' }, { ...good, link: '//evil.example' }, { ...good, type: 'huruf kecil' }, { ...good, dedupeKey: '' }, { ...good, title: '' }, { ...good, userId: undefined }])
+      assert.equal((await post(bad)).status, 422, JSON.stringify(bad).slice(0, 60));
+    assert.equal((await post({ ...good, userId: 'tidak-ada' })).status, 404);
+    await prisma.user.update({ where: { id: focUser.id }, data: { active: false } });
+    assert.equal((await post({ ...good, userId: focUser.id })).status, 404); // nonaktif
+    await prisma.user.update({ where: { id: focUser.id }, data: { active: true } });
+    const r1 = await post(good);
+    assert.equal(r1.status, 201); assert.deepEqual(await r1.json(), { ok: true, duplicate: false });
+    const inbox = await prisma.inbox.findMany({ where: { userId: mktUser.id, subject: { contains: `QT-${tag}` } } });
+    assert.equal(inbox.length, 1); assert.ok(inbox[0].subject.startsWith('[CRM] ')); assert.ok(inbox[0].body.includes('/crm/quotations/7') && /^https?:\/\//.test(inbox[0].body.split('\n').pop()!), 'tautan absolut');
+    const r2 = await post(good);
+    assert.equal(r2.status, 200); assert.deepEqual(await r2.json(), { ok: true, duplicate: true });
+    assert.equal((await prisma.inbox.count({ where: { userId: mktUser.id, subject: { contains: `QT-${tag}` } } })), 1, 'kirim ulang tidak menggandakan');
+    // dedupeKey sama untuk pengguna lain = bukan duplikat
+    assert.equal((await post({ ...good, userId: focUser.id })).status, 201);
+    await prisma.inbox.deleteMany({ where: { subject: { contains: `QT-${tag}` } } });
+    await prisma.crmNotification.deleteMany({ where: { dedupeKey: { contains: tag } } });
+  });
+
+  await t.test('induk akun: customer.parentCode tak dikenal → 404; dikenal → pelanggan CRM baru menyimpan parentCustomerCode apa adanya', async () => {
+    const q = (over: any = {}) => quote({ number: `QTP-${tag}`, lines: [{ name: 'Survey', kind: 'SERVICE', qty: 1, unitPrice: 1 }], ...over });
+    const bad = await put(`/integrations/crm/quotations/${tag}-p1`, q({ customer: { ...quote().customer, parentCode: 'TIDAK-ADA-1' } }));
+    assert.equal(bad.status, 404);
+    assert.equal(await prisma.crmQuotation.count({ where: { crmId: `${tag}-p1` } }), 0);
+    const ok = await put(`/integrations/crm/quotations/${tag}-p1`, q({ status: 'WON', customer: { ...quote().customer, name: 'PT Cabang', parentCode: cust.code } }));
+    assert.equal(ok.status, 201);
+    const row = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-p1` } });
+    const w = await prisma.workOrder.findUniqueOrThrow({ where: { id: row.woId! }, include: { customer: true } });
+    assert.equal(w.customer!.parentCustomerCode, cust.code); assert.equal(w.customer!.source, 'CRM'); assert.notEqual(w.customerId, cust.id);
+    // customer.code menang atas parentCode: pelanggan existing ditautkan, tidak ada pelanggan baru
+    const both = await put(`/integrations/crm/quotations/${tag}-p2`, q({ number: `QTP2-${tag}`, status: 'WON', customer: { ...quote().customer, code: cust.code, parentCode: 'TIDAK-ADA-2' } }));
+    assert.equal(both.status, 201);
+    const r2 = await prisma.crmQuotation.findUniqueOrThrow({ where: { crmId: `${tag}-p2` } });
+    assert.equal((await prisma.workOrder.findUniqueOrThrow({ where: { id: r2.woId! } })).customerId, cust.id);
+    // dibersihkan oleh t.after (WO/pelanggan hasil tes) — hapus manual karena tes ini tidak memuat engine penuh
+    for (const id of [row.woId!, r2.woId!]) { await prisma.woEvent.deleteMany({ where: { woId: id } }); await prisma.inbox.deleteMany({ where: { woId: id } }); await prisma.notification.deleteMany({ where: { woId: id } }); await prisma.workOrder.delete({ where: { id } }); }
+    await prisma.crmQuotation.deleteMany({ where: { crmId: { in: [`${tag}-p1`, `${tag}-p2`] } } });
+    await prisma.customer.delete({ where: { id: w.customerId! } });
+  });
 });

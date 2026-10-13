@@ -6,6 +6,7 @@ import { doDelete, fmtDate, useFetch } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Badge, DataGrid, ErrorMsg, PageHeader } from '@/components/ui';
 import { rupiah } from '@/components/DocSheet';
+import { CrmLinksCard } from '@/components/CrmLinksCard';
 
 const PAY: Record<string, string> = { CASH: 'Tunai | Cash', TRANSFER: 'Transfer', DEBIT: 'Debet | Debit' };
 
@@ -25,6 +26,7 @@ export default function SubscriptionDetail({ params }: { params: Promise<{ id: s
         {canWrite && !s.woId && <Link href={`/work-orders/new?type=NEW_INSTALL&fromForm=${id}`} className="btn-ghost">➜ Buat WO Pasang Baru</Link>}
         {canWrite && !s.woId && <button className="btn-ghost !border-red-300 !text-red-600 hover:!bg-red-50" onClick={async () => { if (await doDelete(`/subscriptions/${id}`, `formulir ${s.regNo}`)) router.replace('/subscriptions'); }}>🗑 Hapus</button>}
       </PageHeader>
+      {s.customerId && <CrmLinksCard customerId={s.customerId} />}
       {s.wo && <p className="text-sm">Sudah menjadi WO <Link className="text-brand-700 hover:underline" href={`/work-orders/${s.wo.id}`}>{s.wo.number}</Link></p>}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card"><div className="card-header"><h2 className="font-semibold">Pelanggan</h2></div>

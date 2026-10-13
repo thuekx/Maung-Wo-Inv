@@ -6,6 +6,7 @@ import { AppError, prisma } from '../db';
 import { config } from '../config';
 import { transact } from '../effects';
 import { createWorkOrder, systemActor } from '../engine';
+import { webUrl } from '../settings';
 
 /**
  * Pintu masuk tulis dari aplikasi CRM (Tahap 2a): katalog jasa/produk dan penawaran.
@@ -22,7 +23,7 @@ const safeEq = (a: string, b: string) => {
 
 crmRoutes.use(
   '/integrations/crm',
-  rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false }),
+  rateLimit({ windowMs: 60_000, limit: (req) => (req.path.startsWith('/notifications') ? 120 : 60), standardHeaders: true, legacyHeaders: false }),
   (req, _res, next) => {
     if (!config.crmIntegrationKey) throw new AppError(503, 'Integrasi CRM nonaktif (CRM_INTEGRATION_KEY belum diisi)');
     const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '';
@@ -97,6 +98,7 @@ const quotationBody = z.object({
   lostReason: optStr(300),
   customer: z.object({
     code: optStr(40), // kode pelanggan WO bila Lead untuk pelanggan existing; kosong = pelanggan baru
+    parentCode: optStr(40), // dipakai bila code kosong: kode pelanggan existing sebagai INDUK akun (lokasi/cabang baru); tak dikenal → 404
     name: z.string().trim().min(2).max(120),
     phone: z.string().trim().min(6).max(24).regex(/^[0-9+][0-9 +()-]*$/, 'Hanya angka, spasi, + ( ) -'),
     email: z.preprocess(blank, z.string().email().max(120).optional()),
@@ -142,6 +144,9 @@ crmRoutes.put('/integrations/crm/quotations/:crmId', async (req, res) => {
   // pelanggan existing: kode harus ada (kode tak dikenal → 404 agar CRM menandai gagal, bukan membuat duplikat)
   if (b.customer.code && !(await prisma.customer.findUnique({ where: { code: b.customer.code }, select: { id: true } })))
     throw new AppError(404, `Pelanggan ${b.customer.code} tidak ditemukan di WO`);
+
+  if (!b.customer.code && b.customer.parentCode && !(await prisma.customer.findUnique({ where: { code: b.customer.parentCode }, select: { id: true } })))
+    throw new AppError(404, `Pelanggan induk ${b.customer.parentCode} tidak ditemukan di WO`);
 
   // pemasaran: pencocokan pasti lewat id pengguna WO. Id dan nama SELALU disimpan apa adanya (jejak lead/penawaran tidak boleh hilang
   // walau akunnya nonaktif / pindah peran / dihapus); `marketingMatched` hanya menentukan apakah ia bisa memegang WO (kalau tidak → antrean MKT, Tahap 2b)
@@ -223,4 +228,36 @@ crmRoutes.get('/integrations/crm/quotations', async (req, res) => {
       return { crmId: r.crmId, number: r.number, rev: r.rev, status: r.status, total: Number(r.total), demo: r.isDemo, marketingUserId: r.marketingUserId, marketingName: r.marketingName, customerCode: r.customerCode, lineCount: (r.lines as unknown[]).length, woNumber: w?.number ?? null, woStatus: w?.status ?? null, woCustomerCode: w?.customer?.code ?? null, updatedAt: r.updatedAt };
     }),
   });
+});
+
+/**
+ * Notifikasi dari CRM: WO meneruskan lewat jalurnya sendiri (kotak masuk [CRM] + Telegram/email sesuai tautan penerima), tautan relatif → absolut.
+ * Idempoten menurut (userId, dedupeKey). Pengguna tidak ada/nonaktif → 404 (CRM melewati); isi tidak valid → 422. Tidak menulis selain notifikasi.
+ */
+const notifyBody = z.object({
+  userId: z.string().trim().min(1).max(64),
+  type: z.string().trim().min(1).max(40).regex(/^[A-Z0-9_]+$/, 'type: huruf besar, angka, _'),
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().max(2000).default(''),
+  link: z.preprocess(blank, z.string().trim().max(300).regex(/^\/(?!\/)[^\s]*$/, 'link harus path relatif diawali satu "/"').optional()),
+  dedupeKey: z.string().trim().min(1).max(120),
+});
+
+crmRoutes.post('/integrations/crm/notifications', async (req, res) => {
+  const parsed = notifyBody.safeParse(req.body);
+  if (!parsed.success) throw new AppError(422, `Isi tidak valid: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+  const n = parsed.data;
+  const user = await prisma.user.findUnique({ where: { id: n.userId }, select: { id: true, active: true } });
+  if (!user || !user.active) throw new AppError(404, 'Pengguna tidak ditemukan atau nonaktif');
+  try {
+    await transact(async (fx) => {
+      await fx.tx.crmNotification.create({ data: { userId: n.userId, dedupeKey: n.dedupeKey, type: n.type } }); // unik → kirim ulang ditolak di sini
+      const url = n.link ? `${webUrl()}${n.link}` : '';
+      await fx.notify({ userIds: [n.userId], subject: `[CRM] ${n.title}`, body: [n.body, url].filter(Boolean).join('\n') });
+    });
+  } catch (e: any) {
+    if (e?.code === 'P2002') return void res.json({ ok: true, duplicate: true });
+    throw e;
+  }
+  res.status(201).json({ ok: true, duplicate: false });
 });

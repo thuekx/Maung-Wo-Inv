@@ -242,7 +242,12 @@ core.get('/customers/:id', async (req, res, next) => {
     },
   });
   if (!c) throw new AppError(404, 'Pelanggan tidak ditemukan');
-  res.json(c);
+  // kelompok akun: induk (bila ada) + layanan/lokasi anak yang menunjuk kode ini sebagai induk
+  const [parent, children] = await Promise.all([
+    c.parentCustomerCode ? prisma.customer.findUnique({ where: { code: c.parentCustomerCode }, select: { id: true, code: true, name: true, status: true } }) : null,
+    prisma.customer.findMany({ where: { parentCustomerCode: c.code, archivedAt: null }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, status: true, packageName: true } }),
+  ]);
+  res.json({ ...c, group: { parent, children } });
 });
 
 /** Riwayat perubahan data pelanggan dari sinkron MSRadius (nilai lama → baru). */

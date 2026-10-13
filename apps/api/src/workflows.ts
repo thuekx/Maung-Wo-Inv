@@ -1232,9 +1232,11 @@ const serviceOrder: Workflow = {
       if (!ex) throw new AppError(404, `Pelanggan ${q.customerCode} tidak ditemukan`);
       customerId = ex.id; // pelanggan existing: data internet/MSRadius TIDAK diubah
     } else {
+      // lokasi/cabang baru milik pelanggan existing: pelanggan CRM baru + kode induk disimpan apa adanya (tak dikenal → 404)
+      if (cu.parentCode && !(await tx.customer.findUnique({ where: { code: cu.parentCode }, select: { id: true } }))) throw new AppError(404, `Pelanggan induk ${cu.parentCode} tidak ditemukan`);
       const area = cu.areaCode ? await tx.area.findFirst({ where: { code: cu.areaCode, active: true } }) : null;
       const made = await tx.customer.create({
-        data: { code: await nextNumber(tx, 'CUST'), name: cu.name, phone: cu.phone, email: cu.email ?? null, address: cu.address, lat: cu.lat ?? null, lng: cu.lng ?? null, packageName: rawLines[0]?.name ?? 'Order jasa', source: q.isDemo ? 'CRM_DEMO' : 'CRM', salesName: q.marketingName, areaId: area?.id ?? null, warehouseId: area?.warehouseId ?? null },
+        data: { code: await nextNumber(tx, 'CUST'), name: cu.name, phone: cu.phone, email: cu.email ?? null, address: cu.address, lat: cu.lat ?? null, lng: cu.lng ?? null, packageName: rawLines[0]?.name ?? 'Order jasa', source: q.isDemo ? 'CRM_DEMO' : 'CRM', parentCustomerCode: cu.parentCode ?? null, salesName: q.marketingName, areaId: area?.id ?? null, warehouseId: area?.warehouseId ?? null },
       });
       customerId = made.id;
       newCustomer = true;

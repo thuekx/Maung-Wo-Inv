@@ -6,6 +6,7 @@ import { api, doDelete, fmtDate, TYPE_LABEL, useFetch } from '@/lib/api';
 import { toast } from '@/lib/dialog';
 import { useAuth } from '@/lib/auth';
 import { DynamicForm } from '@/components/DynamicForm';
+import { CrmLinksCard } from '@/components/CrmLinksCard';
 import { Badge, custLabel, custTone, DataGrid, ErrorMsg, Modal, PageHeader, RADIUS_STATUS, RadiusStatusBadge, Table } from '@/components/ui';
 import { customerFields, NETWORK_FIELDS } from '../page';
 
@@ -40,13 +41,14 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           ]} />
         </div>
         <div className="card">
-          <div className="card-header"><h2 className="font-semibold">Jaringan</h2></div>
+      <div className="card-header"><h2 className="font-semibold">Jaringan</h2></div>
           <DataGrid items={[
             { label: 'ODP / Port', value: `${c.odp ?? '-'} / ${c.port ?? '-'}` }, { label: 'VLAN', value: c.vlan },
             { label: 'IP', value: <span className="font-mono">{c.ip ?? '-'}</span> }, ...(c.radiusIp ? [{ label: 'IP dari MSRadius', value: <span className="font-mono">{c.radiusIp}</span> }] : []), ...(c.expiredAt ? [{ label: 'Jatuh tempo (MSRadius)', value: fmtDate(c.expiredAt) }] : []), ...(c.publicIp ? [{ label: 'IP Publik', value: <span className="font-mono">{c.publicIp}</span> }] : []), { label: 'Aktif sejak', value: fmtDate(c.activatedAt) },
           ]} />
         </div>
       </div>
+      <CrmLinksCard customerId={c.id} />
       <section>
         <h2 className="mb-2 font-semibold">Perangkat milik ISP di lokasi pelanggan</h2>
         <Table head={['Item', 'Serial Number', 'Status']} empty="Belum ada perangkat terpasang">

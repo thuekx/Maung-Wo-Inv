@@ -106,6 +106,39 @@ masterRoutes.patch('/customers/:id', requireFeature('customers.edit'), async (re
 });
 
 /**
+ * Tautan CRM pada pelanggan: induk akun (kode pelanggan lama untuk layanan/lokasi baru milik pemilik/PIC yang sama) dan nomor Lead CRM.
+ * Boleh diisi Marketing (fitur Form Berlangganan) kapan saja, termasuk setelah PROSPECT terbentuk dari MSRadius. 1 Lead = 1 kode pelanggan.
+ */
+masterRoutes.patch('/customers/:id/crm-links', requireFeature('subscriptions'), async (req, res) => {
+  const id = String(req.params.id);
+  const blankNull = (v: unknown) => (v === '' || v === undefined ? (v === '' ? null : undefined) : v);
+  const b = z.object({
+    parentCustomerCode: z.preprocess(blankNull, z.string().trim().min(3).max(40).nullable().optional()),
+    crmLeadRef: z.preprocess((v) => (typeof v === 'string' ? (v.trim() === '' ? null : v.trim().toUpperCase()) : v), z.string().regex(/^LD-[0-9]{1,9}$/, 'Format nomor Lead: LD- diikuti angka (mis. LD-123)').nullable().optional()),
+  }).parse(req.body);
+  const cur = await prisma.customer.findUnique({ where: { id } });
+  if (!cur || cur.archivedAt) throw new AppError(404, 'Pelanggan tidak ditemukan');
+  if (b.parentCustomerCode) {
+    if (b.parentCustomerCode === cur.code) throw fieldError('parentCustomerCode', 'Induk tidak boleh pelanggan itu sendiri');
+    const parent = await prisma.customer.findUnique({ where: { code: b.parentCustomerCode } });
+    if (!parent) throw fieldError('parentCustomerCode', `Pelanggan induk ${b.parentCustomerCode} tidak ditemukan`, 404);
+    // cegah lingkaran (induk yang ujungnya kembali ke pelanggan ini)
+    let up: string | null = parent.parentCustomerCode, hops = 0;
+    while (up && hops++ < 10) { if (up === cur.code) throw fieldError('parentCustomerCode', 'Tautan induk membentuk lingkaran'); up = (await prisma.customer.findUnique({ where: { code: up }, select: { parentCustomerCode: true } }))?.parentCustomerCode ?? null; }
+  }
+  if (b.crmLeadRef) {
+    const dup = await prisma.customer.findFirst({ where: { crmLeadRef: b.crmLeadRef, id: { not: id } }, select: { code: true } });
+    if (dup) throw fieldError('crmLeadRef', `Nomor Lead ${b.crmLeadRef} sudah dipakai pelanggan ${dup.code} (1 Lead = 1 kode pelanggan)`, 409);
+  }
+  const ch = changes(cur, b);
+  const updated = await auditedUpdate(whoOf(req), 'pelanggan', id, `${cur.code} ${cur.name}`, ch, async (fx) => {
+    try { return await fx.tx.customer.update({ where: { id }, data: b as any }); }
+    catch (e: any) { if (e?.code === 'P2002') throw fieldError('crmLeadRef', 'Nomor Lead sudah dipakai pelanggan lain', 409); throw e; }
+  });
+  res.json({ id: updated.id, code: updated.code, parentCustomerCode: updated.parentCustomerCode, crmLeadRef: updated.crmLeadRef });
+});
+
+/**
  * Hapus pelanggan:
  *  - tanpa riwayat WO/aset → dihapus permanen;
  *  - punya riwayat WO yang sudah selesai → DIARSIPKAN (hilang dari daftar & pencarian, riwayat tetap utuh; Admin dapat memulihkan);

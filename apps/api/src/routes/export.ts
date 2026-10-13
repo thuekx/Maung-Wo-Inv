@@ -69,11 +69,11 @@ const resources: Record<string, Resource> = {
       const cids = [...new Set(rows.map((r) => r.customerId).filter((x): x is string => !!x))];
       const wids = [...new Set(rows.map((r) => r.woId).filter((x): x is string => !!x))];
       const [cs, ws] = await Promise.all([
-        cids.length ? prisma.customer.findMany({ where: { id: { in: cids } }, select: { id: true, code: true } }) : [],
+        cids.length ? prisma.customer.findMany({ where: { id: { in: cids } }, select: { id: true, code: true, parentCustomerCode: true, crmLeadRef: true } }) : [],
         wids.length ? prisma.workOrder.findMany({ where: { id: { in: wids } }, select: { id: true, number: true } }) : [],
       ]);
-      const code = new Map(cs.map((c) => [c.id, c.code])), num = new Map(ws.map((w) => [w.id, w.number]));
-      return rows.map(({ customerId, woId, ...s }) => ({ ...s, customerCode: customerId ? code.get(customerId) ?? null : null, woNumber: woId ? num.get(woId) ?? null : null }));
+      const code = new Map(cs.map((c) => [c.id, c.code])), cl = new Map(cs.map((c) => [c.id, c])), num = new Map(ws.map((w) => [w.id, w.number]));
+      return rows.map(({ customerId, woId, ...s }) => ({ ...s, customerCode: customerId ? code.get(customerId) ?? null : null, parentCustomerCode: customerId ? cl.get(customerId)?.parentCustomerCode ?? null : null, crmLeadRef: customerId ? cl.get(customerId)?.crmLeadRef ?? null : null, woNumber: woId ? num.get(woId) ?? null : null }));
     },
   },
   'work-orders': {
