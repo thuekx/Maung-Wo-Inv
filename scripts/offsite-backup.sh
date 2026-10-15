@@ -151,7 +151,7 @@ run)
   ok "TrueNAS dapat ditulis: $V_DEST"
   SET="$STAGE_ROOT/$TS"; mkdir -p "$SET" && chmod 700 "$SET"; V_SET="$TS"
 
-  phase 2 "Database (pg_dumpall tiap container Postgres yang berjalan)"
+  phase 2 "Database (pg_dumpall tiap container Postgres/PostGIS yang berjalan)"
   n=0
   while read -r c img; do
     [ -n "$c" ] || continue
@@ -160,7 +160,7 @@ run)
     if [ "${PIPESTATUS[0]}" = 0 ] && gzip -t "$f" 2>/dev/null && zcat "$f" | tail -n 5 | grep -q 'PostgreSQL database cluster dump complete'; then
       n=$((n+1)); ok "$c ($img) → $(basename "$f") ($(du -h "$f" | cut -f1))"
     else die "dump $c gagal: $(tail -n 2 "$SET/.err" | tr '\n' ' ')"; fi
-  done < <(docker ps --format '{{.Names}} {{.Image}}' | awk '$2 ~ /^(docker\.io\/)?(library\/)?postgres[:@]/ || $2 == "postgres"')
+  done < <(docker ps --format '{{.Names}} {{.Image}}' | awk '$2 ~ /(^|\/)(postgres|postgis)([:@]|$)/')
   rm -f "$SET/.err"
   [ "$n" -gt 0 ] || die "tidak ada container Postgres yang berjalan"
   V_DB="$n"
