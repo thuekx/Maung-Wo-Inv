@@ -32,9 +32,9 @@ Cek hasil malam terakhir: `ls -t ~/maung-wo-logs/offsite-backup-*.log | head -1 
 | Pesan | Penyebab umum |
 |---|---|
 | `Permission denied (publickey)` | kunci publik belum ditempel di user TrueNAS, atau user berbeda dari yang di `setup` |
-| `Connection timed out` / `No route to host` | IP salah, SSH TrueNAS belum aktif, atau firewall memblokir port 22 dari VM |
 | `rsync: … Permission denied` (saat menulis) | folder tujuan bukan milik user `maung-backup` (langkah A2 *Permissions*) |
-| `rsync: command not found` / `connection unexpectedly closed` | *Shell* user TrueNAS masih `nologin` — ubah ke `bash` |
+| `rsync: command not found` / `protocol version mismatch` | *Shell* user TrueNAS masih `nologin` — ubah ke `bash` |
+| `port 22 di … tidak dapat dijangkau dari VM` | firewall/router (mis. MikroTik antar-subnet) memblokir VM → TrueNAS TCP 22, IP salah, atau SSH TrueNAS mati. Cek dari VM: `timeout 5 bash -c '</dev/tcp/IP_TRUENAS/22' && echo TERBUKA` |
 | `dump … gagal` | container Postgres bermasalah; set tidak lengkap dihapus, isi TrueNAS tidak diubah |
 
 ## Pemulihan (ringkas)

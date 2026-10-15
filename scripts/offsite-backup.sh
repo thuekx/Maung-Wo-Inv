@@ -56,9 +56,12 @@ load_conf() {
   SSH_CMD="ssh -i $KEY -p $OFFSITE_PORT -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$HOME/.ssh/known_hosts_maung_offsite"
 }
 remote_ok() { # uji: bisa login & folder tujuan dapat ditulis (lewat rsync, tidak butuh shell interaktif)
+  if ! timeout 6 bash -c "</dev/tcp/$OFFSITE_HOST/$OFFSITE_PORT" 2>/dev/null; then
+    RERR="port $OFFSITE_PORT di $OFFSITE_HOST tidak dapat dijangkau dari VM (diblokir firewall/router, IP salah, atau layanan SSH TrueNAS mati)"; return 1; fi
   local probe; probe="$(mktemp -d)"; echo "maung $TS" > "$probe/.maung-offsite-probe"
   rsync -a -e "$SSH_CMD" "$probe/.maung-offsite-probe" "$OFFSITE_USER@$OFFSITE_HOST:$OFFSITE_PATH/" >/dev/null 2>"$probe/err"; local rc=$?
-  RERR="$(tail -n 3 "$probe/err" | tr '\n' ' ')"; rm -rf "$probe"; return $rc
+  RERR="$(grep -v '^rsync' "$probe/err" | grep -v '^[[:space:]]*$' | tail -n 4 | tr '\n' ' ')"; [ -n "$RERR" ] || RERR="$(tail -n 3 "$probe/err" | tr '\n' ' ')"
+  rm -rf "$probe"; return $rc
 }
 
 case "$MODE" in
