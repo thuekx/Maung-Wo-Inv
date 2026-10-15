@@ -5,7 +5,7 @@
 set -uo pipefail
 EXPECT_HOST="${EXPECT_HOST:-maung-apps}"; KEEP="${KEEP:-3}"
 LOG_DIR="$HOME/maung-wo-logs"; BK_DIR="$HOME/maung-garage-backups"; TS="$(date +%Y%m%d-%H%M%S)"; LOG="$LOG_DIR/garage-backup-$TS.log"
-GC=maung-garage; N=5; STATUS=FAIL; REASON="-"; V_SNAP="n/a"; V_FILE="-"; V_SIZE="-"; V_KEPT="-"
+GC="${GC:-maung-garage}"; N=5; STATUS=FAIL; REASON="-"; V_SNAP="n/a"; V_FILE="-"; V_SIZE="-"; V_KEPT="-"
 banner() { printf '\n==================================================================\n  %s\n==================================================================\n' "$1"; }
 phase()  { printf '\n[%s/%s] %s\n' "$1" "$N" "$2"; }
 ok()     { printf '  ✓ %s\n' "$*"; }
