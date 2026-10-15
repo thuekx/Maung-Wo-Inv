@@ -18,15 +18,13 @@ Di TrueNAS folder `<folder>/latest/` selalu berisi set terbaru. **Riwayat harian
 3. **SSH**: *System → Services* → **SSH** → aktifkan + *Start Automatically*. (Bila VM dan TrueNAS beda jaringan, pastikan port 22 TrueNAS dapat dijangkau dari VM.)
 4. **Riwayat**: *Data Protection → Periodic Snapshot Tasks → Add*: dataset `maung-backup`, *Snapshot Lifetime* 30 hari, jadwal *Daily* jam **05:00** (setelah backup VM 03:30).
 
-## B. Di VM (perintah salin-tempel)
-1. Atur tujuan & buat kunci SSH (ganti IP, user, folder sesuai A):
-   ```
-   cd ~/Maung-Wo-Inv && git pull --ff-only origin main && bash scripts/offsite-backup.sh setup 192.168.1.10 maung-backup /mnt/tank/maung-backup </dev/null
-   ```
-   Skrip menampilkan **kunci publik** (`ssh-ed25519 AAAA… maung-backup@maung-apps`). Tempel di TrueNAS: *Credentials → Users → maung-backup → Edit → Authorized Keys* → simpan. (Kunci publik aman ditempel; kunci privat tidak pernah ditampilkan.)
-2. Uji koneksi: `cd ~/Maung-Wo-Inv && bash scripts/offsite-backup.sh test </dev/null` → `status=OK`.
-3. Backup pertama: `cd ~/Maung-Wo-Inv && bash scripts/offsite-backup.sh run </dev/null` → `status=OK`, `verifikasi=isi di TrueNAS identik (checksum)`.
-4. Jadwal harian 03:30: `cd ~/Maung-Wo-Inv && bash scripts/offsite-backup.sh cron </dev/null`.
+## B. Di VM — satu perintah, tanya-jawab
+```
+cd ~/Maung-Wo-Inv && git pull --ff-only origin main && bash scripts/offsite-backup.sh siapkan
+```
+(Tanpa `</dev/null`, karena skrip ini bertanya.) Skrip menanyakan IP TrueNAS, port SSH, username, dan folder (bawaan `maung-backup` dan `/mnt/<pool>/maung-backup`; tekan Enter untuk memakai nilai di [kurung]), menyimpannya di `~/.maung-offsite.conf`, lalu menampilkan **kunci publik**. Tempel kunci itu di TrueNAS (*Credentials → Users → maung-backup → Edit → Authorized Keys*), tekan Enter, dan skrip akan menguji koneksi, menawarkan backup pertama, lalu memasang jadwal harian 03:30. Di akhir ditampilkan semua isian yang tercatat. Jalankan perintah yang sama kapan saja untuk mengubah isian.
+
+Perintah terpisah (tanpa tanya, untuk otomatisasi): `setup <host> <user> <folder> [port]`, `test`, `run`, `cron`.
 
 Cek hasil malam terakhir: `ls -t ~/maung-wo-logs/offsite-backup-*.log | head -1 | xargs tail -n 15`.
 

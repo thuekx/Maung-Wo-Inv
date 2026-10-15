@@ -3,7 +3,8 @@
 # Isi satu set backup: dump semua database Postgres yang berjalan (WO, CRM, …), arsip volume *_uploads, arsip Garage (bila ada).
 #
 # Pemakaian (di VM, sebagai user biasa, BUKAN sudo):
-#   bash scripts/offsite-backup.sh setup <host> <user> <folder> [port]   # sekali: simpan tujuan + buat kunci SSH, tampilkan kunci publik
+#   bash scripts/offsite-backup.sh siapkan                              # PANDUAN TANYA-JAWAB (disarankan): tanya IP/user/folder, simpan, kunci SSH, uji, backup pertama, jadwal
+#   bash scripts/offsite-backup.sh setup <host> <user> <folder> [port]   # versi tanpa tanya: simpan tujuan + buat kunci SSH, tampilkan kunci publik
 #   bash scripts/offsite-backup.sh test                                  # uji koneksi ke TrueNAS
 #   bash scripts/offsite-backup.sh run                                   # buat backup lalu kirim (bawaan bila tanpa argumen)
 #   bash scripts/offsite-backup.sh cron                                  # pasang jadwal harian 03:30 (crontab user, tanpa sudo)
@@ -61,6 +62,47 @@ remote_ok() { # uji: bisa login & folder tujuan dapat ditulis (lewat rsync, tida
 }
 
 case "$MODE" in
+# ─────────────────────────── SIAPKAN (tanya-jawab) ───────────────────────────
+siapkan)
+  banner "MAUNG — persiapan backup ke TrueNAS (tanya-jawab)"; guard
+  { exec 3</dev/tty; } 2>/dev/null || abort "mode ini butuh terminal (jangan pakai </dev/null); untuk tanpa tanya pakai: setup <host> <user> <folder> [port]"
+  ask() { # ask "pertanyaan" "bawaan" → $REPLY
+    local q="$1" d="${2:-}"; while :; do
+      if [ -n "$d" ]; then printf '  ? %s [%s]: ' "$q" "$d"; else printf '  ? %s: ' "$q"; fi
+      IFS= read -r REPLY <&3 || abort "input terputus"; REPLY="${REPLY#"${REPLY%%[![:space:]]*}"}"; REPLY="${REPLY%"${REPLY##*[![:space:]]}"}"
+      [ -z "$REPLY" ] && REPLY="$d"; [ -n "$REPLY" ] && return 0; echo "    (wajib diisi)"; done; }
+  yes_no() { ask "$1 (y/n)" "${2:-y}"; [[ "$REPLY" =~ ^[YyJj] ]]; }
+  OLD_H=""; OLD_U=""; OLD_P=""; OLD_PORT=""
+  if [ -f "$CONF" ]; then . "$CONF"; OLD_H="${OFFSITE_HOST:-}"; OLD_U="${OFFSITE_USER:-}"; OLD_P="${OFFSITE_PATH:-}"; OLD_PORT="${OFFSITE_PORT:-}"; echo "  Isian sebelumnya ditemukan; tekan Enter untuk memakai nilai di [kurung]."; fi
+  echo; echo "  Isi sesuai TrueNAS Anda (lihat docs/BACKUP-TRUENAS.md bagian A). Tekan Enter untuk memakai nilai di [kurung]."
+  while :; do ask "IP atau nama host TrueNAS (mis. 192.168.1.10)" "$OLD_H"; H="$REPLY"; [[ "$H" =~ ^[A-Za-z0-9._:-]+$ ]] && break; echo "    (hanya huruf, angka, titik, minus, titik dua)"; done
+  while :; do ask "Port SSH TrueNAS" "${OLD_PORT:-22}"; PORT="$REPLY"; [[ "$PORT" =~ ^[0-9]+$ ]] && break; echo "    (harus angka)"; done
+  while :; do ask "Username di TrueNAS untuk backup" "${OLD_U:-maung-backup}"; U="$REPLY"; [[ "$U" =~ ^[A-Za-z0-9._-]+$ ]] && break; echo "    (huruf, angka, titik, minus, garis bawah)"; done
+  if [ -n "$OLD_P" ]; then DP="$OLD_P"; else ask "Nama pool TrueNAS (lihat menu Storage)" "tank"; DP="/mnt/$REPLY/maung-backup"; fi
+  while :; do ask "Folder tujuan (dataset) di TrueNAS" "$DP"; P="$REPLY"; [[ "$P" == /* && "$P" =~ ^[A-Za-z0-9._/-]+$ ]] && break; echo "    (path absolut, mis. /mnt/tank/maung-backup)"; done
+  echo; echo "  Ringkasan: host=$H  port=$PORT  user=$U  folder=$P"
+  yes_no "Simpan isian ini?" y || abort "dibatalkan (tidak ada yang disimpan)"
+  QUIET_RESULT=1 bash "$0" setup "$H" "$U" "$P" "$PORT" </dev/null
+  [ -f "$CONF" ] && [ -f "$KEY.pub" ] || abort "penyimpanan isian/kunci gagal"
+  echo; echo "  ➜ Tempel baris kunci publik di atas ke TrueNAS: Credentials → Users → $U → Edit → Authorized Keys → Save."
+  while :; do
+    ask "Sudah ditempel? Tekan Enter untuk uji koneksi (atau ketik 'batal')" "uji"
+    [ "$REPLY" = batal ] && abort "dihentikan sebelum uji koneksi; isian sudah disimpan — jalankan lagi: bash scripts/offsite-backup.sh siapkan"
+    OUT="$(bash "$0" test </dev/null 2>&1)"
+    if printf '%s\n' "$OUT" | grep -q '^status=OK'; then ok "koneksi ke TrueNAS berhasil"; break; fi
+    bad "uji koneksi gagal: $(printf '%s\n' "$OUT" | sed -n 's/^reason=//p')"
+    echo "    Periksa lalu tekan Enter untuk uji ulang (docs/BACKUP-TRUENAS.md bagian 'Bila gagal')."
+  done
+  if yes_no "Jalankan backup pertama sekarang?" y; then
+    if bash "$0" run </dev/null; then RUN_OK=ya; else RUN_OK="GAGAL (lihat RESULT di atas)"; fi
+  else RUN_OK="dilewati"; fi
+  if yes_no "Pasang jadwal backup otomatis setiap hari jam 03:30?" y; then bash "$0" cron </dev/null | grep -E '^(status|reason)='; CRON_OK=ya; else CRON_OK="tidak"; fi
+  banner "SELESAI — isian tercatat di $CONF"
+  cat "$CONF" | sed 's/^/  /'
+  printf '  backup_pertama=%s\n  jadwal_harian=%s\n' "$RUN_OK" "$CRON_OK"
+  echo "  Ubah isian kapan saja: cd ~/Maung-Wo-Inv && bash scripts/offsite-backup.sh siapkan"
+  exit 0;;
+
 # ─────────────────────────────── SETUP ───────────────────────────────
 setup)
   N=2; banner "MAUNG — atur tujuan backup luar VM ($TS)"; phase 1 "Guard"; guard
@@ -77,7 +119,7 @@ setup)
   banner "KUNCI PUBLIK — tempel di TrueNAS (Credentials → Users → $U → Edit → Authorized Keys)"
   cat "$KEY.pub"
   echo "(Ini kunci PUBLIK, aman ditempel di TrueNAS/chat. Kunci privat $KEY tidak pernah ditampilkan.)"
-  STATUS=OK; result;;
+  STATUS=OK; [ "${QUIET_RESULT:-0}" = 1 ] || result;;
 
 # ─────────────────────────────── TEST ───────────────────────────────
 test)
@@ -152,5 +194,5 @@ run)
   ok "salinan lokal disimpan $KEEP_LOCAL set terakhir di $STAGE_ROOT"
   STATUS=OK; result;;
 
-*) echo "Mode tidak dikenal: $MODE (setup | test | run | cron)"; exit 1;;
+*) echo "Mode tidak dikenal: $MODE (siapkan | setup | test | run | cron)"; exit 1;;
 esac
