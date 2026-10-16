@@ -15,7 +15,7 @@ set -uo pipefail
 EXPECT_HOST="${EXPECT_HOST:-maung-apps}"
 CONF="${OFFSITE_CONF:-$HOME/.maung-offsite.conf}"; KEY="${OFFSITE_KEY:-$HOME/.ssh/maung_offsite_ed25519}"
 SECD="${OFFSITE_SECRETS:-$HOME/.maung-offsite.d}"; RCLONE_ENV="$SECD/rclone.env"; RESTIC_PW="$SECD/restic.pass"
-RCLONE_IMG=rclone/rclone:1.70.3; RESTIC_IMG=restic/restic:0.18.0; TS_IMG=tailscale/tailscale:v1.84.3
+RCLONE_IMG=rclone/rclone:1.75.2; RESTIC_IMG=restic/restic:0.19.1; TS_IMG=tailscale/tailscale:v1.104.1   # versi dikunci; naikkan di sini lalu jalankan 'test'
 NET=maung-offsite; RC=maung-offsite-rclone; TSC=maung-offsite-ts; TS_NAME=maung-apps-backup
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="$HOME/maung-wo-logs"; STAGE_ROOT="$HOME/maung-offsite"; KEEP_LOCAL="${KEEP_LOCAL:-2}"
@@ -88,8 +88,14 @@ smb_hint() { case "$1" in
   *) echo "$1";; esac; }
 ts_running() { docker exec "$TSC" tailscale status --json 2>/dev/null | grep -q '"BackendState": *"Running"'; }
 ts_start() {  # container Tailscale khusus backup; jaringan tailnet hanya ada di dalam container ini, jaringan VM tidak berubah
-  [ "$(docker inspect -f '{{.State.Running}}' "$TSC" 2>/dev/null)" = true ] && return 0
-  if docker inspect "$TSC" >/dev/null 2>&1; then docker start "$TSC" >/dev/null 2>&1; return; fi
+  if docker inspect "$TSC" >/dev/null 2>&1; then
+    if [ "$(docker inspect -f '{{.Config.Image}}' "$TSC" 2>/dev/null)" = "$TS_IMG" ]; then
+      [ "$(docker inspect -f '{{.State.Running}}' "$TSC" 2>/dev/null)" = true ] && return 0
+      docker start "$TSC" >/dev/null 2>&1; return; fi
+    # versi Tailscale berganti → ganti container; login tetap (tersimpan di volume maung-offsite-ts)
+    docker pull -q "$TS_IMG" >/dev/null 2>&1 || docker image inspect "$TS_IMG" >/dev/null 2>&1 || { TERR="gagal mengunduh $TS_IMG"; return 1; }
+    docker rm -f "$TSC" >/dev/null 2>&1; TS_UPGRADED=1
+  fi
   [ -c /dev/net/tun ] || { TERR="/dev/net/tun tidak ada di VM"; return 1; }
   docker run -d --name "$TSC" --restart unless-stopped --cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun \
     -v maung-offsite-ts:/var/lib/tailscale -e TS_STATE_DIR=/var/lib/tailscale -e TS_USERSPACE=false \
@@ -107,6 +113,7 @@ rest_up() {  # rclone menyajikan folder SMB sebagai repositori REST untuk restic
 
 remote_ok() { # uji: NAS terjangkau & folder tujuan dapat ditulis
   if [ "$OFFSITE_KIND" = UGREEN ]; then
+    for img in "$RCLONE_IMG" "$RESTIC_IMG"; do docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null 2>&1 || { RERR="gagal mengunduh image $img"; return 1; }; done
     if [ "$OFFSITE_VIA" = TAILSCALE ]; then
       ts_start || { RERR="container Tailscale gagal jalan: ${TERR:-$(docker logs --tail 3 "$TSC" 2>&1 | tr '\n' ' ')}"; return 1; }
       ts_wait 15 || { RERR="Tailscale backup belum login/terhubung — jalankan: bash scripts/offsite-backup.sh siapkan"; return 1; }
@@ -273,7 +280,9 @@ setup)
 # ─────────────────────────────── TEST ───────────────────────────────
 test)
   N=1; banner "MAUNG — uji koneksi ke NAS ($TS)"; phase 1 "Koneksi"; guard; load_conf
-  if remote_ok; then ok "$NASNAME terjangkau & dapat ditulis: $V_DEST"; STATUS=OK; V_VERIFY="koneksi OK"; result
+  if remote_ok; then [ -n "${TS_UPGRADED:-}" ] && ok "Tailscale diperbarui ke $TS_IMG (login tetap)"
+    [ "$OFFSITE_KIND" = UGREEN ] && ok "versi: $RCLONE_IMG, $RESTIC_IMG$( [ "$OFFSITE_VIA" = TAILSCALE ] && echo ", $(docker inspect -f '{{.Config.Image}}' "$TSC" 2>/dev/null)")"
+    ok "$NASNAME terjangkau & dapat ditulis: $V_DEST"; STATUS=OK; V_VERIFY="koneksi OK"; result
   else die "gagal menulis ke $V_DEST: ${RERR:-tidak ada keterangan} — cek docs/BACKUP-NAS.md bagian 'Bila gagal'"; fi;;
 
 # ─────────────────────────────── CRON ───────────────────────────────
